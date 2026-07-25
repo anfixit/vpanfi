@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="VPaNfi — простой сервис защищённого доступа для всех ваших устройств." />
+  <meta name="theme-color" content="#7467d9" />
+  <title>VPaNfi — интернет без лишней путаницы</title>
+  <link rel="icon" href="./assets/logo.svg" />
+  <link rel="stylesheet" href="./styles/base.css" />
+  <link rel="stylesheet" href="./styles/landing.css" />
+  <link rel="stylesheet" href="./styles/cabinet.css" />
+  <link rel="stylesheet" href="./styles/components.css" />
+  <link rel="stylesheet" href="./styles/responsive.css" />
+</head>
+<body>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <div id="modal-root"></div>
+
+  <header class="site-header" id="site-header">
+    <a class="brand" href="#/" aria-label="VPaNfi, на главную">
+      <img src="./assets/logo.svg" alt="" class="brand-logo" />
+      <span class="brand-name">VPaNfi</span>
+    </a>
+    <nav class="desktop-nav" aria-label="Основная навигация">
+      <a href="#features">Преимущества</a>
+      <a href="#plans">Тарифы</a>
+      <a href="#devices">Устройства</a>
+      <a href="#support">Поддержка</a>
+    </nav>
+    <div class="header-actions">
+      <button class="icon-button" data-action="toggle-theme" aria-label="Переключить тему"><span class="theme-icon">☀</span></button>
+      <button class="button button-ghost" data-action="open-login">Войти</button>
+      <button class="button button-primary header-cta" data-action="start-trial">Попробовать бесплатно</button>
+      <button class="mobile-menu-button" data-action="toggle-mobile-menu" aria-label="Открыть меню">☰</button>
+    </div>
+  </header>
+
+  <div class="mobile-menu" id="mobile-menu" hidden>
+    <a href="#features">Преимущества</a><a href="#plans">Тарифы</a><a href="#devices">Устройства</a><a href="#support">Поддержка</a>
+    <button class="button button-primary" data-action="start-trial">Попробовать бесплатно</button>
+  </div>
+
+  <main id="public-app">
+    <section class="hero section-shell">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><span>🌿</span> Анфиса проводит через интернет-джунгли</div>
+        <h1>Ваш интернет работает.<br /><span>Просто и спокойно.</span></h1>
+        <p class="hero-subtitle">Подключите телефон, компьютер или телевизор за несколько минут. Без сложных настроек и непонятных слов.</p>
+        <div class="hero-actions">
+          <button class="button button-primary button-large" data-action="start-trial">Получить 7 дней бесплатно <span>✦</span></button>
+          <a class="button button-secondary button-large" href="#plans">Посмотреть тарифы</a>
+        </div>
+        <div class="trust-row"><span>✓ Без ограничений по трафику</span><span>✓ До 3 устройств</span><span>✓ Поддержка рядом</span></div>
+      </div>
+      <div class="hero-visual reveal delay-1" aria-label="Обезьянка Анфиса исследует интернет-джунгли">
+        <div class="jungle-orb"><div class="jungle-leaf leaf-a">🌿</div><div class="jungle-leaf leaf-b">🍃</div><div class="jungle-leaf leaf-c">🌱</div><div class="floating-chip chip-lock">⌁</div><div class="floating-chip chip-signal">◔</div><img src="./assets/mascot/jungle.svg" alt="Анфиса на лиане" class="hero-mascot" /><div class="hero-status-card"><span class="status-dot"></span><div><strong>Всё готово</strong><small>Можно подключаться</small></div></div></div>
+      </div>
+    </section>
+
+    <section class="quick-proof section-shell reveal" id="features">
+      <article class="proof-card proof-how"><div class="section-label">Как это работает</div><div class="steps-mini"><div><img src="./assets/mascot/welcome.svg" alt="" /><strong>Создайте аккаунт</strong><span>Это займёт пару минут</span></div><span class="step-arrow">→</span><div><img src="./assets/mascot/phone.svg" alt="" /><strong>Выберите устройство</strong><span>Мы покажем нужные шаги</span></div><span class="step-arrow">→</span><div><img src="./assets/mascot/success.svg" alt="" /><strong>Подключитесь</strong><span>Анфиса проверит результат</span></div></div></article>
+      <article class="proof-card" id="devices"><div class="section-label">Работает на ваших устройствах</div><div class="platform-grid"><button data-platform="android"><span>🤖</span>Android</button><button data-platform="ios"><span>●</span>iPhone / iPad</button><button data-platform="windows"><span>⊞</span>Windows</button><button data-platform="macos"><span>◆</span>macOS</button><button data-platform="linux"><span>◒</span>Linux</button><button data-platform="android-tv"><span>▣</span>Android TV</button><button data-platform="apple-tv"><span>◆</span>Apple TV</button></div></article>
+    </section>
+
+    <section class="benefits section-shell reveal"><div class="section-heading"><div><span class="eyebrow">Никакой технической магии</span><h2>Мы уже разобрались за Вас</h2></div><p>В интерфейсе остаётся только то, что действительно помогает подключиться и пользоваться сервисом.</p></div><div class="benefit-grid"><article class="benefit-card"><div class="benefit-icon">∞</div><h3>Трафик без ограничений</h3><p>Смотрите видео, работайте и общайтесь без подсчёта гигабайтов.</p></article><article class="benefit-card"><div class="benefit-icon">⚡</div><h3>Одно нажатие</h3><p>Мы подберём рекомендуемое приложение и дадим короткую инструкцию.</p></article><article class="benefit-card"><div class="benefit-icon">◎</div><h3>Много стран</h3><p>Выбор нужной страны остаётся в приложении, где ему и место.</p></article><article class="benefit-card"><div class="benefit-icon">☏</div><h3>Поддержка с Анфисой</h3><p>Telegram, форма обращения и чат в одном понятном разделе.</p></article></div></section>
+
+    <section class="countries-section section-shell reveal"><div class="countries-card"><div><span class="eyebrow">Интернет-джунгли большие</span><h2>Более 50 стран на выбор</h2><p>Подключение подбирается автоматически, а нужную страну можно выбрать прямо в приложении.</p><button class="text-button" data-action="show-countries">Показать весь список <span>→</span></button></div><div class="flag-cloud" aria-label="Популярные страны"><span>🇳🇱 Нидерланды</span><span>🇩🇪 Германия</span><span>🇺🇸 США</span><span>🇬🇧 Великобритания</span><span>🇯🇵 Япония</span><span>🇫🇮 Финляндия</span><span>🇰🇿 Казахстан</span><span>🇫🇷 Франция</span></div></div></section>
+
+    <section class="plans section-shell reveal" id="plans"><div class="section-heading centered"><span class="eyebrow">Простые и честные тарифы</span><h2>Выберите удобный срок</h2><p>Одна подписка, три устройства и никаких ограничений по трафику.</p></div><div class="plan-grid"><article class="plan-card"><span class="plan-period">1 месяц</span><div class="plan-price">300 <small>₽</small></div><span class="plan-note">300 ₽ в месяц</span><ul><li>3 устройства</li><li>Трафик без ограничений</li><li>Все доступные страны</li><li>Поддержка</li></ul><button class="button button-secondary full" data-plan="month">Выбрать</button></article><article class="plan-card featured"><span class="plan-badge">Выгоднее на 11%</span><span class="plan-period">3 месяца</span><div class="plan-price">800 <small>₽</small></div><span class="plan-note">267 ₽ в месяц</span><ul><li>3 устройства</li><li>Трафик без ограничений</li><li>Все доступные страны</li><li>Дни суммируются</li></ul><button class="button button-primary full" data-plan="quarter">Выбрать</button></article><article class="plan-card"><span class="plan-badge secondary">Выгоднее на 17%</span><span class="plan-period">6 месяцев</span><div class="plan-price">1 500 <small>₽</small></div><span class="plan-note">250 ₽ в месяц</span><ul><li>3 устройства</li><li>Трафик без ограничений</li><li>Все доступные страны</li><li>Дни суммируются</li></ul><button class="button button-secondary full" data-plan="half-year">Выбрать</button></article></div><div class="extra-device-banner"><img src="./assets/mascot/banana.svg" alt="Анфиса с бананом" /><div><strong>Нужно больше устройств?</strong><span>Добавляйте по одному за 100 ₽ в месяц.</span></div><button class="button button-ghost" data-action="start-trial">Начать бесплатно</button></div></section>
+
+    <section class="support-section section-shell reveal" id="support"><div class="support-card"><div class="support-copy"><span class="eyebrow">Анфиса на связи</span><h2>Помощь без долгого ожидания</h2><p>Сначала предложим короткое решение. Если не помогло, сразу передадим обращение человеку.</p><div class="support-actions"><button class="button button-primary" data-action="open-support">Открыть поддержку</button><button class="button button-secondary" data-action="open-telegram">Написать в Telegram</button></div></div><div class="chat-preview"><div class="chat-head"><img src="./assets/logo.svg" alt="" /><div><strong>Анфиса</strong><span>онлайн</span></div></div><div class="bubble bot">Здравствуйте! Что у Вас случилось?</div><div class="bubble user">Не получается подключиться на телефоне</div><div class="bubble bot">Давайте проверим три простых шага 🌿</div></div><img class="support-mascot" src="./assets/mascot/support.svg" alt="Анфиса в наушниках" /></div></section>
+
+    <section class="faq section-shell reveal"><div class="section-heading centered"><span class="eyebrow">Частые вопросы</span><h2>Всё важное в двух строках</h2></div><div class="faq-list"><details><summary>Нужно ли разбираться в настройках?<span>+</span></summary><p>Нет. Вы выбираете устройство, устанавливаете рекомендуемое приложение и нажимаете одну кнопку.</p></details><details><summary>Что будет после бесплатной недели?<span>+</span></summary><p>Вы сами решаете, продолжать ли пользоваться. Без оплаты подписка просто остановится.</p></details><details><summary>Можно ли продлить заранее?<span>+</span></summary><p>Да. Оплаченные дни прибавляются к уже оставшимся, ничего не пропадает.</p></details><details><summary>Как добавить четвёртое устройство?<span>+</span></summary><p>В кабинете нажмите «Добавить устройство». Одно дополнительное место стоит 100 ₽ в месяц.</p></details></div></section>
+  </main>
+
+  <main id="cabinet-app" class="cabinet" hidden><aside class="sidebar"><a class="brand cabinet-brand" href="#/"><img src="./assets/logo.svg" alt="" class="brand-logo" /><span class="brand-name">VPaNfi</span></a><nav class="cabinet-nav" id="cabinet-nav"><a href="#/app" data-route="app"><span>⌂</span>Главная</a><a href="#/connect" data-route="connect"><span>⌁</span>Подключение</a><a href="#/devices" data-route="devices"><span>▣</span>Устройства</a><a href="#/plans" data-route="plans"><span>☆</span>Тарифы</a><a href="#/payments" data-route="payments"><span>▤</span>Платежи</a><a href="#/support" data-route="support"><span>☏</span>Поддержка</a><a href="#/profile" data-route="profile"><span>○</span>Профиль</a><a href="#/admin" data-route="admin" class="admin-link"><span>⚙</span>Админка</a></nav><div class="sidebar-mascot"><img src="./assets/mascot/welcome.svg" alt="Анфиса" /><div><strong>Привет! Я Анфиса 👋</strong><span>Всегда рядом, если нужна помощь.</span></div></div><button class="sidebar-logout" data-action="logout">↪ Выйти</button></aside><section class="cabinet-content"><header class="cabinet-header"><button class="cabinet-menu" data-action="toggle-sidebar">☰</button><div id="page-title"><h1>Главная</h1><p>Здесь всё самое важное.</p></div><div class="cabinet-header-actions"><button class="icon-button" data-action="toggle-theme"><span class="theme-icon">☀</span></button><button class="notification-button">♧<span></span></button><button class="user-chip" data-action="open-profile"><img src="./assets/logo.svg" alt="" /><span>Алексей</span><b>⌄</b></button></div></header><div id="cabinet-view"></div></section></main>
+
+  <footer class="site-footer" id="site-footer"><div class="footer-main section-shell"><div><a class="brand" href="#/"><img src="./assets/logo.svg" alt="" class="brand-logo" /><span class="brand-name">VPaNfi</span></a><p>Простой защищённый доступ<br />без лишней путаницы.</p></div><div><strong>Продукт</strong><a href="#plans">Тарифы</a><a href="#devices">Устройства</a><a href="#features">Преимущества</a></div><div><strong>Помощь</strong><a href="#support">Поддержка</a><a href="#faq">Инструкции</a><a href="#status">Статус сервиса</a></div><div><strong>Документы</strong><a href="#privacy">Конфиденциальность</a><a href="#terms">Условия использования</a><a href="#offer">Оферта</a></div></div><div class="footer-bottom section-shell"><span>© 2026 VPaNfi</span><span>Сделано с заботой и парой бананов 🍌</span></div></footer>
+
+  <script src="./scripts/core.js" defer></script>
+  <script src="./scripts/dashboard-views.js" defer></script>
+  <script src="./scripts/more-views.js" defer></script>
+  <script src="./scripts/init.js" defer></script>
+</body>
+</html>
