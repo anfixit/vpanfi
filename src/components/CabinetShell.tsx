@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { navigate, routes, type AppRoute } from "../app/navigation";
 import { Brand } from "./Brand";
+import { Mascot } from "./Mascot";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 
 const navigationItems: Array<{ path: AppRoute; label: string; icon: string }> = [
@@ -43,8 +44,8 @@ export function CabinetShell({
           ))}
         </nav>
         <div className="sidebar-mascot">
-          <div className="sidebar-monkey" aria-hidden="true">•ᴗ•</div>
-          <strong>Привет! Я Анфиса 👋</strong>
+          <Mascot variant="support" className="sidebar-mascot-image" decorative />
+          <strong>Привет! Я Анфиса</strong>
           <p>Покажу следующий шаг и помогу, если что-то непонятно.</p>
         </div>
         <button className="back-to-site" type="button" onClick={() => navigate(routes.landing)}>
@@ -56,13 +57,14 @@ export function CabinetShell({
         <header className="cabinet-topbar">
           <div>
             <span className="cabinet-kicker">Личный кабинет</span>
-            <h1>Привет, {displayName}! 👋</h1>
+            <h1>Привет, {displayName}!</h1>
           </div>
           <div className="cabinet-top-actions">
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             <button className="notification" type="button" aria-label="Уведомления">♢</button>
             <button className="profile-chip" type="button" onClick={() => navigate(routes.profile)}>
-              <span aria-hidden="true">🐵</span> {displayName}<span aria-hidden="true">⌄</span>
+              <Mascot variant="greeting" className="profile-mascot" decorative />
+              {displayName}<span aria-hidden="true">⌄</span>
             </button>
           </div>
         </header>
