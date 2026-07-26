@@ -3,6 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_TELEGRAM_SUPPORT_URL: ${VITE_TELEGRAM_SUPPORT_URL:-https://t.me/VPaNfi_bot}
     image: vpanfi-web:local
     container_name: vpanfi-web
     restart: unless-stopped
@@ -33,6 +37,8 @@ services:
       VPANFI_DATABASE_URL: postgresql+asyncpg://vpanfi:${POSTGRES_PASSWORD:-vpanfi}@postgres:5432/vpanfi
       VPANFI_REDIS_URL: redis://redis:6379/0
       VPANFI_JWT_SECRET: ${VPANFI_JWT_SECRET:-change-me-before-production}
+      VPANFI_REMNAWAVE_BASE_URL: ${VPANFI_REMNAWAVE_BASE_URL:-}
+      VPANFI_REMNAWAVE_API_TOKEN: ${VPANFI_REMNAWAVE_API_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
