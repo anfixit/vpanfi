@@ -16,30 +16,46 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-identity_provider = sa.Enum("TELEGRAM", "YANDEX", "VK", name="identity_provider")
-payment_status = sa.Enum(
+identity_provider = postgresql.ENUM(
+    "TELEGRAM",
+    "YANDEX",
+    "VK",
+    name="identity_provider",
+    create_type=False,
+)
+payment_status = postgresql.ENUM(
     "PENDING",
     "SUCCEEDED",
     "FAILED",
     "REFUNDED",
     "CANCELLED",
     name="payment_status",
+    create_type=False,
 )
-payment_purpose = sa.Enum(
+payment_purpose = postgresql.ENUM(
     "SUBSCRIPTION",
     "BALANCE_TOP_UP",
     "EXTRA_DEVICE",
     name="payment_purpose",
+    create_type=False,
 )
-ticket_status = sa.Enum(
+ticket_status = postgresql.ENUM(
     "OPEN",
     "WAITING_FOR_USER",
     "WAITING_FOR_SUPPORT",
     "RESOLVED",
     "CLOSED",
     name="ticket_status",
+    create_type=False,
 )
-message_author = sa.Enum("USER", "SUPPORT", "AI", "SYSTEM", name="message_author")
+message_author = postgresql.ENUM(
+    "USER",
+    "SUPPORT",
+    "AI",
+    "SYSTEM",
+    name="message_author",
+    create_type=False,
+)
 
 
 def timestamps() -> list[sa.Column[object]]:
