@@ -1,7 +1,7 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,6 +41,7 @@ class SupportTicket(TimestampMixin, Base):
     subject: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[TicketStatus] = mapped_column(
+        Enum(TicketStatus, name="ticket_status"),
         nullable=False,
         default=TicketStatus.OPEN,
         index=True,
@@ -69,7 +70,10 @@ class SupportMessage(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    author: Mapped[MessageAuthor] = mapped_column(nullable=False)
+    author: Mapped[MessageAuthor] = mapped_column(
+        Enum(MessageAuthor, name="message_author"),
+        nullable=False,
+    )
     body: Mapped[str] = mapped_column(Text, nullable=False)
 
     ticket: Mapped[SupportTicket] = relationship(back_populates="messages")
