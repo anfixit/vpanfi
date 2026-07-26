@@ -62,6 +62,9 @@ jobs:
       - name: Import application
         run: python -c "from app.main import app; assert app.title == 'VPaNfi API'"
 
+      - name: Run tests
+        run: pytest -q backend/tests
+
   containers:
     runs-on: ubuntu-latest
     timeout-minutes: 10
