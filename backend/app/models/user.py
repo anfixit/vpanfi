@@ -1,7 +1,7 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,7 +60,10 @@ class ExternalIdentity(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    provider: Mapped[IdentityProvider] = mapped_column(nullable=False)
+    provider: Mapped[IdentityProvider] = mapped_column(
+        Enum(IdentityProvider, name="identity_provider"),
+        nullable=False,
+    )
     provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     provider_email: Mapped[str | None] = mapped_column(String(320))
     provider_username: Mapped[str | None] = mapped_column(String(255))
