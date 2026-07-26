@@ -6,6 +6,9 @@ services:
     image: vpanfi-web:local
     container_name: vpanfi-web
     restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${VPANFI_PORT:-8080}:80"
     healthcheck:
@@ -14,3 +17,73 @@ services:
       timeout: 3s
       retries: 3
       start_period: 10s
+    networks:
+      - vpanfi
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: vpanfi-api:local
+    container_name: vpanfi-api
+    restart: unless-stopped
+    environment:
+      VPANFI_ENVIRONMENT: ${VPANFI_ENVIRONMENT:-development}
+      VPANFI_FRONTEND_ORIGIN: ${VPANFI_FRONTEND_ORIGIN:-http://localhost:8080}
+      VPANFI_DATABASE_URL: postgresql+asyncpg://vpanfi:${POSTGRES_PASSWORD:-vpanfi}@postgres:5432/vpanfi
+      VPANFI_REDIS_URL: redis://redis:6379/0
+      VPANFI_JWT_SECRET: ${VPANFI_JWT_SECRET:-change-me-before-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    networks:
+      - vpanfi
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vpanfi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: vpanfi
+      POSTGRES_USER: vpanfi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vpanfi}
+    volumes:
+      - vpanfi-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vpanfi -d vpanfi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vpanfi
+
+  redis:
+    image: redis:7-alpine
+    container_name: vpanfi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - vpanfi-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - vpanfi
+
+volumes:
+  vpanfi-postgres:
+  vpanfi-redis:
+
+networks:
+  vpanfi:
+    driver: bridge
