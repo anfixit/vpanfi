@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { Mascot } from "../components/Mascot";
 
 const telegramUrl = import.meta.env.VITE_TELEGRAM_SUPPORT_URL ?? "https://t.me/VPaNfi_bot";
@@ -7,7 +7,7 @@ export function SupportPage() {
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState(false);
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!message.trim()) return;
     setSent(true);
