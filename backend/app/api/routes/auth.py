@@ -109,7 +109,7 @@ async def refresh(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(response: Response) -> Response:
+async def logout(response: Response) -> None:
     settings = get_settings()
     response.delete_cookie(
         key="vpanfi_refresh",
@@ -118,4 +118,3 @@ async def logout(response: Response) -> Response:
         httponly=True,
         samesite="lax",
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
