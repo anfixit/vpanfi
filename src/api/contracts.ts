@@ -23,12 +23,12 @@ export type Device = {
   id: string;
   name: string;
   platform: string;
-  lastSeenAt: string;
+  lastSeenAt: string | null;
   createdAt: string;
   current: boolean;
 };
 
-export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded";
+export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded" | "cancelled";
 
 export type Payment = {
   id: string;
@@ -63,6 +63,23 @@ export type DashboardPayload = {
   countries: Country[];
   recentPayments: Payment[];
   profile: UserProfile;
+};
+
+export type RegisterPayload = {
+  displayName: string;
+  email: string;
+  password: string;
+};
+
+export type LoginPayload = {
+  email: string;
+  password: string;
+};
+
+export type AccessTokenPayload = {
+  accessToken: string;
+  tokenType: "bearer";
+  expiresIn: number;
 };
 
 export type ApiErrorPayload = {
