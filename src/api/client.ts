@@ -1,8 +1,12 @@
+import { getAccessToken } from "../auth/tokenStore";
 import type {
+  AccessTokenPayload,
   ConnectionClient,
   DashboardPayload,
   Device,
+  LoginPayload,
   Payment,
+  RegisterPayload,
 } from "./contracts";
 import {
   demoClients,
@@ -13,6 +17,17 @@ import {
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== "false";
+const demoAccessToken: AccessTokenPayload = {
+  accessToken: "demo-vpanfi-access-token",
+  tokenType: "bearer",
+  expiresIn: 15 * 60,
+};
+
+type ErrorEnvelope = {
+  message?: string;
+  code?: string;
+  detail?: string | { message?: string; code?: string };
+};
 
 export class ApiRequestError extends Error {
   readonly status: number;
@@ -27,12 +42,14 @@ export class ApiRequestError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const accessToken = getAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...init?.headers,
     },
   });
@@ -42,9 +59,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let code: string | undefined;
 
     try {
-      const payload = (await response.json()) as { message?: string; code?: string };
-      message = payload.message ?? message;
-      code = payload.code;
+      const payload = (await response.json()) as ErrorEnvelope;
+      if (typeof payload.detail === "string") {
+        message = payload.detail;
+      } else if (payload.detail) {
+        message = payload.detail.message ?? message;
+        code = payload.detail.code;
+      } else {
+        message = payload.message ?? message;
+        code = payload.code;
+      }
     } catch {
       // Сервер мог вернуть пустой ответ или HTML. Пользователю показываем понятное сообщение.
     }
@@ -69,6 +93,34 @@ function demoDelay<T>(value: T): Promise<T> {
 }
 
 export const api = {
+  isDemoMode: DEMO_MODE,
+
+  async register(payload: RegisterPayload): Promise<AccessTokenPayload> {
+    if (DEMO_MODE) return demoDelay(demoAccessToken);
+    return request<AccessTokenPayload>("/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async login(payload: LoginPayload): Promise<AccessTokenPayload> {
+    if (DEMO_MODE) return demoDelay(demoAccessToken);
+    return request<AccessTokenPayload>("/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async refreshSession(): Promise<AccessTokenPayload> {
+    if (DEMO_MODE) return demoDelay(demoAccessToken);
+    return request<AccessTokenPayload>("/v1/auth/refresh", { method: "POST" });
+  },
+
+  async logout(): Promise<void> {
+    if (DEMO_MODE) return demoDelay(undefined);
+    await request<void>("/v1/auth/logout", { method: "POST" });
+  },
+
   async getDashboard(): Promise<DashboardPayload> {
     if (DEMO_MODE) return demoDelay(demoDashboard);
     return request<DashboardPayload>("/v1/cabinet/dashboard");
