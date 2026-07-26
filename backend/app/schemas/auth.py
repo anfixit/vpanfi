@@ -1,28 +1,32 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class RegisterRequest(BaseModel):
+class AuthSchema(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class RegisterRequest(AuthSchema):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    display_name: str = Field(min_length=1, max_length=80, serialization_alias="displayName")
+    display_name: str = Field(min_length=1, max_length=80, alias="displayName")
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(AuthSchema):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
 
 
-class TokenPairResponse(BaseModel):
-    access_token: str = Field(serialization_alias="accessToken")
-    refresh_token: str = Field(serialization_alias="refreshToken")
-    token_type: str = Field(default="bearer", serialization_alias="tokenType")
-    expires_in: int = Field(gt=0, serialization_alias="expiresIn")
+class TokenPairResponse(AuthSchema):
+    access_token: str = Field(alias="accessToken")
+    refresh_token: str = Field(alias="refreshToken")
+    token_type: str = Field(default="bearer", alias="tokenType")
+    expires_in: int = Field(gt=0, alias="expiresIn")
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str = Field(min_length=20, serialization_alias="refreshToken")
+class RefreshRequest(AuthSchema):
+    refresh_token: str = Field(min_length=20, alias="refreshToken")
 
 
-class OAuthStartResponse(BaseModel):
-    authorization_url: str = Field(serialization_alias="authorizationUrl")
+class OAuthStartResponse(AuthSchema):
+    authorization_url: str = Field(alias="authorizationUrl")
     state: str
