@@ -16,11 +16,14 @@ class LoginRequest(AuthSchema):
     password: str = Field(min_length=1, max_length=128)
 
 
-class TokenPairResponse(AuthSchema):
+class AccessTokenResponse(AuthSchema):
     access_token: str = Field(alias="accessToken")
-    refresh_token: str = Field(alias="refreshToken")
     token_type: str = Field(default="bearer", alias="tokenType")
     expires_in: int = Field(gt=0, alias="expiresIn")
+
+
+class TokenPairResponse(AccessTokenResponse):
+    refresh_token: str = Field(alias="refreshToken")
 
 
 class RefreshRequest(AuthSchema):
