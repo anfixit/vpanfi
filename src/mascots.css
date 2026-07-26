@@ -1,0 +1,79 @@
+.mascot {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+  filter: drop-shadow(0 14px 18px rgba(71, 47, 31, 0.12));
+}
+
+.brand-mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+.brand-mark .mascot {
+  width: 58px;
+  max-width: none;
+  transform: translateY(5px);
+}
+
+.hero-art .mascot {
+  width: min(100%, 430px);
+  margin-inline: auto;
+  animation: mascot-float 4.8s ease-in-out infinite;
+}
+
+.sidebar-mascot-image {
+  width: 116px;
+  margin: -26px auto 4px;
+}
+
+.profile-mascot {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.resource-mascot {
+  width: 132px;
+  margin-inline: auto;
+}
+
+.card-mascot {
+  width: 138px;
+  margin-inline: auto;
+}
+
+.card-mascot-small {
+  width: 92px;
+}
+
+.auth-mascot {
+  width: 150px;
+  margin: -14px auto -6px;
+}
+
+.support-mascot-image {
+  width: 180px;
+  align-self: end;
+}
+
+@keyframes mascot-float {
+  0%, 100% { transform: translateY(0) rotate(-0.6deg); }
+  50% { transform: translateY(-10px) rotate(0.8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-art .mascot {
+    animation: none;
+  }
+}
