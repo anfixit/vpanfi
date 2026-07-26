@@ -1,7 +1,7 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,8 +55,15 @@ class Payment(TimestampMixin, Base):
         index=True,
     )
     amount_kopecks: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[PaymentStatus] = mapped_column(nullable=False, default=PaymentStatus.PENDING)
-    purpose: Mapped[PaymentPurpose] = mapped_column(nullable=False)
+    status: Mapped[PaymentStatus] = mapped_column(
+        Enum(PaymentStatus, name="payment_status"),
+        nullable=False,
+        default=PaymentStatus.PENDING,
+    )
+    purpose: Mapped[PaymentPurpose] = mapped_column(
+        Enum(PaymentPurpose, name="payment_purpose"),
+        nullable=False,
+    )
     provider: Mapped[str] = mapped_column(String(64), nullable=False, default="sbp")
     provider_payment_id: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(String(500), nullable=False)
