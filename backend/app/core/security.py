@@ -30,6 +30,7 @@ def create_token(
     token_type: TokenType,
     expires_delta: timedelta,
     settings: Settings,
+    token_id: str | None = None,
     extra_claims: dict[str, Any] | None = None,
 ) -> str:
     now = datetime.now(UTC)
@@ -38,7 +39,7 @@ def create_token(
         "typ": token_type,
         "iat": now,
         "exp": now + expires_delta,
-        "jti": str(uuid4()),
+        "jti": token_id or str(uuid4()),
     }
     if extra_claims:
         payload.update(extra_claims)
