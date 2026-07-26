@@ -20,6 +20,7 @@ dependencies = [
   "python-jose[cryptography]>=3.4,<4",
   "python-multipart>=0.0.20,<1",
   "email-validator>=2.2,<3",
+  "remnawave>=2,<3",
 ]
 
 [project.optional-dependencies]
