@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, SecretStr
+from pydantic import AnyHttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     remnawave_timeout_seconds: float = 10.0
 
     telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/VPaNfi_bot")
+
+    @field_validator("remnawave_base_url", "remnawave_api_token", mode="before")
+    @classmethod
+    def empty_optional_secret_to_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def is_production(self) -> bool:
