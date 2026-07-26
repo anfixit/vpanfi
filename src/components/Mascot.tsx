@@ -1,3 +1,7 @@
+import { checkingMascotData } from "../assets/checking-mascot-data";
+import { greetingMascotData } from "../assets/greeting-mascot-data";
+import { successMascotData } from "../assets/success-mascot-data";
+
 export type MascotVariant =
   | "greeting"
   | "success"
@@ -9,19 +13,6 @@ export type MascotVariant =
   | "payment"
   | "subscription"
   | "explorer";
-
-const positions: Record<MascotVariant, string> = {
-  greeting: "0% 0%",
-  success: "25% 0%",
-  checking: "50% 0%",
-  working: "75% 0%",
-  support: "100% 0%",
-  error: "0% 100%",
-  qr: "25% 100%",
-  payment: "50% 100%",
-  subscription: "75% 100%",
-  explorer: "100% 100%",
-};
 
 const labels: Record<MascotVariant, string> = {
   greeting: "Анфиса приветствует Вас",
@@ -36,6 +27,25 @@ const labels: Record<MascotVariant, string> = {
   explorer: "Анфиса исследует интернет-джунгли",
 };
 
+/*
+ * Пока в репозитории находятся первые три точных вырезки из утверждённого
+ * листа. Для ещё не добавленных состояний используется только утверждённая
+ * Анфиса, а не эмодзи или другой рисунок. По мере добавления файлов эта карта
+ * будет заменена на десять самостоятельных изображений.
+ */
+const mascotSources: Record<MascotVariant, string> = {
+  greeting: greetingMascotData,
+  success: successMascotData,
+  checking: checkingMascotData,
+  working: checkingMascotData,
+  support: greetingMascotData,
+  error: checkingMascotData,
+  qr: greetingMascotData,
+  payment: successMascotData,
+  subscription: successMascotData,
+  explorer: greetingMascotData,
+};
+
 export function Mascot({
   variant,
   className = "",
@@ -46,12 +56,12 @@ export function Mascot({
   decorative?: boolean;
 }) {
   return (
-    <span
+    <img
       className={`mascot mascot-${variant} ${className}`.trim()}
-      style={{ backgroundPosition: positions[variant] }}
-      role={decorative ? undefined : "img"}
+      src={mascotSources[variant]}
+      alt={decorative ? "" : labels[variant]}
       aria-hidden={decorative || undefined}
-      aria-label={decorative ? undefined : labels[variant]}
+      draggable={false}
     />
   );
 }
