@@ -1,7 +1,14 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,8 +38,12 @@ class BillingAccount(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    balance_kopecks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    auto_renew_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    balance_kopecks: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    auto_renew_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
 
     user: Mapped[User] = relationship()
 
@@ -40,7 +51,9 @@ class BillingAccount(TimestampMixin, Base):
 class Payment(TimestampMixin, Base):
     __tablename__ = "payments"
     __table_args__ = (
-        UniqueConstraint("provider", "provider_payment_id", name="uq_payment_provider_id"),
+        UniqueConstraint(
+            "provider", "provider_payment_id", name="uq_payment_provider_id"
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -64,7 +77,9 @@ class Payment(TimestampMixin, Base):
         Enum(PaymentPurpose, name="payment_purpose"),
         nullable=False,
     )
-    provider: Mapped[str] = mapped_column(String(64), nullable=False, default="sbp")
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="sbp"
+    )
     provider_payment_id: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     period_months: Mapped[int | None] = mapped_column(Integer)

@@ -33,7 +33,9 @@ class Settings(BaseSettings):
 
     telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/VPaNfi_bot")
 
-    @field_validator("remnawave_base_url", "remnawave_api_token", mode="before")
+    @field_validator(
+        "remnawave_base_url", "remnawave_api_token", mode="before"
+    )
     @classmethod
     def empty_optional_secret_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():

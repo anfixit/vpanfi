@@ -23,9 +23,15 @@ class RefreshSession(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
-    token_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    token_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     user_agent: Mapped[str | None] = mapped_column(String(500))
     ip_address: Mapped[str | None] = mapped_column(String(64))
 

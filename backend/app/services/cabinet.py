@@ -14,10 +14,11 @@ from app.schemas.cabinet import (
 
 
 class CabinetService:
-    """Builds user-facing cabinet data.
+    """Собирает данные кабинета для пользователя.
 
-    Demo methods make frontend development deterministic. Production methods will
-    resolve the local user, then enrich it with Remnawave data through the gateway.
+    Demo-методы делают разработку фронтенда предсказуемой.
+    Production-методы сначала найдут локального пользователя, а затем
+    обогатят его данными панели через изолированный gateway.
     """
 
     async def get_demo_dashboard(self) -> DashboardResponse:

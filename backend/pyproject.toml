@@ -20,7 +20,6 @@ dependencies = [
   "python-jose[cryptography]>=3.4,<4",
   "python-multipart>=0.0.20,<1",
   "email-validator>=2.2,<3",
-  "remnawave>=2,<3",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +37,7 @@ packages = ["app"]
 
 [tool.ruff]
 target-version = "py312"
-line-length = 100
+line-length = 79
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC"]

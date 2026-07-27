@@ -16,7 +16,12 @@ from app.models.billing import BillingAccount
 from app.models.session import RefreshSession
 from app.models.user import User
 from app.repositories.users import UserRepository
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenPairResponse
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenPairResponse,
+)
 
 
 class EmailAlreadyRegisteredError(ValueError):
@@ -80,7 +85,9 @@ class AuthService:
         except (InvalidTokenError, KeyError, TypeError, ValueError) as error:
             raise InvalidRefreshSessionError from error
 
-        statement = select(RefreshSession).where(RefreshSession.token_id == token_id)
+        statement = select(RefreshSession).where(
+            RefreshSession.token_id == token_id
+        )
         refresh_session = await self._session.scalar(statement)
         now = datetime.now(UTC)
 

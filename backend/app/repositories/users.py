@@ -14,7 +14,9 @@ class UserRepository:
         return await self._session.get(User, user_id)
 
     async def get_by_email(self, email: str) -> User | None:
-        statement = select(User).where(func.lower(User.email) == email.strip().lower())
+        statement = select(User).where(
+            func.lower(User.email) == email.strip().lower()
+        )
         return await self._session.scalar(statement)
 
     async def add(self, user: User) -> User:

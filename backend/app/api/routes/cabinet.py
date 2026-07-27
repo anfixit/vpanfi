@@ -26,7 +26,9 @@ async def get_devices(service: CabinetServiceDep) -> list[DeviceResponse]:
 
 
 @router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def unlink_device(device_id: str, service: CabinetServiceDep) -> Response:
+async def unlink_device(
+    device_id: str, service: CabinetServiceDep
+) -> Response:
     # The real implementation will validate ownership and call the Remnawave
     # HWID/device endpoint. The route and frontend contract are ready now.
     _ = (device_id, service)
@@ -38,7 +40,9 @@ async def get_payments(service: CabinetServiceDep) -> list[PaymentResponse]:
     return service.get_demo_payments()
 
 
-@router.get("/connection-clients", response_model=list[ConnectionClientResponse])
+@router.get(
+    "/connection-clients", response_model=list[ConnectionClientResponse]
+)
 async def get_connection_clients(
     service: CabinetServiceDep,
 ) -> list[ConnectionClientResponse]:

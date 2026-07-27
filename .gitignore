@@ -9,3 +9,16 @@ dist/
 .idea/
 .vscode/
 coverage/
+
+__pycache__/
+*.py[cod]
+.venv/
+.venv-*/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+*.pem
+*.key

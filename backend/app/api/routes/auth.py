@@ -59,7 +59,10 @@ async def register(
     except EmailAlreadyRegisteredError as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"code": "email_already_registered", "message": "Аккаунт уже существует"},
+            detail={
+                "code": "email_already_registered",
+                "message": "Аккаунт уже существует",
+            },
         ) from error
 
     set_refresh_cookie(response, tokens)
@@ -77,7 +80,10 @@ async def login(
     except InvalidCredentialsError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "invalid_credentials", "message": "Неверный email или пароль"},
+            detail={
+                "code": "invalid_credentials",
+                "message": "Неверный email или пароль",
+            },
         ) from error
 
     set_refresh_cookie(response, tokens)
@@ -93,15 +99,23 @@ async def refresh(
     if refresh_cookie is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "missing_refresh_token", "message": "Сеанс завершён"},
+            detail={
+                "code": "missing_refresh_token",
+                "message": "Сеанс завершён",
+            },
         )
 
     try:
-        tokens = await service.refresh(RefreshRequest(refresh_token=refresh_cookie))
+        tokens = await service.refresh(
+            RefreshRequest(refresh_token=refresh_cookie)
+        )
     except InvalidRefreshSessionError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "invalid_refresh_token", "message": "Сеанс завершён"},
+            detail={
+                "code": "invalid_refresh_token",
+                "message": "Сеанс завершён",
+            },
         ) from error
 
     set_refresh_cookie(response, tokens)

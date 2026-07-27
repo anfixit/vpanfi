@@ -61,7 +61,9 @@ class DashboardResponse(BaseModel):
 
     subscription: SubscriptionResponse
     countries: list[CountryResponse]
-    recent_payments: list[PaymentResponse] = Field(serialization_alias="recentPayments")
+    recent_payments: list[PaymentResponse] = Field(
+        serialization_alias="recentPayments"
+    )
     profile: UserProfileResponse
 
 
