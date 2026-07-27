@@ -76,11 +76,15 @@ Required GitHub Actions secrets:
 - `DEPLOY_SSH_KEY`
 - `DEPLOY_HOST_FINGERPRINT` — from `ssh-keyscan -p PORT HOST | ssh-keygen -lf -`
 
-The web service binds only to `127.0.0.1:8080`. The public domain is published separately through the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
+The web service binds only to `127.0.0.1:8080`. The public domain is served by the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
 
 ### Publishing a domain
 
-No domain is configured in this repository yet. To publish one, add a site block to the existing Caddy configuration that reverse-proxies it to `127.0.0.1:8080`, then set `VPANFI_FRONTEND_ORIGIN` in `/opt/vpanfi/.env` to that origin and redeploy.
+Run the **Publish domain** workflow (`workflow_dispatch`, default `vpanfi.su`). It is manual on purpose: it is the only workflow that touches the shared Caddy configuration.
+
+The workflow refuses to continue unless the domain already resolves to this server, attaches `vpanfi-web` to the proxy network so Caddy can reach it by name, backs the Caddyfile up, appends a single site block, validates it and asks Caddy to reload. Caddy is never restarted, and a failed validation or reload restores the previous file before exiting. It then sets `VPANFI_FRONTEND_ORIGIN` in `/opt/vpanfi/.env` and verifies the domain end to end.
+
+`scripts/deploy.sh` reattaches `vpanfi-web` to that network on every release, because Compose drops the extra network whenever it recreates the container.
 
 ## Security
 

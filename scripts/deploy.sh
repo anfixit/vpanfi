@@ -43,6 +43,31 @@ EOF
   chmod 600 .env
 }
 
+attach_to_proxy_network() {
+  # Compose recreates vpanfi-web on every release, which drops the extra
+  # network that lets the server's Caddy reach it by name. Reattaching
+  # here keeps the published domain working after a deploy.
+  local network="${VPANFI_PROXY_NETWORK:-remnawave-network}"
+
+  if ! docker network inspect "$network" >/dev/null 2>&1; then
+    return
+  fi
+
+  local attached
+  attached="$(
+    docker inspect \
+      -f '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}' \
+      vpanfi-web 2>/dev/null || true
+  )"
+
+  if grep -qx "$network" <<<"$attached"; then
+    return
+  fi
+
+  log "Attaching vpanfi-web to ${network}"
+  docker network connect "$network" vpanfi-web
+}
+
 wait_for_health() {
   local attempt
 
@@ -111,6 +136,8 @@ docker compose build --pull
 
 log "Starting application"
 docker compose up -d --remove-orphans
+
+attach_to_proxy_network
 
 wait_for_health
 
