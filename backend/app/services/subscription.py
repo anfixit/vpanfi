@@ -1,0 +1,158 @@
+"""Привязка подписки панели к аккаунту кабинета."""
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings
+from app.integrations.remnawave.client import (
+    RemnawaveGateway,
+    RemnawaveNotConfiguredError,
+    RemnawaveUnavailableError,
+    RemnawaveUserNotFoundError,
+    extract_short_uuid,
+)
+from app.models.user import User
+from app.schemas.cabinet import SubscriptionLinkResponse
+from app.services.panel import (
+    UnreadablePanelUserError,
+    read_panel_user,
+    to_subscription,
+)
+
+__all__ = [
+    "PanelUnavailableError",
+    "SubscriptionAlreadyClaimedError",
+    "SubscriptionLinkInvalidError",
+    "SubscriptionNotFoundError",
+    "SubscriptionService",
+]
+
+
+class SubscriptionLinkInvalidError(ValueError):
+    """Из введённого текста не удалось получить идентификатор подписки."""
+
+
+class SubscriptionNotFoundError(LookupError):
+    """Панель не знает такой подписки."""
+
+
+class SubscriptionAlreadyClaimedError(ValueError):
+    """Эта подписка уже привязана к другому аккаунту кабинета."""
+
+
+class PanelUnavailableError(RuntimeError):
+    """Панель не настроена или недоступна."""
+
+
+class SubscriptionService:
+    """Связывает аккаунт кабинета с пользователем панели.
+
+    Панель остаётся единственным источником правды: кабинет хранит у себя
+    только ссылку на пользователя панели, но не состояние его подписки.
+    """
+
+    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+        self._session = session
+        self._settings = settings
+
+    def _gateway(self) -> RemnawaveGateway:
+        try:
+            return RemnawaveGateway(self._settings)
+        except RemnawaveNotConfiguredError as error:
+            raise PanelUnavailableError(
+                "Панель пока не подключена"
+            ) from error
+
+    async def describe(self, user: User) -> SubscriptionLinkResponse:
+        """Показать текущее состояние привязки."""
+        if user.remnawave_user_uuid is None:
+            return SubscriptionLinkResponse(linked=False)
+
+        async with self._gateway() as gateway:
+            try:
+                payload = await gateway.get_user_by_uuid(
+                    user.remnawave_user_uuid
+                )
+                devices = await gateway.list_devices(
+                    user.remnawave_user_uuid
+                )
+            except RemnawaveUserNotFoundError:
+                # Пользователя удалили из панели: привязка больше не
+                # значит ничего, поэтому честно показываем её отсутствие.
+                return SubscriptionLinkResponse(linked=False)
+            except RemnawaveUnavailableError as error:
+                raise PanelUnavailableError(str(error)) from error
+
+        return self._describe_payload(payload, devices_used=len(devices))
+
+    async def link(
+        self,
+        user: User,
+        subscription_link: str,
+    ) -> SubscriptionLinkResponse:
+        """Привязать подписку по ссылке из бота.
+
+        Raises:
+            SubscriptionLinkInvalidError: Ссылку не удалось разобрать.
+            SubscriptionNotFoundError: Панель не нашла такую подписку.
+            SubscriptionAlreadyClaimedError: Подписка занята другим
+                аккаунтом.
+            PanelUnavailableError: Панель не настроена или недоступна.
+        """
+        short_uuid = extract_short_uuid(subscription_link)
+        if short_uuid is None:
+            raise SubscriptionLinkInvalidError(
+                "Не похоже на ссылку подписки"
+            )
+
+        async with self._gateway() as gateway:
+            try:
+                payload = await gateway.get_user_by_short_uuid(short_uuid)
+            except RemnawaveUserNotFoundError as error:
+                raise SubscriptionNotFoundError(short_uuid) from error
+            except RemnawaveUnavailableError as error:
+                raise PanelUnavailableError(str(error)) from error
+
+            try:
+                panel_user = read_panel_user(payload)
+            except UnreadablePanelUserError as error:
+                raise PanelUnavailableError(str(error)) from error
+
+            await self._ensure_not_claimed(user, panel_user.uuid)
+
+            user.remnawave_user_uuid = panel_user.uuid
+            user.remnawave_username = panel_user.username or None
+            await self._session.commit()
+
+            try:
+                devices = await gateway.list_devices(panel_user.uuid)
+            except RemnawaveUnavailableError:
+                devices = []
+
+        return self._describe_payload(payload, devices_used=len(devices))
+
+    async def unlink(self, user: User) -> None:
+        """Отвязать подписку от аккаунта, ничего не трогая в панели."""
+        user.remnawave_user_uuid = None
+        user.remnawave_username = None
+        await self._session.commit()
+
+    async def _ensure_not_claimed(self, user: User, panel_uuid) -> None:
+        statement = select(User).where(
+            User.remnawave_user_uuid == panel_uuid,
+            User.id != user.id,
+        )
+        if await self._session.scalar(statement) is not None:
+            raise SubscriptionAlreadyClaimedError(str(panel_uuid))
+
+    @staticmethod
+    def _describe_payload(payload, *, devices_used: int):
+        panel_user = read_panel_user(payload)
+        return SubscriptionLinkResponse(
+            linked=True,
+            panel_username=panel_user.username or None,
+            subscription=to_subscription(
+                panel_user,
+                devices_used=devices_used,
+            ),
+        )

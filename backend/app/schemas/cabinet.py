@@ -84,3 +84,24 @@ class ConnectionClientResponse(BaseModel):
     description: str
     install_url: str = Field(serialization_alias="installUrl")
     deep_link: str | None = Field(default=None, serialization_alias="deepLink")
+
+
+class SubscriptionLinkRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    subscription_link: str = Field(
+        min_length=1,
+        max_length=500,
+        alias="subscriptionLink",
+        description="Ссылка на подписку из бота или сам её идентификатор",
+    )
+
+
+class SubscriptionLinkResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    linked: bool
+    panel_username: str | None = Field(
+        default=None, serialization_alias="panelUsername"
+    )
+    subscription: SubscriptionResponse | None = None

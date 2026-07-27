@@ -1,20 +1,49 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.dependencies import CurrentUser, get_cabinet_service
+from app.api.dependencies import (
+    CurrentUser,
+    get_cabinet_service,
+    get_subscription_service,
+)
 from app.schemas.cabinet import (
     ConnectionClientResponse,
     DashboardResponse,
     DeviceResponse,
     PaymentResponse,
+    SubscriptionLinkRequest,
+    SubscriptionLinkResponse,
 )
 from app.services.cabinet import CabinetService
+from app.services.subscription import (
+    PanelUnavailableError,
+    SubscriptionAlreadyClaimedError,
+    SubscriptionLinkInvalidError,
+    SubscriptionNotFoundError,
+    SubscriptionService,
+)
 
 router = APIRouter(prefix="/cabinet", tags=["cabinet"])
 CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
 
+SubscriptionServiceDep = Annotated[
+    SubscriptionService, Depends(get_subscription_service)
+]
+
 UNAUTHORIZED_RESPONSE = {401: {"description": "Требуется вход в кабинет"}}
+
+
+def _panel_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "panel_unavailable",
+            "message": (
+                "Панель сейчас недоступна, попробуйте чуть позже"
+            ),
+        },
+    )
 
 
 @router.get(
@@ -93,3 +122,90 @@ async def get_connection_clients(
     service: CabinetServiceDep,
 ) -> list[ConnectionClientResponse]:
     return service.get_connection_clients()
+
+
+@router.get(
+    "/subscription",
+    response_model=SubscriptionLinkResponse,
+    summary="Состояние привязанной подписки",
+    responses=UNAUTHORIZED_RESPONSE
+    | {503: {"description": "Панель недоступна"}},
+)
+async def get_subscription(
+    user: CurrentUser,
+    service: SubscriptionServiceDep,
+) -> SubscriptionLinkResponse:
+    try:
+        return await service.describe(user)
+    except PanelUnavailableError as error:
+        raise _panel_unavailable() from error
+
+
+@router.post(
+    "/subscription/link",
+    response_model=SubscriptionLinkResponse,
+    summary="Привязать подписку по ссылке",
+    description=(
+        "Принимает ссылку на подписку из бота или её идентификатор. "
+        "Панель остаётся источником правды: кабинет запоминает только "
+        "ссылку на пользователя панели."
+    ),
+    responses=UNAUTHORIZED_RESPONSE
+    | {
+        404: {"description": "Подписка не найдена"},
+        409: {"description": "Подписка уже привязана к другому аккаунту"},
+        422: {"description": "Ссылку не удалось разобрать"},
+        503: {"description": "Панель недоступна"},
+    },
+)
+async def link_subscription(
+    request: SubscriptionLinkRequest,
+    user: CurrentUser,
+    service: SubscriptionServiceDep,
+) -> SubscriptionLinkResponse:
+    try:
+        return await service.link(user, request.subscription_link)
+    except SubscriptionLinkInvalidError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_subscription_link",
+                "message": (
+                    "Это не похоже на ссылку подписки. Скопируйте её "
+                    "целиком из бота."
+                ),
+            },
+        ) from error
+    except SubscriptionNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "subscription_not_found",
+                "message": "Такая подписка не найдена",
+            },
+        ) from error
+    except SubscriptionAlreadyClaimedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "subscription_already_claimed",
+                "message": "Эта подписка уже привязана к другому аккаунту",
+            },
+        ) from error
+    except PanelUnavailableError as error:
+        raise _panel_unavailable() from error
+
+
+@router.delete(
+    "/subscription/link",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Отвязать подписку от аккаунта",
+    description="Подписка в панели сохраняется, снимается только связь.",
+    responses=UNAUTHORIZED_RESPONSE,
+)
+async def unlink_subscription(
+    user: CurrentUser,
+    service: SubscriptionServiceDep,
+) -> Response:
+    await service.unlink(user)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

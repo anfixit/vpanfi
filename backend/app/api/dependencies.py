@@ -13,6 +13,7 @@ from app.models.user import User
 from app.repositories.users import UserRepository
 from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
+from app.services.subscription import SubscriptionService
 
 __all__ = [
     "CurrentUser",
@@ -20,6 +21,7 @@ __all__ = [
     "get_auth_service",
     "get_cabinet_service",
     "get_current_user",
+    "get_subscription_service",
 ]
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
@@ -84,3 +86,10 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_subscription_service(
+    session: DatabaseSession,
+    settings: SettingsDep,
+) -> SubscriptionService:
+    return SubscriptionService(session, settings)
