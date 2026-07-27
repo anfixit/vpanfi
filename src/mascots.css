@@ -1,4 +1,15 @@
+/*
+ * Анфиса приходит из <picture>: класс размера стоит на обёртке, а
+ * изображение внутри всегда занимает её ширину. Ширина и высота заданы
+ * в разметке, поэтому место под маскота резервируется до загрузки и
+ * страница не дёргается.
+ */
+
 .mascot {
+  display: block;
+}
+
+.mascot img {
   display: block;
   width: 100%;
   height: auto;
@@ -39,8 +50,7 @@
 
 .profile-mascot {
   width: 30px;
-  height: 30px;
-  object-fit: contain;
+  flex: none;
 }
 
 .resource-mascot {
@@ -55,6 +65,7 @@
 
 .card-mascot-small {
   width: 92px;
+  flex: none;
 }
 
 .auth-mascot {
@@ -67,9 +78,45 @@
   align-self: end;
 }
 
+.page-intro-mascot {
+  width: 128px;
+  flex: none;
+}
+
+.not-found-mascot {
+  width: 180px;
+  margin-inline: auto;
+}
+
 @keyframes mascot-float {
   0%, 100% { transform: translateY(0) rotate(-0.6deg); }
   50% { transform: translateY(-10px) rotate(0.8deg); }
+}
+
+@media (max-width: 600px) {
+  .support-mascot-image {
+    width: 140px;
+    align-self: center;
+  }
+
+  .page-intro-mascot {
+    width: 104px;
+  }
+}
+
+@media (max-width: 360px) {
+  .card-mascot,
+  .resource-mascot {
+    width: 112px;
+  }
+
+  .auth-mascot {
+    width: 116px;
+  }
+
+  .page-intro-mascot {
+    width: 88px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

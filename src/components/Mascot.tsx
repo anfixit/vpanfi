@@ -1,67 +1,72 @@
-import { checkingMascotData } from "../assets/checking-mascot-data";
-import { greetingMascotData } from "../assets/greeting-mascot-data";
-import { successMascotData } from "../assets/success-mascot-data";
+/*
+ * Единственный источник истины по внешности Анфисы — файлы в
+ * public/mascots. Утверждённый референс лежит в design/mascot.
+ * Ни эмодзи, ни ASCII, ни другой персонаж вместо неё не используются.
+ */
 
 export type MascotVariant =
   | "greeting"
-  | "success"
-  | "checking"
-  | "working"
+  | "connected"
+  | "phone"
+  | "laptop"
   | "support"
   | "error"
   | "qr"
-  | "payment"
-  | "subscription"
+  | "payment-success"
+  | "subscription-active"
   | "explorer";
 
+/* Исходный размер файлов: задаёт пропорции и держит место до загрузки. */
+const INTRINSIC_SIZE = 224;
+
+const MASCOT_DIRECTORY = "/mascots";
+
 const labels: Record<MascotVariant, string> = {
-  greeting: "Анфиса приветствует Вас",
-  success: "Анфиса радуется успешному подключению",
-  checking: "Анфиса проверяет подключение",
-  working: "Анфиса работает за ноутбуком",
-  support: "Анфиса из поддержки",
+  greeting: "Анфиса приветственно машет рукой",
+  connected: "Анфиса радуется успешному подключению",
+  phone: "Анфиса показывает действие на телефоне",
+  laptop: "Анфиса работает за ноутбуком",
+  support: "Анфиса из поддержки в гарнитуре",
   error: "Анфиса расстроена из-за ошибки",
-  qr: "Анфиса показывает QR-код",
-  payment: "Анфиса празднует успешную оплату",
-  subscription: "Анфиса с активной подпиской и бананом",
+  qr: "Анфиса держит карточку с QR-кодом",
+  "payment-success": "Анфиса радуется успешной оплате",
+  "subscription-active": "Анфиса довольна активной подпиской",
   explorer: "Анфиса исследует интернет-джунгли",
 };
 
-/*
- * Пока в репозитории находятся первые три точных вырезки из утверждённого
- * листа. Для ещё не добавленных состояний используется только утверждённая
- * Анфиса, а не эмодзи или другой рисунок. По мере добавления файлов эта карта
- * будет заменена на десять самостоятельных изображений.
- */
-const mascotSources: Record<MascotVariant, string> = {
-  greeting: greetingMascotData,
-  success: successMascotData,
-  checking: checkingMascotData,
-  working: checkingMascotData,
-  support: greetingMascotData,
-  error: checkingMascotData,
-  qr: greetingMascotData,
-  payment: successMascotData,
-  subscription: successMascotData,
-  explorer: greetingMascotData,
+export type MascotProps = {
+  variant: MascotVariant;
+  className?: string;
+  /** Подпись для читалок экрана. По умолчанию — описание состояния. */
+  alt?: string;
+  /** Декоративный режим: пустой alt и скрытие от читалок экрана. */
+  decorative?: boolean;
+  /** Первый экран стоит грузить сразу, остальное — лениво. */
+  loading?: "eager" | "lazy";
 };
 
 export function Mascot({
   variant,
   className = "",
+  alt,
   decorative = false,
-}: {
-  variant: MascotVariant;
-  className?: string;
-  decorative?: boolean;
-}) {
+  loading = "lazy",
+}: MascotProps) {
+  const source = `${MASCOT_DIRECTORY}/anfisa-${variant}`;
+
   return (
-    <img
-      className={`mascot mascot-${variant} ${className}`.trim()}
-      src={mascotSources[variant]}
-      alt={decorative ? "" : labels[variant]}
-      aria-hidden={decorative || undefined}
-      draggable={false}
-    />
+    <picture className={`mascot mascot-${variant} ${className}`.trim()}>
+      <source srcSet={`${source}.avif`} type="image/avif" />
+      <img
+        src={`${source}.webp`}
+        alt={decorative ? "" : (alt ?? labels[variant])}
+        aria-hidden={decorative || undefined}
+        width={INTRINSIC_SIZE}
+        height={INTRINSIC_SIZE}
+        loading={loading}
+        decoding="async"
+        draggable={false}
+      />
+    </picture>
   );
 }
