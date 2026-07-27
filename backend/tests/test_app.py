@@ -1,13 +1,10 @@
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-
 DEMO_ORIGIN = "http://localhost:5173"
 
 
-def test_healthcheck() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/healthz")
+def test_healthcheck(anonymous_client: TestClient) -> None:
+    response = anonymous_client.get("/healthz")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -16,9 +13,10 @@ def test_healthcheck() -> None:
     }
 
 
-def test_healthcheck_carries_security_headers() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/healthz")
+def test_healthcheck_carries_security_headers(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get("/healthz")
 
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "DENY"
@@ -27,33 +25,39 @@ def test_healthcheck_carries_security_headers() -> None:
     )
 
 
-def test_cors_allows_the_configured_origin() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/healthz", headers={"Origin": DEMO_ORIGIN})
+def test_cors_allows_the_configured_origin(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get(
+        "/healthz", headers={"Origin": DEMO_ORIGIN}
+    )
 
     assert response.headers["access-control-allow-origin"] == DEMO_ORIGIN
 
 
-def test_cors_rejects_an_unknown_origin() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get(
-            "/healthz",
-            headers={"Origin": "https://attacker.example"},
-        )
+def test_cors_rejects_an_unknown_origin(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get(
+        "/healthz",
+        headers={"Origin": "https://attacker.example"},
+    )
 
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_documentation_is_available_outside_production() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/docs")
+def test_documentation_is_available_outside_production(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get("/docs")
 
     assert response.status_code == 200
 
 
-def test_dashboard_contract_uses_frontend_aliases() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/api/v1/cabinet/dashboard")
+def test_dashboard_contract_uses_frontend_aliases(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/cabinet/dashboard")
 
     assert response.status_code == 200
     payload = response.json()
@@ -64,9 +68,8 @@ def test_dashboard_contract_uses_frontend_aliases() -> None:
     assert payload["profile"]["telegramLinked"] is True
 
 
-def test_devices_contract_matches_the_frontend() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/api/v1/cabinet/devices")
+def test_devices_contract_matches_the_frontend(client: TestClient) -> None:
+    response = client.get("/api/v1/cabinet/devices")
 
     assert response.status_code == 200
     devices = response.json()
@@ -74,9 +77,10 @@ def test_devices_contract_matches_the_frontend() -> None:
     assert {"id", "name", "platform", "current"} <= set(devices[0])
 
 
-def test_connection_clients_offer_one_recommendation_per_platform() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/api/v1/cabinet/connection-clients")
+def test_connection_clients_offer_one_recommendation_per_platform(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get("/api/v1/cabinet/connection-clients")
 
     assert response.status_code == 200
     clients = response.json()
@@ -90,16 +94,14 @@ def test_connection_clients_offer_one_recommendation_per_platform() -> None:
         assert len(recommended) == 1
 
 
-def test_unlink_device_returns_no_content() -> None:
-    with TestClient(create_app()) as client:
-        response = client.delete("/api/v1/cabinet/devices/device_demo")
+def test_unlink_device_returns_no_content(client: TestClient) -> None:
+    response = client.delete("/api/v1/cabinet/devices/device_demo")
 
     assert response.status_code == 204
     assert response.content == b""
 
 
-def test_unknown_route_returns_not_found() -> None:
-    with TestClient(create_app()) as client:
-        response = client.get("/api/v1/cabinet/does-not-exist")
+def test_unknown_route_returns_not_found(client: TestClient) -> None:
+    response = client.get("/api/v1/cabinet/does-not-exist")
 
     assert response.status_code == 404
