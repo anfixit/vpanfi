@@ -8,18 +8,19 @@ The service is designed for people who do not want to understand protocols, conf
 
 The brand mascot is Анфиса, a friendly monkey travelling through the internet jungle.
 
-## Planned areas
+## Mascot
 
-- public landing page with tariffs and a seven-day trial;
-- authentication with password, Yandex, VK and Telegram;
-- personal cabinet with subscription, traffic, countries and devices;
-- connection wizard for Android, iOS, Windows, macOS, Linux and TV platforms;
-- QR onboarding and alternative applications;
-- SBP payments, balance, auto-renewal and payment history;
-- Telegram support, contact form and future AI chat;
-- compact administration panel;
-- isolated Remnawave API adapter;
-- Docker deployment through GitHub Actions.
+The approved reference lives in `design/mascot/reference.png`, with a contact sheet of every state in `design/mascot/reference-sheet.png`.
+
+Ten states ship in `public/mascots` as AVIF with a WebP fallback: `greeting`, `connected`, `phone`, `laptop`, `support`, `error`, `qr`, `payment-success`, `subscription-active`, `explorer`.
+
+Use them through `src/components/Mascot.tsx` — never an emoji, an ASCII drawing or a redrawn character:
+
+```tsx
+<Mascot variant="connected" className="card-mascot" decorative />
+```
+
+The component reserves its box before the image loads, so a mascot never shifts the layout, and it loads lazily unless `loading="eager"` is passed for above-the-fold art.
 
 ## Stack
 
@@ -32,11 +33,40 @@ The brand mascot is Анфиса, a friendly monkey travelling through the inter
 - native CSS design system
 - Docker, Compose and Nginx
 
+## Local development
+
+```bash
+npm install --no-audit --no-fund
+npm run dev
+```
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -e "backend[dev]"
+.venv/bin/python -m pytest -q backend/tests
+```
+
+Checks that must pass before pushing:
+
+```bash
+npm run typecheck && npm run build
+ruff check backend && pytest -q backend/tests
+docker compose config --quiet && docker compose build
+```
+
+## Demo mode
+
+With `VITE_DEMO_MODE=true` the cabinet serves its own deterministic data and marks itself with a visible "Демо-режим" badge.
+
+Demo mode never simulates a real payment. The payment button previews the success screen under a "Демонстрация" label and states plainly that no money moved. Actions that need a service which is not connected yet — payments, balance top-up, profile writes, admin screens — explain what is missing instead of doing nothing.
+
 ## Production deployment
 
-Production is deployed automatically after a successful CI run on `main`.
+`.github/workflows/ci.yml` runs the frontend, backend and container jobs on every push and pull request. On a push to `main` the `deploy` job runs only after all three succeed; it calls `.github/workflows/deploy.yml`, which is also available manually through **Run workflow** (`workflow_dispatch`). Concurrent production deploys queue instead of overlapping.
 
-The workflow connects to the server with the dedicated `deploy` account, synchronizes `/opt/vpanfi` with the current `main` branch, validates the Compose configuration, builds fresh images, starts the stack and verifies the local health endpoint. The deploy script preserves the production `.env` file and rolls back to the previous Git commit if startup or health checks fail.
+The deploy job verifies the server host key against `DEPLOY_HOST_FINGERPRINT` before connecting — it pins whichever offered key matches the recorded fingerprint and fails if none does. It then runs `scripts/remote-bootstrap.sh` over SSH, which clones or updates `/opt/vpanfi` and hands over to `scripts/deploy.sh`.
+
+`scripts/deploy.sh` preserves the production `.env`, generates one on first deploy, validates the Compose configuration, builds fresh images, starts the stack, waits for both `/healthz` and `/api/healthz`, and rolls back to the previous commit if anything fails. Every run finishes by printing the deployed commit, the Compose state, both health checks and the status of the neighbouring Caddy and Remnawave containers.
 
 Required GitHub Actions secrets:
 
@@ -44,10 +74,22 @@ Required GitHub Actions secrets:
 - `DEPLOY_PORT`
 - `DEPLOY_USER`
 - `DEPLOY_SSH_KEY`
-- `DEPLOY_HOST_FINGERPRINT`
+- `DEPLOY_HOST_FINGERPRINT` — from `ssh-keyscan -p PORT HOST | ssh-keygen -lf -`
 
-The web service binds only to `127.0.0.1:8080`; the public domain is published separately through the server reverse proxy.
+The web service binds only to `127.0.0.1:8080`. The public domain is published separately through the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
+
+### Publishing a domain
+
+No domain is configured in this repository yet. To publish one, add a site block to the existing Caddy configuration that reverse-proxies it to `127.0.0.1:8080`, then set `VPANFI_FRONTEND_ORIGIN` in `/opt/vpanfi/.env` to that origin and redeploy.
+
+## Security
+
+- `.env` is never committed; `.env.example` documents every variable.
+- The API refuses to start in production with the placeholder JWT secret, a secret shorter than 32 characters, or debug mode enabled.
+- Refresh tokens live in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to the auth path; access tokens stay in memory only.
+- CORS accepts only the configured origins, and both nginx and the API send CSP and the usual hardening headers.
+- The Remnawave adapter is isolated in `backend/app/integrations/remnawave/` and is never reached without real credentials.
 
 ## Status
 
-Active development. The UI currently uses demonstration data until the backend and Remnawave credentials are connected.
+Active development. The UI runs on demonstration data until the backend persistence and Remnawave credentials are connected.
