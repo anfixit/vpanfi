@@ -1,3 +1,4 @@
+import { api } from "../api/client";
 import { navigate, routes } from "../app/navigation";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
@@ -66,13 +67,19 @@ export function LandingPage({
               >
                 Получить 7 дней бесплатно
               </button>
-              <button
-                className="button button-secondary button-large"
-                type="button"
-                onClick={() => navigate(routes.dashboard)}
-              >
-                Посмотреть кабинет
-              </button>
+              {api.isDemoMode ? (
+                <button
+                  className="button button-secondary button-large"
+                  type="button"
+                  onClick={() => navigate(routes.dashboard)}
+                >
+                  Посмотреть кабинет
+                </button>
+              ) : (
+                <a className="button button-secondary button-large" href="#how">
+                  Как это работает
+                </a>
+              )}
             </div>
             <ul className="trust-row" aria-label="Преимущества">
               {advantages.map((advantage) => (

@@ -1,0 +1,81 @@
+name: Clean up smoke accounts
+
+# Removes the throwaway accounts created by production smoke tests.
+# The pattern is hardcoded in the script, so real customers are out of
+# reach of this workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vpanfi-production
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Trust the production host key
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST_FINGERPRINT: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -T 15 -p "$DEPLOY_PORT" "$DEPLOY_HOST" \
+            > "$RUNNER_TEMP/host_keys" 2>/dev/null
+
+          expected="${DEPLOY_HOST_FINGERPRINT#SHA256:}"
+          matched=""
+
+          while IFS= read -r host_key; do
+            [ -n "$host_key" ] || continue
+            printf '%s\n' "$host_key" > "$RUNNER_TEMP/candidate_key"
+            actual="$(ssh-keygen -lf "$RUNNER_TEMP/candidate_key" | awk '{print $2}')"
+            if [ "${actual#SHA256:}" = "$expected" ]; then
+              matched="$host_key"
+            fi
+          done < "$RUNNER_TEMP/host_keys"
+
+          if [ -z "$matched" ]; then
+            echo "::error::DEPLOY_HOST_FINGERPRINT matches none of the host keys offered by the server."
+            exit 1
+          fi
+
+          printf '%s\n' "$matched" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Remove smoke accounts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'bash -s' < scripts/cleanup-smoke-accounts.sh
+
+      - name: Remove the deployment key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
