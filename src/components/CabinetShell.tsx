@@ -86,6 +86,7 @@ export function CabinetShell({
             <button
               className="profile-chip"
               type="button"
+              aria-label={`Профиль: ${displayName}`}
               onClick={() => navigate(routes.profile)}
             >
               <Mascot variant="greeting" className="profile-mascot" decorative />

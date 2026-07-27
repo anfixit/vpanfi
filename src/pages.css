@@ -695,3 +695,16 @@
   .admin-table-row .button { width: 100%; }
   .danger-zone { align-items: stretch; flex-direction: column; }
 }
+
+@media (max-width: 600px) {
+  .admin-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .admin-header > div {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+}
