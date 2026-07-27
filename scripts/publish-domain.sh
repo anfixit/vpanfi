@@ -142,8 +142,11 @@ for attempt in $(seq 1 30); do
 done
 
 echo "https://${DOMAIN}/healthz -> HTTP ${code}"
-curl -sS -o /dev/null -w 'https://%{host}/api/healthz -> HTTP %{http_code}\n' \
-  --max-time 15 "https://${DOMAIN}/api/healthz" || true
+api_code="$(
+  curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+    "https://${DOMAIN}/api/healthz" 2>/dev/null || echo 000
+)"
+echo "https://${DOMAIN}/api/healthz -> HTTP ${api_code}"
 
 echo
 echo "--- Neighbouring services ---"
