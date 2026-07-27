@@ -603,11 +603,10 @@
   cursor: pointer;
 }
 
-.admin-actions > button > span {
-  display: grid;
+.admin-actions > button > .icon {
   width: 40px;
   height: 40px;
-  place-items: center;
+  padding: 9px;
   border-radius: 12px;
   color: var(--primary-strong);
   background: var(--primary-soft);

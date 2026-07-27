@@ -1,16 +1,25 @@
+import { Icon } from "./Icon";
+
 export type Theme = "light" | "dark";
 
-export function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+export function ThemeToggle({
+  theme,
+  onToggle,
+}: {
+  theme: Theme;
+  onToggle: () => void;
+}) {
   return (
     <button
       className="theme-toggle"
       type="button"
       onClick={onToggle}
+      aria-pressed={theme === "dark"}
       aria-label={theme === "light" ? "Включить тёмную тему" : "Включить светлую тему"}
     >
-      <span aria-hidden="true">☀</span>
+      <Icon name="sun" />
       <span className={`theme-toggle-knob ${theme === "dark" ? "is-dark" : ""}`} />
-      <span aria-hidden="true">☾</span>
+      <Icon name="moon" />
     </button>
   );
 }

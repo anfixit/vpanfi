@@ -22,6 +22,7 @@
   --brown: #8b4a26;
   --orange: #e9a549;
   --danger: #be6d5f;
+  --focus-ring: rgba(76, 78, 170, 0.55);
   --shadow: 0 16px 50px rgba(76, 60, 45, 0.09);
   --shadow-soft: 0 8px 24px rgba(76, 60, 45, 0.07);
   --radius-xl: 32px;
@@ -49,6 +50,7 @@
   --brown: #d79464;
   --orange: #f0b563;
   --danger: #db8a7c;
+  --focus-ring: rgba(190, 192, 255, 0.7);
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
   --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
@@ -90,8 +92,12 @@ button {
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgba(115, 117, 207, 0.35);
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -169,38 +175,6 @@ h3,
   border-radius: 50%;
   background: #b66b34;
   box-shadow: inset 0 -5px 0 rgba(92, 51, 28, 0.16);
-}
-
-.brand-face {
-  z-index: 2;
-  display: grid;
-  width: 29px;
-  height: 26px;
-  place-items: center;
-  border-radius: 48% 48% 52% 52%;
-  color: #382b22;
-  background: #f4c68c;
-  font-family: system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.brand-ear {
-  position: absolute;
-  top: 11px;
-  width: 12px;
-  height: 15px;
-  border: 3px solid #382b22;
-  border-radius: 50%;
-  background: #e5aa6d;
-}
-
-.brand-ear-left {
-  left: -7px;
-}
-
-.brand-ear-right {
-  right: -7px;
 }
 
 .desktop-nav {
@@ -372,28 +346,19 @@ h3,
   margin-top: 25px;
 }
 
-.trust-row > span {
-  display: inline-flex;
-  min-height: 37px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .icon {
-  display: inline-grid;
+  display: block;
   width: 22px;
   height: 22px;
-  place-items: center;
-  border-radius: 7px;
-  color: var(--primary-strong);
-  background: var(--primary-soft);
+  flex: none;
+}
+
+.icon-flip {
+  transform: scaleX(-1);
+}
+
+.icon-rotated {
+  transform: rotate(180deg);
 }
 
 .hero-art {
@@ -437,50 +402,13 @@ h3,
   height: 50px;
 }
 
-.hero-art img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
-  animation: float 5s ease-in-out infinite;
-}
-
-.hero-orbit {
-  position: absolute;
+.hero-art .mascot {
+  position: relative;
   z-index: 2;
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-  border: 1px solid rgba(115, 117, 207, 0.2);
-  border-radius: 50%;
-  color: var(--primary);
-  background: rgba(255, 255, 255, 0.65);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(10px);
-  font-size: 27px;
 }
 
-.hero-orbit-one {
-  top: 70px;
-  left: 72px;
-}
-
-.hero-orbit-two {
-  top: 120px;
-  right: 42px;
-}
-
-.hero-orbit-three {
-  right: 105px;
-  bottom: 44px;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(-0.5deg); }
-  50% { transform: translateY(-10px) rotate(0.7deg); }
+.hero-art .mascot img {
+  object-position: center bottom;
 }
 
 .product-grid {
@@ -1082,12 +1010,10 @@ h3,
   text-align: left;
 }
 
-.cabinet-sidebar nav button span {
-  display: grid;
-  width: 26px;
-  place-items: center;
+.cabinet-sidebar nav button > .icon {
+  width: 24px;
+  height: 24px;
   color: var(--primary-strong);
-  font-size: 20px;
 }
 
 .cabinet-sidebar nav button.is-active,
@@ -1107,20 +1033,6 @@ h3,
   text-align: center;
 }
 
-.sidebar-monkey {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 11px;
-  place-items: center;
-  border: 4px solid #3a2b22;
-  border-radius: 50%;
-  color: #3a2b22;
-  background: #f0be82;
-  box-shadow: 0 0 0 11px #ad6533;
-  font-size: 17px;
-  font-weight: 900;
-}
 
 .sidebar-mascot strong {
   margin-top: 9px;
@@ -1184,10 +1096,6 @@ h3,
   gap: 8px;
   padding: 0 14px;
   font-weight: 800;
-}
-
-.profile-chip span {
-  font-size: 21px;
 }
 
 .cabinet-grid {
@@ -1358,18 +1266,6 @@ h3,
   box-shadow: var(--shadow-soft);
   cursor: pointer;
   text-align: left;
-}
-
-.quick-actions button > span {
-  display: grid;
-  width: 43px;
-  height: 43px;
-  flex: 0 0 auto;
-  place-items: center;
-  border-radius: 13px;
-  color: var(--primary-strong);
-  background: var(--primary-soft);
-  font-size: 21px;
 }
 
 .quick-actions strong {
@@ -1634,8 +1530,6 @@ h3,
   }
 
   .cabinet-sidebar .brand > span:last-child,
-  .cabinet-sidebar nav button:not(.is-active) > :not(span),
-  .cabinet-sidebar nav button.is-active > :not(span),
   .sidebar-mascot strong,
   .sidebar-mascot p,
   .back-to-site {
@@ -1648,8 +1542,9 @@ h3,
     padding: 0;
   }
 
-  .cabinet-sidebar nav button span {
-    font-size: 22px;
+  .cabinet-sidebar nav button > .icon {
+    width: 22px;
+    height: 22px;
   }
 
   .sidebar-mascot {
@@ -1657,12 +1552,6 @@ h3,
     padding: 14px 8px;
   }
 
-  .sidebar-monkey {
-    width: 42px;
-    height: 42px;
-    box-shadow: 0 0 0 7px #ad6533;
-    font-size: 12px;
-  }
 
   .cabinet-content-grid {
     grid-template-columns: 1fr;
@@ -1827,8 +1716,9 @@ h3,
     min-height: 48px;
   }
 
-  .cabinet-sidebar nav button span {
-    font-size: 19px;
+  .cabinet-sidebar nav button > .icon {
+    width: 20px;
+    height: 20px;
   }
 
   .cabinet-main {
@@ -1914,7 +1804,380 @@ h3,
     min-height: 43px;
   }
 
-  .cabinet-sidebar nav button span {
-    font-size: 16px;
+  .cabinet-sidebar nav button > .icon {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* --- Иконки внутри контейнеров, которые раньше держали эмодзи --- */
+
+.hero-art {
+  display: grid;
+  place-items: center;
+  padding: 30px;
+}
+
+.cabinet-sidebar nav button > .icon,
+.cabinet-mobile-nav button > .icon {
+  color: var(--primary-strong);
+}
+
+.quick-actions button > .icon,
+.admin-actions > button > .icon {
+  width: 43px;
+  height: 43px;
+  padding: 10px;
+  border-radius: 13px;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+
+.admin-actions > button > .icon {
+  width: 40px;
+  height: 40px;
+  padding: 9px;
+  border-radius: 12px;
+}
+
+.cabinet-card-icon,
+.platform-icon,
+.device-platform-icon,
+.support-channel-icon,
+.leaf-mark {
+  display: grid;
+  place-items: center;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+
+.cabinet-card-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+}
+
+.support-channel-icon {
+  color: #fff;
+  background: var(--primary);
+}
+
+.leaf-mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 12px;
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.platform-selector button > .icon,
+.support-button > .icon,
+.add-device > .icon,
+.eyebrow > .icon,
+.alternative-apps > .icon,
+.faq-question > .icon {
+  color: var(--primary-strong);
+}
+
+.eyebrow > .icon {
+  color: var(--green);
+}
+
+.trust-row,
+.tariff-features {
+  list-style: none;
+  padding: 0;
+}
+
+.trust-row > li {
+  display: inline-flex;
+  min-height: 37px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.trust-row > li > .icon,
+.tariff-features > li > .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--green);
+}
+
+.tariff-features > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-chip > .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.support-channel strong > .icon {
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  vertical-align: -3px;
+  display: inline-block;
+}
+
+/* --- Демо-режим и честные объяснения --- */
+
+.demo-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  border-radius: 999px;
+  color: var(--brown);
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.demo-notice-region {
+  position: fixed;
+  z-index: 60;
+  right: 16px;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.demo-notice {
+  display: flex;
+  max-width: 520px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+.demo-notice p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.demo-notice-icon {
+  margin-top: 2px;
+  color: var(--primary-strong);
+}
+
+.demo-notice button {
+  min-height: 32px;
+  flex: none;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* --- Состояния данных --- */
+
+.resource-empty {
+  color: var(--muted);
+}
+
+.resource-empty strong {
+  color: var(--text);
+}
+
+.connection-success,
+.payment-result {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--green-soft);
+}
+
+.payment-result {
+  flex-direction: column;
+  text-align: center;
+}
+
+.payment-result h2 {
+  margin: 6px 0 0;
+}
+
+.payment-demo-note {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.status-pill.is-warning {
+  color: var(--brown);
+  background: color-mix(in srgb, var(--orange) 20%, transparent);
+}
+
+.subscription-card.is-expired .days-left {
+  font-size: clamp(20px, 2.4vw, 28px);
+}
+
+/* --- Частые вопросы --- */
+
+.support-faq {
+  display: grid;
+  gap: 8px;
+}
+
+.faq-row {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  cursor: pointer;
+  text-align: left;
+}
+
+.faq-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.faq-answer {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* --- Очень узкие экраны --- */
+
+@media (max-width: 360px) {
+  .shell {
+    padding-inline: 14px;
+  }
+
+  .cabinet-main {
+    padding-inline: 14px;
+  }
+
+  .cabinet-card,
+  .panel {
+    padding: 18px 15px;
+  }
+
+  .cabinet-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cabinet-top-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .profile-chip {
+    padding: 0 10px;
+  }
+
+  .button,
+  .button-large {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero-actions,
+  .support-actions {
+    display: grid;
+  }
+
+  .demo-notice {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Навигация кабинета: одна панель на всех размерах --- */
+
+.cabinet-mobile-nav {
+  display: none;
+}
+
+.cabinet-sidebar nav button .nav-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .cabinet-sidebar nav button .nav-label {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .cabinet-sidebar nav {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .cabinet-sidebar nav button {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 54px;
+    padding: 6px 2px;
+  }
+
+  .cabinet-sidebar nav button .nav-label {
+    display: block;
+    max-width: 100%;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+}
+
+@media (max-width: 360px) {
+  .cabinet-sidebar nav button .nav-label {
+    display: none;
+  }
+
+  .cabinet-sidebar nav button {
+    min-height: 46px;
   }
 }

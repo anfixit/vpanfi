@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "./Icon";
 
 export function CabinetCard({
   title,
@@ -7,14 +8,16 @@ export function CabinetCard({
   className = "",
 }: {
   title: string;
-  icon: string;
+  icon: IconName;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <article className={`cabinet-card ${className}`.trim()}>
       <header>
-        <span aria-hidden="true">{icon}</span>
+        <span className="cabinet-card-icon">
+          <Icon name={icon} />
+        </span>
         <h3>{title}</h3>
       </header>
       {children}
