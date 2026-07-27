@@ -9,12 +9,17 @@ set -Eeuo pipefail
 
 API_CONTAINER=vpanfi-api
 
+OUTPUT="$(mktemp)"
+trap 'rm -f "$OUTPUT"' EXIT
+
 if ! docker inspect "$API_CONTAINER" >/dev/null 2>&1; then
   echo "ERROR: $API_CONTAINER is not running" >&2
   exit 1
 fi
 
-docker exec "$API_CONTAINER" python - <<'PY'
+# -i is required: without it docker gives the interpreter no stdin, the
+# script below is never executed and the check passes silently.
+docker exec -i "$API_CONTAINER" python - <<'PY' | tee "$OUTPUT"
 import asyncio
 
 import httpx
@@ -86,3 +91,10 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
+
+# A silent run means the interpreter never received the script, which is
+# exactly the failure this check exists to catch.
+if [ ! -s "$OUTPUT" ]; then
+  echo "ERROR: the check produced no output, so nothing was verified" >&2
+  exit 1
+fi
