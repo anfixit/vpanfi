@@ -167,7 +167,7 @@ async def link_subscription(
         return await service.link(user, request.subscription_link)
     except SubscriptionLinkInvalidError as error:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "code": "invalid_subscription_link",
                 "message": (
