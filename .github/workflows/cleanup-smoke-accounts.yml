@@ -74,7 +74,12 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            'bash -s' < scripts/cleanup-smoke-accounts.sh
+            'bash -s' < scripts/cleanup-smoke-accounts.sh | tee "$RUNNER_TEMP/cleanup.log"
+
+          if ! grep -q CLEANUP-COMPLETE "$RUNNER_TEMP/cleanup.log"; then
+            echo "::error::The cleanup script stopped before finishing."
+            exit 1
+          fi
 
       - name: Remove the deployment key
         if: always()

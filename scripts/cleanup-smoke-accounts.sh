@@ -16,8 +16,11 @@ if ! docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
 fi
 
 run_sql() {
-  docker exec -i "$DB_CONTAINER" \
-    psql -U "$DB_USER" -d "$DB_NAME" -qtAX -c "$1"
+  # No -i here, and stdin is closed: this script is itself piped into
+  # bash, and an interactive docker exec would swallow the rest of it,
+  # ending the run silently before anything is deleted.
+  docker exec "$DB_CONTAINER" \
+    psql -U "$DB_USER" -d "$DB_NAME" -qtAX -c "$1" < /dev/null
 }
 
 before="$(
@@ -27,6 +30,7 @@ echo "smoke accounts found: ${before}"
 
 if [ "$before" = "0" ]; then
   echo "nothing to clean up"
+  echo "CLEANUP-COMPLETE"
   exit 0
 fi
 
@@ -47,3 +51,7 @@ if [ "$after" != "0" ]; then
   echo "ERROR: some smoke accounts survived" >&2
   exit 1
 fi
+
+# Финальный маркер: без него workflow считает запуск оборвавшимся,
+# а не успешным.
+echo "CLEANUP-COMPLETE"
