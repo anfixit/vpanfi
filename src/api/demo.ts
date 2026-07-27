@@ -4,6 +4,7 @@ import type {
   DashboardPayload,
   Device,
   Payment,
+  SubscriptionLink,
 } from "./contracts";
 
 export const demoCountries: Country[] = [
@@ -168,3 +169,24 @@ export const demoDashboard: DashboardPayload = {
     passwordEnabled: true,
   },
 };
+
+/*
+ * Демо-режим держит состояние привязки в памяти, чтобы оба экрана —
+ * и «подписка не привязана», и привязанная — можно было посмотреть
+ * по-настоящему, а не только на скриншоте.
+ */
+let demoLinked = true;
+
+export function readDemoSubscriptionLink(): SubscriptionLink {
+  return demoLinked
+    ? {
+        linked: true,
+        panelUsername: "anfisa-demo",
+        subscription: demoDashboard.subscription,
+      }
+    : { linked: false, panelUsername: null, subscription: null };
+}
+
+export function setDemoSubscriptionLinked(linked: boolean): void {
+  demoLinked = linked;
+}

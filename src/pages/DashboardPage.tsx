@@ -6,6 +6,7 @@ import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ErrorState, LoadingState } from "../components/ResourceState";
+import { SubscriptionLinkForm } from "../components/SubscriptionLinkForm";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { formatRubles } from "../utils/format";
 
@@ -55,9 +56,27 @@ function describeSubscription(subscription: Subscription): SubscriptionView {
 
 export function DashboardPage() {
   const dashboard = useAsyncResource(api.getDashboard);
+  const subscriptionLink = useAsyncResource(api.getSubscription);
   const { explain } = useDemoNotice();
 
-  if (dashboard.loading && !dashboard.data) return <LoadingState />;
+  const reloadEverything = () => {
+    subscriptionLink.reload();
+    dashboard.reload();
+  };
+
+  if (
+    (dashboard.loading && !dashboard.data) ||
+    (subscriptionLink.loading && !subscriptionLink.data)
+  ) {
+    return <LoadingState />;
+  }
+
+  // Подписка живёт в панели, поэтому пока аккаунт с ней не связан,
+  // показывать сроки и устройства попросту нечего.
+  if (subscriptionLink.data?.linked === false) {
+    return <SubscriptionLinkForm onLinked={reloadEverything} />;
+  }
+
   if (dashboard.error || !dashboard.data) {
     return (
       <ErrorState

@@ -86,3 +86,13 @@ export type ApiErrorPayload = {
   message: string;
   code?: string;
 };
+
+export type SubscriptionLink = {
+  linked: boolean;
+  panelUsername: string | null;
+  subscription: Subscription | null;
+};
+
+export type SubscriptionLinkPayload = {
+  subscriptionLink: string;
+};

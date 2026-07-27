@@ -18,8 +18,20 @@ function ConnectionStatus({ connected }: { connected: boolean }) {
 
 export function ProfilePage() {
   const dashboard = useAsyncResource(api.getDashboard);
+  const subscriptionLink = useAsyncResource(api.getSubscription);
   const { explain } = useDemoNotice();
   const { logout } = useAuth();
+
+  const unlinkSubscription = async () => {
+    const confirmed = window.confirm(
+      "Отвязать подписку от этого аккаунта? Сама подписка сохранится, " +
+        "её можно будет привязать снова по той же ссылке.",
+    );
+    if (!confirmed) return;
+
+    await api.unlinkSubscription();
+    subscriptionLink.reload();
+  };
 
   if (dashboard.loading && !dashboard.data) {
     return <LoadingState label="Анфиса открывает профиль…" />;
@@ -158,6 +170,33 @@ export function ProfilePage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="cabinet-card linked-subscription">
+        <div>
+          <h3>Подписка</h3>
+          {subscriptionLink.data?.linked ? (
+            <p className="muted">
+              Привязана к аккаунту панели{" "}
+              <strong>{subscriptionLink.data.panelUsername ?? "без имени"}</strong>.
+              Срок и устройства всегда берутся из панели.
+            </p>
+          ) : (
+            <p className="muted">
+              Подписка пока не привязана. Добавьте её на главной странице
+              кабинета.
+            </p>
+          )}
+        </div>
+        {subscriptionLink.data?.linked && (
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={unlinkSubscription}
+          >
+            Отвязать
+          </button>
+        )}
       </section>
 
       <section className="cabinet-card danger-zone">

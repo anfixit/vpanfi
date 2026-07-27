@@ -7,12 +7,15 @@ import type {
   LoginPayload,
   Payment,
   RegisterPayload,
+  SubscriptionLink,
 } from "./contracts";
 import {
   demoClients,
   demoDashboard,
   demoDevices,
   demoPayments,
+  readDemoSubscriptionLink,
+  setDemoSubscriptionLinked,
 } from "./demo";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
@@ -146,5 +149,29 @@ export const api = {
   async getConnectionClients(): Promise<ConnectionClient[]> {
     if (DEMO_MODE) return demoDelay(demoClients);
     return request<ConnectionClient[]>("/v1/cabinet/connection-clients");
+  },
+
+  async getSubscription(): Promise<SubscriptionLink> {
+    if (DEMO_MODE) return demoDelay(readDemoSubscriptionLink());
+    return request<SubscriptionLink>("/v1/cabinet/subscription");
+  },
+
+  async linkSubscription(subscriptionLink: string): Promise<SubscriptionLink> {
+    if (DEMO_MODE) {
+      setDemoSubscriptionLinked(true);
+      return demoDelay(readDemoSubscriptionLink());
+    }
+    return request<SubscriptionLink>("/v1/cabinet/subscription/link", {
+      method: "POST",
+      body: JSON.stringify({ subscriptionLink }),
+    });
+  },
+
+  async unlinkSubscription(): Promise<void> {
+    if (DEMO_MODE) {
+      setDemoSubscriptionLinked(false);
+      return demoDelay(undefined);
+    }
+    await request<void>("/v1/cabinet/subscription/link", { method: "DELETE" });
   },
 };
