@@ -26,8 +26,27 @@ The brand mascot is Анфиса, a friendly monkey travelling through the inter
 - React 19
 - TypeScript
 - Vite
+- FastAPI
+- PostgreSQL
+- Redis
 - native CSS design system
-- Docker and Nginx
+- Docker, Compose and Nginx
+
+## Production deployment
+
+Production is deployed automatically after a successful CI run on `main`.
+
+The workflow connects to the server with the dedicated `deploy` account, synchronizes `/opt/vpanfi` with the current `main` branch, validates the Compose configuration, builds fresh images, starts the stack and verifies the local health endpoint. The deploy script preserves the production `.env` file and rolls back to the previous Git commit if startup or health checks fail.
+
+Required GitHub Actions secrets:
+
+- `DEPLOY_HOST`
+- `DEPLOY_PORT`
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+- `DEPLOY_HOST_FINGERPRINT`
+
+The web service binds only to `127.0.0.1:8080`; the public domain is published separately through the server reverse proxy.
 
 ## Status
 
