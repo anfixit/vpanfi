@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from uuid import UUID
+
 import httpx
 import pytest
 import respx
@@ -8,10 +11,13 @@ from app.integrations.remnawave.client import (
     RemnawaveNotConfiguredError,
     RemnawaveUnavailableError,
     RemnawaveUserNotFoundError,
+    extract_short_uuid,
 )
 
 PANEL_URL = "https://panel.example.test"
 USERS_URL = f"{PANEL_URL}/api/users"
+USER_UUID = UUID("9f1d6d4e-1111-2222-3333-444455556666")
+SHORT_UUID = "abcd1234efgh"
 
 
 def _settings() -> Settings:
@@ -22,65 +28,168 @@ def _settings() -> Settings:
     )
 
 
+def _gateway() -> RemnawaveGateway:
+    return RemnawaveGateway(_settings())
+
+
 def test_gateway_requires_credentials() -> None:
     with pytest.raises(RemnawaveNotConfiguredError):
         RemnawaveGateway(Settings(_env_file=None))
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (f"https://panel.example/sub/{SHORT_UUID}", SHORT_UUID),
+        (f"https://panel.example/sub/{SHORT_UUID}/", SHORT_UUID),
+        (f"https://panel.example/sub/{SHORT_UUID}?format=v2ray", SHORT_UUID),
+        (f"  {SHORT_UUID}  ", SHORT_UUID),
+        ("", None),
+        ("https://panel.example/sub/", None),
+        ("short", None),
+        ("https://panel.example/sub/has spaces here", None),
+    ],
+)
+def test_extract_short_uuid(value: str, expected: str | None) -> None:
+    assert extract_short_uuid(value) == expected
+
+
 @respx.mock
-async def test_list_users_unwraps_panel_envelope() -> None:
-    respx.get(USERS_URL).mock(
+async def test_lookup_by_short_uuid_unwraps_the_envelope() -> None:
+    respx.get(f"{USERS_URL}/by-short-uuid/{SHORT_UUID}").mock(
         return_value=httpx.Response(
             200,
-            json={"response": {"users": [{"username": "anfisa"}]}},
+            json={"response": {"uuid": str(USER_UUID), "username": "anfisa"}},
         )
     )
 
-    async with RemnawaveGateway(_settings()) as gateway:
-        users = await gateway.list_users()
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_short_uuid(SHORT_UUID)
 
-    assert users == [{"username": "anfisa"}]
+    assert user["uuid"] == str(USER_UUID)
 
 
 @respx.mock
-async def test_find_user_ignores_case() -> None:
-    respx.get(USERS_URL).mock(
+async def test_unknown_subscription_raises_lookup_error() -> None:
+    respx.get(f"{USERS_URL}/by-short-uuid/{SHORT_UUID}").mock(
+        return_value=httpx.Response(404)
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(RemnawaveUserNotFoundError):
+            await gateway.get_user_by_short_uuid(SHORT_UUID)
+
+
+@respx.mock
+async def test_lookup_by_telegram_id_takes_the_first_match() -> None:
+    respx.get(f"{USERS_URL}/by-telegram-id/42").mock(
         return_value=httpx.Response(
             200,
-            json={"response": [{"username": "Anfisa"}]},
+            json={"response": [{"uuid": str(USER_UUID)}, {"uuid": "other"}]},
         )
     )
 
-    async with RemnawaveGateway(_settings()) as gateway:
-        user = await gateway.find_user_by_username("ANFISA")
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_telegram_id(42)
 
-    assert user["username"] == "Anfisa"
+    assert user["uuid"] == str(USER_UUID)
 
 
 @respx.mock
-async def test_missing_user_raises_lookup_error() -> None:
-    respx.get(USERS_URL).mock(
+async def test_lookup_by_telegram_id_without_matches() -> None:
+    respx.get(f"{USERS_URL}/by-telegram-id/42").mock(
         return_value=httpx.Response(200, json={"response": []})
     )
 
-    async with RemnawaveGateway(_settings()) as gateway:
+    async with _gateway() as gateway:
         with pytest.raises(RemnawaveUserNotFoundError):
-            await gateway.find_user_by_username("anfisa")
+            await gateway.get_user_by_telegram_id(42)
+
+
+@respx.mock
+async def test_create_user_sends_the_panel_payload() -> None:
+    route = respx.post(USERS_URL).mock(
+        return_value=httpx.Response(
+            201, json={"response": {"uuid": str(USER_UUID)}}
+        )
+    )
+
+    async with _gateway() as gateway:
+        await gateway.create_user(
+            username="anfisa",
+            expire_at=datetime(2027, 1, 1, tzinfo=UTC),
+            telegram_id=42,
+        )
+
+    body = route.calls.last.request.content.decode()
+    assert '"username":"anfisa"' in body
+    assert '"telegramId":42' in body
+    assert '"status":"ACTIVE"' in body
+
+
+@respx.mock
+async def test_set_expiry_patches_the_user() -> None:
+    route = respx.patch(USERS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"response": {"uuid": str(USER_UUID)}}
+        )
+    )
+
+    async with _gateway() as gateway:
+        await gateway.set_expiry(USER_UUID, datetime(2027, 6, 1, tzinfo=UTC))
+
+    body = route.calls.last.request.content.decode()
+    assert str(USER_UUID) in body
+    assert "2027-06-01" in body
+
+
+@respx.mock
+async def test_list_devices_accepts_both_payload_shapes() -> None:
+    url = f"{PANEL_URL}/api/hwid/devices/{USER_UUID}"
+    respx.get(url).mock(
+        return_value=httpx.Response(
+            200,
+            json={"response": {"devices": [{"hwid": "device-1"}]}},
+        )
+    )
+
+    async with _gateway() as gateway:
+        devices = await gateway.list_devices(USER_UUID)
+
+    assert devices == [{"hwid": "device-1"}]
+
+
+@respx.mock
+async def test_delete_device_posts_the_pair() -> None:
+    route = respx.post(f"{PANEL_URL}/api/hwid/devices/delete").mock(
+        return_value=httpx.Response(200, json={"response": {}})
+    )
+
+    async with _gateway() as gateway:
+        await gateway.delete_device(USER_UUID, "device-1")
+
+    body = route.calls.last.request.content.decode()
+    assert '"hwid":"device-1"' in body
+    assert str(USER_UUID) in body
 
 
 @respx.mock
 async def test_panel_error_becomes_domain_error() -> None:
-    respx.get(USERS_URL).mock(return_value=httpx.Response(500))
+    respx.get(f"{USERS_URL}/{USER_UUID}").mock(
+        return_value=httpx.Response(500)
+    )
 
-    async with RemnawaveGateway(_settings()) as gateway:
+    async with _gateway() as gateway:
         with pytest.raises(RemnawaveUnavailableError):
-            await gateway.list_users()
+            await gateway.get_user_by_uuid(USER_UUID)
 
 
 @respx.mock
 async def test_unreachable_panel_becomes_domain_error() -> None:
-    respx.get(USERS_URL).mock(side_effect=httpx.ConnectError("down"))
+    respx.get(f"{USERS_URL}/{USER_UUID}").mock(
+        side_effect=httpx.ConnectError("down")
+    )
 
-    async with RemnawaveGateway(_settings()) as gateway:
+    async with _gateway() as gateway:
         with pytest.raises(RemnawaveUnavailableError):
-            await gateway.list_users()
+            await gateway.get_user_by_uuid(USER_UUID)
