@@ -51,7 +51,7 @@ export function App() {
   const { theme, toggleTheme } = useTheme();
   const [authOpen, setAuthOpen] = useState(false);
 
-  const finishDemoAuth = () => {
+  const handleAuthenticated = () => {
     setAuthOpen(false);
     navigate(routes.dashboard);
   };
@@ -71,7 +71,9 @@ export function App() {
   return (
     <div className="app">
       {page}
-      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onContinue={finishDemoAuth} />}
+      {authOpen && (
+        <AuthModal onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
+      )}
     </div>
   );
 }
