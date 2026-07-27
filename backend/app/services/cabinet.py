@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 
+from app.models.user import IdentityProvider, User
 from app.schemas.cabinet import (
     ConnectionClientResponse,
     CountryResponse,
@@ -165,3 +166,16 @@ class CabinetService:
                 install_url="https://apps.apple.com/",
             ),
         ]
+
+    def build_profile(self, user: User) -> UserProfileResponse:
+        """Профиль из локальной записи, а не из демонстрационных данных."""
+        providers = {identity.provider for identity in user.identities}
+        return UserProfileResponse(
+            id=user.id,
+            display_name=user.display_name,
+            email=user.email,
+            telegram_linked=IdentityProvider.TELEGRAM in providers,
+            yandex_linked=IdentityProvider.YANDEX in providers,
+            vk_linked=IdentityProvider.VK in providers,
+            password_enabled=user.password_digest is not None,
+        )

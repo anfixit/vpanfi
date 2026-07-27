@@ -5,12 +5,17 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from app.schemas.cabinet import SubscriptionResponse, SubscriptionStatus
+from app.schemas.cabinet import (
+    DeviceResponse,
+    SubscriptionResponse,
+    SubscriptionStatus,
+)
 
 __all__ = [
     "PanelUser",
     "UnreadablePanelUserError",
     "read_panel_user",
+    "to_device",
     "to_subscription",
 ]
 
@@ -154,3 +159,38 @@ def _read_int(value: Any) -> int:
 def _optional_str(value: Any) -> str | None:
     text = str(value).strip() if value is not None else ""
     return text or None
+
+
+def to_device(
+    payload: Mapping[str, Any],
+    *,
+    current_hwid: str | None = None,
+) -> DeviceResponse:
+    """Собрать карточку устройства из HWID-записи панели."""
+    hwid = str(payload.get("hwid") or "")
+    model = _optional_str(payload.get("deviceModel"))
+    platform = _optional_str(payload.get("platform")) or "Устройство"
+    version = _optional_str(payload.get("osVersion"))
+
+    return DeviceResponse(
+        id=hwid or "unknown",
+        name=model or platform,
+        platform=f"{platform} {version}".strip() if version else platform,
+        last_seen_at=_read_moment(payload.get("updatedAt")),
+        created_at=(
+            _read_moment(payload.get("createdAt")) or datetime.now(UTC)
+        ),
+        current=bool(current_hwid) and hwid == current_hwid,
+    )
+
+
+def _read_moment(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment

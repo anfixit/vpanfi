@@ -12,10 +12,11 @@ from app.integrations.remnawave.client import (
     extract_short_uuid,
 )
 from app.models.user import User
-from app.schemas.cabinet import SubscriptionLinkResponse
+from app.schemas.cabinet import DeviceResponse, SubscriptionLinkResponse
 from app.services.panel import (
     UnreadablePanelUserError,
     read_panel_user,
+    to_device,
     to_subscription,
 )
 
@@ -130,6 +131,47 @@ class SubscriptionService:
                 devices = []
 
         return self._describe_payload(payload, devices_used=len(devices))
+
+    async def list_devices(self, user: User) -> list[DeviceResponse]:
+        """Устройства пользователя из панели.
+
+        Пока подписка не привязана, показывать нечего — это не ошибка,
+        а пустой список.
+        """
+        if user.remnawave_user_uuid is None:
+            return []
+
+        async with self._gateway() as gateway:
+            try:
+                devices = await gateway.list_devices(
+                    user.remnawave_user_uuid
+                )
+            except RemnawaveUserNotFoundError:
+                return []
+            except RemnawaveUnavailableError as error:
+                raise PanelUnavailableError(str(error)) from error
+
+        return [to_device(device) for device in devices]
+
+    async def forget_device(self, user: User, device_id: str) -> None:
+        """Отвязать устройство в панели.
+
+        Raises:
+            SubscriptionNotFoundError: К аккаунту не привязана подписка.
+            PanelUnavailableError: Панель недоступна.
+        """
+        if user.remnawave_user_uuid is None:
+            raise SubscriptionNotFoundError("no linked subscription")
+
+        async with self._gateway() as gateway:
+            try:
+                await gateway.delete_device(
+                    user.remnawave_user_uuid, device_id
+                )
+            except RemnawaveUserNotFoundError as error:
+                raise SubscriptionNotFoundError(device_id) from error
+            except RemnawaveUnavailableError as error:
+                raise PanelUnavailableError(str(error)) from error
 
     async def unlink(self, user: User) -> None:
         """Отвязать подписку от аккаунта, ничего не трогая в панели."""

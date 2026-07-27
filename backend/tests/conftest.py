@@ -16,7 +16,7 @@ def build_user() -> User:
     """Пользователь в памяти: тестам кабинета база не нужна."""
     return User(
         id=TEST_USER_ID,
-        email="user@vpanfi.test",
+        email="anfisa@vpanfi.ru",
         display_name="Тестовая Анфиса",
         password_digest="unused",
         is_active=True,

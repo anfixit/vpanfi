@@ -59,9 +59,24 @@ def _panel_unavailable() -> HTTPException:
 async def get_dashboard(
     user: CurrentUser,
     service: CabinetServiceDep,
+    subscriptions: SubscriptionServiceDep,
 ) -> DashboardResponse:
-    _ = user
-    return await service.get_demo_dashboard()
+    try:
+        link = await subscriptions.describe(user)
+    except PanelUnavailableError:
+        # Панель не настроена — кабинет продолжает работать на
+        # демонстрационных данных, а не падает.
+        return await service.get_demo_dashboard()
+
+    if link.subscription is None:
+        return await service.get_demo_dashboard()
+
+    return DashboardResponse(
+        subscription=link.subscription,
+        countries=service.get_countries(),
+        recent_payments=service.get_demo_payments(),
+        profile=service.build_profile(user),
+    )
 
 
 @router.get(
@@ -73,9 +88,14 @@ async def get_dashboard(
 async def get_devices(
     user: CurrentUser,
     service: CabinetServiceDep,
+    subscriptions: SubscriptionServiceDep,
 ) -> list[DeviceResponse]:
-    _ = user
-    return service.get_demo_devices()
+    try:
+        if user.remnawave_user_uuid is None:
+            return service.get_demo_devices()
+        return await subscriptions.list_devices(user)
+    except PanelUnavailableError as error:
+        raise _panel_unavailable() from error
 
 
 @router.delete(
@@ -87,11 +107,26 @@ async def get_devices(
 async def unlink_device(
     device_id: str,
     user: CurrentUser,
-    service: CabinetServiceDep,
+    subscriptions: SubscriptionServiceDep,
 ) -> Response:
-    # The real implementation will validate ownership and call the
-    # Remnawave HWID endpoint. The route and its contract are ready now.
-    _ = (device_id, user, service)
+    if user.remnawave_user_uuid is None:
+        # Без привязанной подписки отвязывать нечего, и это не ошибка
+        # пользователя: экран устройств в этом случае просто пуст.
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    try:
+        await subscriptions.forget_device(user, device_id)
+    except SubscriptionNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "device_not_found",
+                "message": "Такое устройство не найдено",
+            },
+        ) from error
+    except PanelUnavailableError as error:
+        raise _panel_unavailable() from error
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

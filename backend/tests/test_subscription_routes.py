@@ -1,6 +1,7 @@
 """Ошибки привязки доходят до пользователя понятным кодом."""
 
 from collections.abc import Iterator
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -8,7 +9,12 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_subscription_service
 from app.models.user import User
-from app.schemas.cabinet import SubscriptionLinkResponse
+from app.schemas.cabinet import (
+    DeviceResponse,
+    SubscriptionLinkResponse,
+    SubscriptionResponse,
+    SubscriptionStatus,
+)
 from app.services.subscription import (
     PanelUnavailableError,
     SubscriptionAlreadyClaimedError,
@@ -135,3 +141,60 @@ def test_link_requires_a_token(anonymous_client: TestClient) -> None:
     )
 
     assert response.status_code == 401
+
+
+class LinkedSubscriptionService:
+    """Аккаунт с привязанной подпиской: данные приходят из панели."""
+
+    def __init__(self, subscription: SubscriptionResponse) -> None:
+        self._subscription = subscription
+
+    async def describe(self, user: User) -> SubscriptionLinkResponse:
+        return SubscriptionLinkResponse(
+            linked=True,
+            panel_username="anfisa",
+            subscription=self._subscription,
+        )
+
+    async def list_devices(self, user: User) -> list[DeviceResponse]:
+        return [
+            DeviceResponse(
+                id="hwid-1",
+                name="Galaxy S23",
+                platform="Android 14",
+                last_seen_at=None,
+                created_at=datetime.now(UTC),
+            )
+        ]
+
+
+def test_dashboard_shows_the_panel_subscription(
+    app: FastAPI,
+    client: TestClient,
+) -> None:
+    subscription = SubscriptionResponse(
+        status=SubscriptionStatus.ACTIVE,
+        plan_name="Подписка",
+        days_left=12,
+        expires_at=date.today() + timedelta(days=12),
+        traffic_label="50 ГБ",
+        devices_used=1,
+        devices_limit=5,
+        auto_renew_enabled=False,
+        balance_rub=0,
+    )
+    app.dependency_overrides[get_subscription_service] = (
+        lambda: LinkedSubscriptionService(subscription)
+    )
+
+    response = client.get("/api/v1/cabinet/dashboard")
+
+    assert response.status_code == 200
+    payload = response.json()
+    # Демонстрационные "6 месяцев" и "Без лимита" сюда попасть не должны.
+    assert payload["subscription"]["daysLeft"] == 12
+    assert payload["subscription"]["trafficLabel"] == "50 ГБ"
+    assert payload["subscription"]["devicesLimit"] == 5
+    assert payload["profile"]["email"] == "anfisa@vpanfi.ru"
+
+    app.dependency_overrides.pop(get_subscription_service, None)
