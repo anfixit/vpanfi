@@ -43,6 +43,36 @@ EOF
   chmod 600 .env
 }
 
+set_env_value() {
+  # Writes one variable into .env without ever echoing its value.
+  local key="$1"
+  local value="$2"
+
+  if [[ -z "$value" ]]; then
+    return
+  fi
+
+  if grep -q "^${key}=" .env; then
+    local escaped
+    escaped="$(printf '%s' "$value" | sed -e 's/[\\&|]/\\&/g')"
+    sed -i "s|^${key}=.*|${key}=${escaped}|" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+
+  log "Updated ${key} in .env"
+}
+
+apply_panel_credentials() {
+  # The panel URL and token arrive from repository secrets so they survive
+  # a rebuilt server and never live in Git. Empty values leave whatever is
+  # already in .env untouched, so a hand-edited file still works.
+  set_env_value VPANFI_REMNAWAVE_BASE_URL "${VPANFI_REMNAWAVE_BASE_URL:-}"
+  set_env_value VPANFI_REMNAWAVE_API_TOKEN "${VPANFI_REMNAWAVE_API_TOKEN:-}"
+  set_env_value VITE_DEMO_MODE "${VITE_DEMO_MODE:-}"
+  chmod 600 .env
+}
+
 attach_to_proxy_network() {
   # Compose recreates vpanfi-web on every release, which drops the extra
   # network that lets the server's Caddy reach it by name. Reattaching
@@ -127,6 +157,7 @@ git fetch --prune origin main
 git reset --hard origin/main
 
 ensure_environment
+apply_panel_credentials
 
 log "Validating Docker Compose configuration"
 docker compose config --quiet

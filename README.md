@@ -76,6 +76,17 @@ Required GitHub Actions secrets:
 - `DEPLOY_SSH_KEY`
 - `DEPLOY_HOST_FINGERPRINT` — from `ssh-keyscan -p PORT HOST | ssh-keygen -lf -`
 
+Optional secrets, applied to `/opt/vpanfi/.env` on every deploy. Leave them unset to keep whatever the server already has:
+
+- `VPANFI_REMNAWAVE_BASE_URL` — panel base URL, no trailing slash
+- `VPANFI_REMNAWAVE_API_TOKEN` — panel API token
+
+Optional repository **variable**:
+
+- `VITE_DEMO_MODE` — set to `false` once the panel is connected
+
+They travel inside the SSH channel rather than on the remote command line, so they never appear in the server's process list or in a workflow log.
+
 The web service binds only to `127.0.0.1:8080`. The public domain is served by the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
 
 ### Publishing a domain

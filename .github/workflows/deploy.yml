@@ -66,15 +66,33 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          VPANFI_REMNAWAVE_BASE_URL: ${{ secrets.VPANFI_REMNAWAVE_BASE_URL }}
+          VPANFI_REMNAWAVE_API_TOKEN: ${{ secrets.VPANFI_REMNAWAVE_API_TOKEN }}
+          VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
         run: |
           set -euo pipefail
+
+          # The panel credentials travel inside the SSH channel rather than
+          # on the remote command line, so they never appear in the
+          # server's process list. Unset values are passed as empty and the
+          # deploy script then leaves .env alone.
+          payload="$RUNNER_TEMP/deploy_payload.sh"
+          {
+            printf 'export VPANFI_REMNAWAVE_BASE_URL=%q\n' \
+              "${VPANFI_REMNAWAVE_BASE_URL:-}"
+            printf 'export VPANFI_REMNAWAVE_API_TOKEN=%q\n' \
+              "${VPANFI_REMNAWAVE_API_TOKEN:-}"
+            printf 'export VITE_DEMO_MODE=%q\n' "${VITE_DEMO_MODE:-}"
+            cat scripts/remote-bootstrap.sh
+          } > "$payload"
+
           ssh -i ~/.ssh/deploy_key \
             -p "$DEPLOY_PORT" \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            'bash -s' < scripts/remote-bootstrap.sh
+            'bash -s' < "$payload"
 
       - name: Remove the deployment key
         if: always()
