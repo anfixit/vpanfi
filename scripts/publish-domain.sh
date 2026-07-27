@@ -30,16 +30,27 @@ caddy_reload() {
 }
 
 log "Checking that ${DOMAIN} points at this server"
-server_ip="$(curl -fsS --max-time 10 https://api.ipify.org)"
-domain_ip="$(getent ahostsv4 "$DOMAIN" | awk 'NR==1 {print $1}')"
+server_ip="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
+
+if [ -z "$server_ip" ]; then
+  echo "ERROR: could not determine this server's public address" >&2
+  exit 1
+fi
+
+# getent exits non-zero for an unknown name, and pipefail would end the
+# script before the explanation below is printed.
+resolved="$(getent ahostsv4 "$DOMAIN" || true)"
+domain_ip="$(awk 'NR==1 {print $1}' <<<"$resolved")"
 
 if [ -z "$domain_ip" ]; then
-  echo "ERROR: ${DOMAIN} does not resolve" >&2
+  echo "ERROR: ${DOMAIN} does not resolve." >&2
+  echo "Point its A record at ${server_ip} and run this workflow again." >&2
   exit 1
 fi
 
 if [ "$domain_ip" != "$server_ip" ]; then
-  echo "ERROR: ${DOMAIN} resolves elsewhere, so Caddy could not get a certificate" >&2
+  echo "ERROR: ${DOMAIN} resolves to ${domain_ip}, not to ${server_ip}." >&2
+  echo "Caddy could not obtain a certificate, so nothing was changed." >&2
   exit 1
 fi
 
