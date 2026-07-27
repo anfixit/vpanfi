@@ -105,3 +105,18 @@ def test_unknown_route_returns_not_found(client: TestClient) -> None:
     response = client.get("/api/v1/cabinet/does-not-exist")
 
     assert response.status_code == 404
+
+
+def test_me_returns_the_signed_in_profile(client: TestClient) -> None:
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["displayName"] == "Тестовая Анфиса"
+    assert payload["email"] == "anfisa@vpanfi.ru"
+
+
+def test_me_requires_a_token(anonymous_client: TestClient) -> None:
+    response = anonymous_client.get("/api/v1/auth/me")
+
+    assert response.status_code == 401

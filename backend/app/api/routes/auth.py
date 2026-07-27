@@ -2,7 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
-from app.api.dependencies import get_auth_service
+from app.api.dependencies import (
+    CurrentUser,
+    get_auth_service,
+    get_cabinet_service,
+)
 from app.core.config import get_settings
 from app.schemas.auth import (
     AccessTokenResponse,
@@ -11,16 +15,19 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenPairResponse,
 )
+from app.schemas.cabinet import UserProfileResponse
 from app.services.auth import (
     AuthService,
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidRefreshSessionError,
 )
+from app.services.cabinet import CabinetService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 RefreshCookie = Annotated[str | None, Cookie(alias="vpanfi_refresh")]
+CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
 
 
 def set_refresh_cookie(response: Response, tokens: TokenPairResponse) -> None:
@@ -132,3 +139,20 @@ async def logout(response: Response) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+@router.get(
+    "/me",
+    response_model=UserProfileResponse,
+    summary="Профиль текущего пользователя",
+    description=(
+        "Нужен интерфейсу, чтобы обращаться к человеку по имени, а не "
+        "показывать всем одно и то же."
+    ),
+    responses={401: {"description": "Требуется вход в кабинет"}},
+)
+async def get_me(
+    user: CurrentUser,
+    service: CabinetServiceDep,
+) -> UserProfileResponse:
+    return service.build_profile(user)

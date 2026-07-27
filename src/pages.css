@@ -772,3 +772,24 @@
     flex-direction: column;
   }
 }
+
+.sign-in-required {
+  display: grid;
+  min-height: 70vh;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding-block: 60px;
+  text-align: center;
+}
+
+.sign-in-required h1 {
+  margin: 6px 0 10px;
+  font-size: clamp(30px, 5vw, 52px);
+}
+
+.sign-in-required p {
+  max-width: 520px;
+  margin-bottom: 14px;
+  line-height: 1.7;
+}

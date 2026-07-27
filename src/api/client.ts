@@ -1,4 +1,8 @@
-import { getAccessToken } from "../auth/tokenStore";
+import {
+  clearAccessToken,
+  getAccessToken,
+  setAccessToken,
+} from "../auth/tokenStore";
 import type {
   AccessTokenPayload,
   ConnectionClient,
@@ -8,6 +12,7 @@ import type {
   Payment,
   RegisterPayload,
   SubscriptionLink,
+  UserProfile,
 } from "./contracts";
 import {
   demoClients,
@@ -44,9 +49,50 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+const REFRESH_PATH = "/v1/auth/refresh";
+
+/*
+ * Access-токен живёт пятнадцать минут. Без этого пользователя выбрасывало
+ * бы на вход посреди работы, поэтому один раз на запрос кабинет молча
+ * обновляет сеанс и повторяет попытку.
+ */
+let unauthorizedHandler: (() => void) | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  refreshInFlight ??= (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}${REFRESH_PATH}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) return false;
+
+      const tokens = (await response.json()) as AccessTokenPayload;
+      setAccessToken(tokens.accessToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      // Освобождаем слот в следующем тике, чтобы параллельные запросы
+      // успели дождаться одного и того же обновления.
+      window.setTimeout(() => {
+        refreshInFlight = null;
+      }, 0);
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const accessToken = getAccessToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -56,6 +102,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let response = await send(path, init);
+
+  if (response.status === 401 && path !== REFRESH_PATH) {
+    if (await refreshAccessToken()) {
+      response = await send(path, init);
+    }
+
+    if (response.status === 401) {
+      clearAccessToken();
+      unauthorizedHandler?.();
+    }
+  }
 
   if (!response.ok) {
     let message = "Не удалось выполнить запрос";
@@ -122,6 +183,11 @@ export const api = {
   async logout(): Promise<void> {
     if (DEMO_MODE) return demoDelay(undefined);
     await request<void>("/v1/auth/logout", { method: "POST" });
+  },
+
+  async getProfile(): Promise<UserProfile> {
+    if (DEMO_MODE) return demoDelay(demoDashboard.profile);
+    return request<UserProfile>("/v1/auth/me");
   },
 
   async getDashboard(): Promise<DashboardPayload> {

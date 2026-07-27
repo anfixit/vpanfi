@@ -1,7 +1,11 @@
 import { useState } from "react";
+import { api } from "./api/client";
 import { isCabinetRoute, navigate, routes, usePathname } from "./app/navigation";
+import { useAuth } from "./auth/AuthContext";
 import { AuthModal } from "./components/AuthModal";
 import { CabinetShell } from "./components/CabinetShell";
+import { LoadingState } from "./components/ResourceState";
+import { type Theme } from "./components/ThemeToggle";
 import { useTheme } from "./hooks/useTheme";
 import { AdminPage } from "./pages/AdminPage";
 import { ConnectPage } from "./pages/ConnectPage";
@@ -11,9 +15,23 @@ import { LandingPage } from "./pages/LandingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { SignInRequiredPage } from "./pages/SignInRequiredPage";
 import { SupportPage } from "./pages/SupportPage";
 
-function CabinetRoute({ pathname, theme, onToggleTheme }: { pathname: string; theme: "light" | "dark"; onToggleTheme: () => void }) {
+const DEMO_DISPLAY_NAME = "Алексей";
+const FALLBACK_DISPLAY_NAME = "друг";
+
+function CabinetRoute({
+  pathname,
+  theme,
+  onToggleTheme,
+  displayName,
+}: {
+  pathname: string;
+  theme: Theme;
+  onToggleTheme: () => void;
+  displayName: string;
+}) {
   let content;
 
   switch (pathname) {
@@ -40,7 +58,12 @@ function CabinetRoute({ pathname, theme, onToggleTheme }: { pathname: string; th
   }
 
   return (
-    <CabinetShell pathname={pathname} theme={theme} onToggleTheme={onToggleTheme} displayName="Алексей">
+    <CabinetShell
+      pathname={pathname}
+      theme={theme}
+      onToggleTheme={onToggleTheme}
+      displayName={displayName}
+    >
       {content}
     </CabinetShell>
   );
@@ -49,21 +72,63 @@ function CabinetRoute({ pathname, theme, onToggleTheme }: { pathname: string; th
 export function App() {
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
+  const { status, profile } = useAuth();
   const [authOpen, setAuthOpen] = useState(false);
 
+  const openAuth = () => setAuthOpen(true);
   const handleAuthenticated = () => {
     setAuthOpen(false);
     navigate(routes.dashboard);
   };
 
+  const renderCabinet = () => {
+    // Демо-режим показывает кабинет всем: он для того и нужен, чтобы
+    // посмотреть сервис до регистрации.
+    if (api.isDemoMode) {
+      return (
+        <CabinetRoute
+          pathname={pathname}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          displayName={DEMO_DISPLAY_NAME}
+        />
+      );
+    }
+
+    if (status === "loading") {
+      return <LoadingState label="Анфиса проверяет сеанс…" />;
+    }
+
+    if (status === "anonymous") {
+      return (
+        <SignInRequiredPage
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenAuth={openAuth}
+        />
+      );
+    }
+
+    return (
+      <CabinetRoute
+        pathname={pathname}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        displayName={profile?.displayName ?? FALLBACK_DISPLAY_NAME}
+      />
+    );
+  };
+
   let page;
 
   if (pathname === routes.landing) {
-    page = <LandingPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={() => setAuthOpen(true)} />;
+    page = (
+      <LandingPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={openAuth} />
+    );
   } else if (pathname === routes.admin) {
     page = <AdminPage />;
   } else if (isCabinetRoute(pathname)) {
-    page = <CabinetRoute pathname={pathname} theme={theme} onToggleTheme={toggleTheme} />;
+    page = renderCabinet();
   } else {
     page = <NotFoundPage />;
   }
