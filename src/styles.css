@@ -17,11 +17,13 @@
   --primary: #7375cf;
   --primary-strong: #5c5eb5;
   --primary-soft: #e9e8fb;
-  --green: #62894d;
+  /* Зелёный и красный затемнены до контраста 4.5:1 на светлом фоне:
+     ими набраны надписи от 11px, а не только крупные заголовки. */
+  --green: #4d6d3c;
   --green-soft: #edf4e8;
   --brown: #8b4a26;
   --orange: #e9a549;
-  --danger: #be6d5f;
+  --danger: #a4483a;
   --focus-ring: rgba(76, 78, 170, 0.55);
   --shadow: 0 16px 50px rgba(76, 60, 45, 0.09);
   --shadow-soft: 0 8px 24px rgba(76, 60, 45, 0.07);
