@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 
 export function AuthModal({
@@ -55,7 +56,12 @@ export function AuthModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <button className="modal-close" type="button" onClick={onClose} aria-label="Закрыть">×</button>
-        <Mascot variant={error ? "error" : "greeting"} className="auth-mascot" decorative />
+        <Mascot
+          variant={error ? "error" : "greeting"}
+          className="auth-mascot"
+          loading="eager"
+          decorative
+        />
         <span className="section-kicker">Анфиса уже приготовила всё нужное</span>
         <h2 id="auth-title">{mode === "register" ? "Начнём знакомство" : "С возвращением"}</h2>
         <p>{mode === "register" ? "Создайте аккаунт и получите семь дней бесплатно." : "Введите данные своего аккаунта."}</p>
@@ -85,9 +91,15 @@ export function AuthModal({
         </form>
         <div className="modal-divider"><span>или</span></div>
         <div className="social-login">
-          <button type="button" onClick={() => showProviderNotice("Яндекс")}><span className="ya">Я</span> Яндекс</button>
-          <button type="button" onClick={() => showProviderNotice("VK")}><span className="vk">VK</span> VK</button>
-          <button type="button" onClick={() => showProviderNotice("Telegram")}><span className="tg">➤</span> Telegram</button>
+          <button type="button" onClick={() => showProviderNotice("Яндекс")}>
+            <span className="ya" aria-hidden="true">Я</span> Яндекс
+          </button>
+          <button type="button" onClick={() => showProviderNotice("VK")}>
+            <span className="vk" aria-hidden="true">VK</span> VK
+          </button>
+          <button type="button" onClick={() => showProviderNotice("Telegram")}>
+            <span className="tg" aria-hidden="true"><Icon name="telegram" /></span> Telegram
+          </button>
         </div>
       </section>
     </div>

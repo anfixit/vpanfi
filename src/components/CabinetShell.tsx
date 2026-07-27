@@ -1,16 +1,22 @@
 import type { ReactNode } from "react";
 import { navigate, routes, type AppRoute } from "../app/navigation";
 import { Brand } from "./Brand";
+import { useDemoNotice } from "./DemoNotice";
+import { Icon, type IconName } from "./Icon";
 import { Mascot } from "./Mascot";
 import { ThemeToggle, type Theme } from "./ThemeToggle";
 
-const navigationItems: Array<{ path: AppRoute; label: string; icon: string }> = [
-  { path: routes.dashboard, label: "Главная", icon: "⌂" },
-  { path: routes.connect, label: "Подключение", icon: "⌁" },
-  { path: routes.devices, label: "Устройства", icon: "▣" },
-  { path: routes.payments, label: "Платежи", icon: "▱" },
-  { path: routes.support, label: "Поддержка", icon: "◖" },
-  { path: routes.profile, label: "Профиль", icon: "○" },
+const navigationItems: Array<{
+  path: AppRoute;
+  label: string;
+  icon: IconName;
+}> = [
+  { path: routes.dashboard, label: "Главная", icon: "home" },
+  { path: routes.connect, label: "Подключение", icon: "connect" },
+  { path: routes.devices, label: "Устройства", icon: "devices" },
+  { path: routes.payments, label: "Платежи", icon: "payments" },
+  { path: routes.support, label: "Поддержка", icon: "support" },
+  { path: routes.profile, label: "Профиль", icon: "profile" },
 ];
 
 export function CabinetShell({
@@ -26,6 +32,8 @@ export function CabinetShell({
   displayName: string;
   children: ReactNode;
 }) {
+  const { isDemoMode, explain } = useDemoNotice();
+
   return (
     <div className="cabinet-layout">
       <aside className="cabinet-sidebar">
@@ -36,10 +44,12 @@ export function CabinetShell({
               className={pathname === item.path ? "is-active" : ""}
               type="button"
               key={item.path}
+              aria-current={pathname === item.path ? "page" : undefined}
+              aria-label={item.label}
               onClick={() => navigate(item.path)}
             >
-              <span aria-hidden="true">{item.icon}</span>
-              {item.label}
+              <Icon name={item.icon} />
+              <span className="nav-label">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -49,7 +59,8 @@ export function CabinetShell({
           <p>Покажу следующий шаг и помогу, если что-то непонятно.</p>
         </div>
         <button className="back-to-site" type="button" onClick={() => navigate(routes.landing)}>
-          ← Вернуться на сайт
+          <Icon name="arrow-right" className="icon-flip" />
+          Вернуться на сайт
         </button>
       </aside>
 
@@ -60,28 +71,29 @@ export function CabinetShell({
             <h1>Привет, {displayName}!</h1>
           </div>
           <div className="cabinet-top-actions">
+            {isDemoMode && <span className="demo-badge">Демо-режим</span>}
             <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-            <button className="notification" type="button" aria-label="Уведомления">♢</button>
-            <button className="profile-chip" type="button" onClick={() => navigate(routes.profile)}>
+            <button
+              className="notification"
+              type="button"
+              aria-label="Уведомления"
+              onClick={() =>
+                explain("Уведомления появятся, когда кабинет начнёт получать события от сервера.")
+              }
+            >
+              <Icon name="bell" />
+            </button>
+            <button
+              className="profile-chip"
+              type="button"
+              onClick={() => navigate(routes.profile)}
+            >
               <Mascot variant="greeting" className="profile-mascot" decorative />
-              {displayName}<span aria-hidden="true">⌄</span>
+              {displayName}
+              <Icon name="chevron-down" />
             </button>
           </div>
         </header>
-
-        <nav className="cabinet-mobile-nav" aria-label="Разделы личного кабинета">
-          {navigationItems.map((item) => (
-            <button
-              className={pathname === item.path ? "is-active" : ""}
-              type="button"
-              key={item.path}
-              onClick={() => navigate(item.path)}
-            >
-              <span aria-hidden="true">{item.icon}</span>
-              <small>{item.label}</small>
-            </button>
-          ))}
-        </nav>
 
         {children}
       </section>
