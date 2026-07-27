@@ -3,7 +3,10 @@ set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/vpanfi}"
 APP_PORT="${VPANFI_PORT:-8080}"
-HEALTH_URL="http://127.0.0.1:${APP_PORT}/healthz"
+WEB_HEALTH_URL="http://127.0.0.1:${APP_PORT}/healthz"
+API_HEALTH_URL="http://127.0.0.1:${APP_PORT}/api/healthz"
+HEALTH_ATTEMPTS=45
+HEALTH_INTERVAL_SECONDS=2
 PREVIOUS_SHA=""
 FIRST_DEPLOY=false
 
@@ -43,16 +46,17 @@ EOF
 wait_for_health() {
   local attempt
 
-  for attempt in $(seq 1 30); do
-    if wget -qO- "$HEALTH_URL" >/dev/null 2>&1; then
-      log "Application is healthy"
+  for attempt in $(seq 1 "$HEALTH_ATTEMPTS"); do
+    if curl -fsS "$WEB_HEALTH_URL" >/dev/null 2>&1 \
+      && curl -fsS "$API_HEALTH_URL" >/dev/null 2>&1; then
+      log "Web and API health checks passed"
       return 0
     fi
 
-    sleep 2
+    sleep "$HEALTH_INTERVAL_SECONDS"
   done
 
-  log "Health check failed: ${HEALTH_URL}"
+  log "Health check failed: ${WEB_HEALTH_URL} or ${API_HEALTH_URL}"
   docker compose ps
   docker compose logs --tail=120 web api
   return 1
@@ -88,6 +92,10 @@ if [[ ! -d .git ]]; then
 fi
 
 PREVIOUS_SHA="$(git rev-parse HEAD)"
+
+if [[ -z "$(docker compose ps --quiet 2>/dev/null)" ]]; then
+  FIRST_DEPLOY=true
+fi
 
 log "Fetching main branch"
 git fetch --prune origin main
