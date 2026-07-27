@@ -1,11 +1,18 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import AnyHttpUrl, SecretStr, field_validator
+from pydantic import AnyHttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+__all__ = ["Settings", "get_settings"]
+
+DEFAULT_JWT_SECRET = "change-me-before-production"
+MIN_JWT_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
+    """Конфигурация VPaNfi из переменных окружения."""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -23,7 +30,7 @@ class Settings(BaseSettings):
     )
     redis_url: SecretStr = SecretStr("redis://redis:6379/0")
 
-    jwt_secret: SecretStr = SecretStr("change-me-before-production")
+    jwt_secret: SecretStr = SecretStr(DEFAULT_JWT_SECRET)
     access_token_minutes: int = 15
     refresh_token_days: int = 30
 
@@ -42,9 +49,46 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @model_validator(mode="after")
+    def production_requires_real_secrets(self) -> Self:
+        """Не дать приложению подняться в проде с дефолтным ключом.
+
+        Раньше отсутствие настройки означало бы рабочий сервис, который
+        подписывает токены общеизвестным значением: любой смог бы
+        выпустить себе валидный access token.
+
+        Raises:
+            ValueError: Если в production JWT-ключ дефолтный или короткий.
+        """
+        if not self.is_production:
+            return self
+
+        secret = self.jwt_secret.get_secret_value()
+        if secret == DEFAULT_JWT_SECRET:
+            raise ValueError(
+                "VPANFI_JWT_SECRET must be set to a unique value in "
+                "production"
+            )
+        if len(secret) < MIN_JWT_SECRET_LENGTH:
+            raise ValueError(
+                "VPANFI_JWT_SECRET must be at least "
+                f"{MIN_JWT_SECRET_LENGTH} characters in production"
+            )
+
+        if self.debug:
+            raise ValueError("VPANFI_DEBUG must stay off in production")
+
+        return self
+
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Источники, которым разрешён доступ к API из браузера."""
+        origins = self.frontend_origin.split(",")
+        return [origin.strip() for origin in origins if origin.strip()]
 
 
 @lru_cache
