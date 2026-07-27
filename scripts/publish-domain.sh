@@ -85,9 +85,13 @@ fi
 if grep -qF "$DOMAIN" "$caddyfile"; then
   log "The Caddyfile already mentions ${DOMAIN}, leaving it untouched"
 else
-  backup="${caddyfile}.vpanfi-backup-$(date -u +%Y%m%dT%H%M%SZ)"
-  log "Backing the Caddyfile up"
-  cp -p "$caddyfile" "$backup"
+  # The Caddyfile itself is writable, but its directory belongs to the
+  # panel installer, so the backup goes next to our own deployment.
+  backup_dir="${APP_DIR}/backups/caddy"
+  backup="${backup_dir}/Caddyfile-$(date -u +%Y%m%dT%H%M%SZ)"
+  log "Backing the Caddyfile up to ${backup}"
+  mkdir -p "$backup_dir"
+  cat "$caddyfile" > "$backup"
 
   log "Appending the site block for ${DOMAIN}"
   cat >> "$caddyfile" <<EOF
@@ -102,13 +106,13 @@ EOF
     --config "$CADDYFILE_IN_CONTAINER" \
     --adapter caddyfile; then
     log "Validation failed, restoring the previous Caddyfile"
-    cp -p "$backup" "$caddyfile"
+    cat "$backup" > "$caddyfile"
     exit 1
   fi
 
   if ! caddy_reload; then
     log "Reload failed, restoring the previous Caddyfile"
-    cp -p "$backup" "$caddyfile"
+    cat "$backup" > "$caddyfile"
     caddy_reload || true
     exit 1
   fi
