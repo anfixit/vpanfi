@@ -1,4 +1,5 @@
-import { api } from "../api/client";
+import { useEffect, useState, type FormEvent } from "react";
+import { api, ApiRequestError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
@@ -7,6 +8,7 @@ import { ErrorState, LoadingState } from "../components/ResourceState";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 
 const PENDING_BACKEND = "Это действие включится вместе с API профиля на сервере.";
+const SAVED_HINT_MS = 2600;
 
 function ConnectionStatus({ connected }: { connected: boolean }) {
   return (
@@ -17,10 +19,24 @@ function ConnectionStatus({ connected }: { connected: boolean }) {
 }
 
 export function ProfilePage() {
-  const dashboard = useAsyncResource(api.getDashboard);
+  // Профиль берётся из того же места, что и приветствие в шапке:
+  // раньше форма читала его из ответа дашборда и показывала чужие
+  // демонстрационные данные.
+  const { profile, applyProfile, logout } = useAuth();
   const subscriptionLink = useAsyncResource(api.getSubscription);
   const { explain } = useDemoNotice();
-  const { logout } = useAuth();
+
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!profile) return;
+    setDisplayName(profile.displayName);
+    setEmail(profile.email);
+  }, [profile]);
 
   const unlinkSubscription = async () => {
     const confirmed = window.confirm(
@@ -33,16 +49,46 @@ export function ProfilePage() {
     subscriptionLink.reload();
   };
 
-  if (dashboard.loading && !dashboard.data) {
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+
+    try {
+      applyProfile(
+        await api.updateProfile({
+          displayName: displayName.trim(),
+          email: email.trim(),
+        }),
+      );
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), SAVED_HINT_MS);
+    } catch (reason: unknown) {
+      setError(
+        reason instanceof ApiRequestError
+          ? reason.message
+          : "Не удалось сохранить изменения",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!profile) {
+    if (subscriptionLink.error) {
+      return (
+        <ErrorState message={subscriptionLink.error} onRetry={subscriptionLink.reload} />
+      );
+    }
     return <LoadingState label="Анфиса открывает профиль…" />;
   }
-  if (dashboard.error || !dashboard.data) {
-    return (
-      <ErrorState message={dashboard.error ?? "Профиль не найден"} onRetry={dashboard.reload} />
-    );
-  }
 
-  const { profile } = dashboard.data;
+  const unchanged =
+    displayName.trim() === profile.displayName && email.trim() === profile.email;
+
   const linkedAccounts = [
     {
       key: "telegram",
@@ -82,7 +128,7 @@ export function ProfilePage() {
       </section>
 
       <section className="profile-grid">
-        <article className="cabinet-card profile-details">
+        <form className="cabinet-card profile-details" onSubmit={save}>
           <header>
             <span className="cabinet-card-icon">
               <Icon name="profile" />
@@ -91,20 +137,42 @@ export function ProfilePage() {
           </header>
           <label>
             Имя
-            <input defaultValue={profile.displayName} autoComplete="name" />
+            <input
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              autoComplete="name"
+              required
+              maxLength={80}
+            />
           </label>
           <label>
             Email
-            <input type="email" defaultValue={profile.email} autoComplete="email" />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              required
+            />
           </label>
+          {error && (
+            <div className="auth-error" role="alert">
+              {error}
+            </div>
+          )}
+          {saved && (
+            <div className="profile-saved" role="status">
+              Изменения сохранены
+            </div>
+          )}
           <button
             className="button button-primary"
-            type="button"
-            onClick={() => explain(PENDING_BACKEND)}
+            type="submit"
+            disabled={busy || unchanged || !displayName.trim()}
           >
-            Сохранить изменения
+            {busy ? "Сохраняем…" : "Сохранить изменения"}
           </button>
-        </article>
+        </form>
 
         <article className="cabinet-card profile-security">
           <header>
@@ -178,22 +246,17 @@ export function ProfilePage() {
           {subscriptionLink.data?.linked ? (
             <p className="muted">
               Привязана к аккаунту панели{" "}
-              <strong>{subscriptionLink.data.panelUsername ?? "без имени"}</strong>.
-              Срок и устройства всегда берутся из панели.
+              <strong>{subscriptionLink.data.panelUsername ?? "без имени"}</strong>. Срок и
+              устройства всегда берутся из панели.
             </p>
           ) : (
             <p className="muted">
-              Подписка пока не привязана. Добавьте её на главной странице
-              кабинета.
+              Подписка пока не привязана. Добавьте её на главной странице кабинета.
             </p>
           )}
         </div>
         {subscriptionLink.data?.linked && (
-          <button
-            className="button button-secondary"
-            type="button"
-            onClick={unlinkSubscription}
-          >
+          <button className="button button-secondary" type="button" onClick={unlinkSubscription}>
             Отвязать
           </button>
         )}
@@ -211,7 +274,9 @@ export function ProfilePage() {
           className="button button-ghost danger-action"
           type="button"
           onClick={() =>
-            explain("Удаление аккаунта включится вместе с API профиля: оно необратимо и требует подтверждения на сервере.")
+            explain(
+              "Удаление аккаунта включится вместе с API профиля: оно необратимо и требует подтверждения на сервере.",
+            )
           }
         >
           Удалить аккаунт

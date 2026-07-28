@@ -12,6 +12,7 @@ import type {
   Payment,
   RegisterPayload,
   SubscriptionLink,
+  UpdateProfilePayload,
   UserProfile,
 } from "./contracts";
 import {
@@ -188,6 +189,16 @@ export const api = {
   async getProfile(): Promise<UserProfile> {
     if (DEMO_MODE) return demoDelay(demoDashboard.profile);
     return request<UserProfile>("/v1/auth/me");
+  },
+
+  async updateProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
+    if (DEMO_MODE) {
+      return demoDelay({ ...demoDashboard.profile, ...payload });
+    }
+    return request<UserProfile>("/v1/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
   },
 
   async getDashboard(): Promise<DashboardPayload> {

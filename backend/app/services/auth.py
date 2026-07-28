@@ -36,6 +36,10 @@ class InvalidRefreshSessionError(ValueError):
     pass
 
 
+class EmailTakenError(ValueError):
+    """Такой адрес уже принадлежит другому аккаунту."""
+
+
 class AuthService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
         self._session = session
@@ -72,6 +76,30 @@ class AuthService:
         tokens = await self._issue_token_pair(user)
         await self._session.commit()
         return tokens
+
+    async def update_profile(
+        self,
+        user: User,
+        *,
+        display_name: str,
+        email: str,
+    ) -> User:
+        """Сохранить имя и адрес пользователя.
+
+        Raises:
+            EmailTakenError: Адрес занят другим аккаунтом.
+        """
+        normalized = email.strip().lower()
+
+        if normalized != user.email:
+            existing = await self._users.get_by_email(normalized)
+            if existing is not None and existing.id != user.id:
+                raise EmailTakenError(normalized)
+            user.email = normalized
+
+        user.display_name = display_name.strip()
+        await self._session.commit()
+        return user
 
     async def refresh(self, request: RefreshRequest) -> TokenPairResponse:
         try:

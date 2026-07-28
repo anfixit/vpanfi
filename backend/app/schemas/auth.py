@@ -33,3 +33,13 @@ class RefreshRequest(AuthSchema):
 class OAuthStartResponse(AuthSchema):
     authorization_url: str = Field(alias="authorizationUrl")
     state: str
+
+
+class UpdateProfileRequest(AuthSchema):
+    display_name: str = Field(
+        min_length=1,
+        max_length=80,
+        alias="displayName",
+        description="Имя, которым кабинет обращается к человеку",
+    )
+    email: EmailStr

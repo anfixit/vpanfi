@@ -14,11 +14,13 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     TokenPairResponse,
+    UpdateProfileRequest,
 )
 from app.schemas.cabinet import UserProfileResponse
 from app.services.auth import (
     AuthService,
     EmailAlreadyRegisteredError,
+    EmailTakenError,
     InvalidCredentialsError,
     InvalidRefreshSessionError,
 )
@@ -156,3 +158,36 @@ async def get_me(
     service: CabinetServiceDep,
 ) -> UserProfileResponse:
     return service.build_profile(user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserProfileResponse,
+    summary="Изменить имя и адрес",
+    responses={
+        401: {"description": "Требуется вход в кабинет"},
+        409: {"description": "Адрес занят другим аккаунтом"},
+    },
+)
+async def update_me(
+    request: UpdateProfileRequest,
+    user: CurrentUser,
+    auth: AuthServiceDep,
+    service: CabinetServiceDep,
+) -> UserProfileResponse:
+    try:
+        updated = await auth.update_profile(
+            user,
+            display_name=request.display_name,
+            email=request.email,
+        )
+    except EmailTakenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "email_already_registered",
+                "message": "Этот адрес уже занят другим аккаунтом",
+            },
+        ) from error
+
+    return service.build_profile(updated)

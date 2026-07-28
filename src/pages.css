@@ -824,3 +824,76 @@
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
 }
+
+.subscription-onboarding {
+  max-width: 820px;
+  margin-inline: auto;
+}
+
+.offer-card {
+  display: grid;
+  gap: 20px;
+  padding: 28px;
+}
+
+.offer-card .tariff-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.offer-included {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.offer-included li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.offer-included .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--green);
+}
+
+.offer-countries {
+  display: grid;
+  gap: 10px;
+}
+
+.offer-note {
+  margin-bottom: 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.subscription-onboarding .subscription-link-card {
+  max-width: none;
+}
+
+@media (max-width: 600px) {
+  .offer-card {
+    padding: 20px 16px;
+  }
+
+  .offer-card .tariff-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.profile-saved {
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
