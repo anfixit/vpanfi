@@ -56,6 +56,7 @@ export type UserProfile = {
   yandexLinked: boolean;
   vkLinked: boolean;
   passwordEnabled: boolean;
+  isAdmin: boolean;
 };
 
 export type DashboardPayload = {

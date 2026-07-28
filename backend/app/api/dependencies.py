@@ -11,17 +11,21 @@ from app.core.security import InvalidTokenError, decode_token
 from app.db.session import get_db_session
 from app.models.user import User
 from app.repositories.users import UserRepository
+from app.services.admin import AdminService
 from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
 from app.services.subscription import SubscriptionService
 
 __all__ = [
+    "CurrentAdmin",
     "CurrentUser",
     "DatabaseSession",
+    "get_admin_service",
     "get_auth_service",
     "get_cabinet_service",
     "get_current_user",
     "get_subscription_service",
+    "require_admin",
 ]
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
@@ -88,8 +92,39 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+async def require_admin(user: CurrentUser) -> User:
+    """Пропустить только администратора сервиса.
+
+    Флаг существовал в модели и попадал в токен, но его никто не
+    проверял: административные данные были доступны любому вошедшему.
+
+    Raises:
+        HTTPException: 403, если у пользователя нет прав администратора.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "admin_required",
+                "message": "Раздел доступен только администратору",
+            },
+        )
+
+    return user
+
+
+CurrentAdmin = Annotated[User, Depends(require_admin)]
+
+
 def get_subscription_service(
     session: DatabaseSession,
     settings: SettingsDep,
 ) -> SubscriptionService:
     return SubscriptionService(session, settings)
+
+
+def get_admin_service(
+    session: DatabaseSession,
+    settings: SettingsDep,
+) -> AdminService:
+    return AdminService(session, settings)

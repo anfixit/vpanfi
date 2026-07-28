@@ -119,6 +119,30 @@ export function App() {
     );
   };
 
+  // Админка была открыта любому, кто знал адрес. Теперь она требует
+  // и входа, и прав администратора.
+  const renderAdmin = () => {
+    if (api.isDemoMode) return <AdminPage />;
+
+    if (status === "loading") {
+      return <LoadingState label="Анфиса проверяет доступ…" />;
+    }
+
+    if (status === "anonymous") {
+      return (
+        <SignInRequiredPage
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onOpenAuth={openAuth}
+        />
+      );
+    }
+
+    if (profile && !profile.isAdmin) return <NotFoundPage />;
+
+    return <AdminPage />;
+  };
+
   let page;
 
   if (pathname === routes.landing) {
@@ -126,7 +150,7 @@ export function App() {
       <LandingPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={openAuth} />
     );
   } else if (pathname === routes.admin) {
-    page = <AdminPage />;
+    page = renderAdmin();
   } else if (isCabinetRoute(pathname)) {
     page = renderCabinet();
   } else {

@@ -47,6 +47,7 @@ class CabinetService:
                 yandex_linked=False,
                 vk_linked=False,
                 password_enabled=True,
+                is_admin=False,
             ),
         )
 
@@ -178,4 +179,5 @@ class CabinetService:
             yandex_linked=IdentityProvider.YANDEX in providers,
             vk_linked=IdentityProvider.VK in providers,
             password_enabled=user.password_digest is not None,
+            is_admin=user.is_admin,
         )

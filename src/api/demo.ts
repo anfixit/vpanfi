@@ -167,6 +167,7 @@ export const demoDashboard: DashboardPayload = {
     yandexLinked: false,
     vkLinked: false,
     passwordEnabled: true,
+    isAdmin: true,
   },
 };
 

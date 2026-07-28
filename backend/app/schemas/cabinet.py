@@ -54,6 +54,7 @@ class UserProfileResponse(BaseModel):
     yandex_linked: bool = Field(serialization_alias="yandexLinked")
     vk_linked: bool = Field(serialization_alias="vkLinked")
     password_enabled: bool = Field(serialization_alias="passwordEnabled")
+    is_admin: bool = Field(default=False, serialization_alias="isAdmin")
 
 
 class DashboardResponse(BaseModel):
