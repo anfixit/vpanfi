@@ -61,20 +61,21 @@ async def get_dashboard(
     service: CabinetServiceDep,
     subscriptions: SubscriptionServiceDep,
 ) -> DashboardResponse:
+    subscription = None
+
     try:
-        link = await subscriptions.describe(user)
+        subscription = (await subscriptions.describe(user)).subscription
     except PanelUnavailableError:
-        # Панель не настроена — кабинет продолжает работать на
-        # демонстрационных данных, а не падает.
-        return await service.get_demo_dashboard()
+        # Панель недоступна — срок показать нечем. Всё остальное про
+        # аккаунт мы знаем и без неё.
+        subscription = None
 
-    if link.subscription is None:
-        return await service.get_demo_dashboard()
-
+    # Профиль всегда собственный: подставлять сюда демонстрационного
+    # «Алексея» значит показывать человеку чужие данные под его именем.
     return DashboardResponse(
-        subscription=link.subscription,
+        subscription=subscription,
         countries=service.get_countries(),
-        recent_payments=service.get_demo_payments(),
+        recent_payments=[],
         profile=service.build_profile(user),
     )
 
@@ -90,9 +91,8 @@ async def get_devices(
     service: CabinetServiceDep,
     subscriptions: SubscriptionServiceDep,
 ) -> list[DeviceResponse]:
+    _ = service
     try:
-        if user.remnawave_user_uuid is None:
-            return service.get_demo_devices()
         return await subscriptions.list_devices(user)
     except PanelUnavailableError as error:
         raise _panel_unavailable() from error

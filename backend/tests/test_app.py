@@ -54,27 +54,31 @@ def test_documentation_is_available_outside_production(
     assert response.status_code == 200
 
 
-def test_dashboard_contract_uses_frontend_aliases(
+def test_dashboard_without_a_subscription_shows_the_real_profile(
     client: TestClient,
 ) -> None:
     response = client.get("/api/v1/cabinet/dashboard")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["subscription"]["planName"] == "6 месяцев"
-    assert payload["subscription"]["trafficLabel"] == "Без лимита"
-    assert payload["subscription"]["devicesLimit"] == 3
-    assert payload["recentPayments"]
-    assert payload["profile"]["telegramLinked"] is True
+    # Ни имени, ни платежей демонстрационного «Алексея» здесь быть не
+    # должно: это данные конкретного вошедшего человека.
+    assert payload["subscription"] is None
+    assert payload["recentPayments"] == []
+    assert payload["profile"]["displayName"] == "Тестовая Анфиса"
+    assert payload["profile"]["email"] == "anfisa@vpanfi.ru"
+    assert payload["countries"]
 
 
-def test_devices_contract_matches_the_frontend(client: TestClient) -> None:
+def test_devices_are_empty_without_a_linked_subscription(
+    client: TestClient,
+) -> None:
     response = client.get("/api/v1/cabinet/devices")
 
     assert response.status_code == 200
-    devices = response.json()
-    assert devices
-    assert {"id", "name", "platform", "current"} <= set(devices[0])
+    # Раньше здесь появлялись три придуманных устройства, которых у
+    # человека нет.
+    assert response.json() == []
 
 
 def test_connection_clients_offer_one_recommendation_per_platform(
@@ -120,3 +124,32 @@ def test_me_requires_a_token(anonymous_client: TestClient) -> None:
     response = anonymous_client.get("/api/v1/auth/me")
 
     assert response.status_code == 401
+
+
+def test_profile_update_requires_a_token(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.patch(
+        "/api/v1/auth/me",
+        json={"displayName": "Кто-то", "email": "someone@vpanfi.ru"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_profile_update_validates_the_name(client: TestClient) -> None:
+    response = client.patch(
+        "/api/v1/auth/me",
+        json={"displayName": "", "email": "anfisa@vpanfi.ru"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_profile_update_validates_the_email(client: TestClient) -> None:
+    response = client.patch(
+        "/api/v1/auth/me",
+        json={"displayName": "Анфиса", "email": "not-an-email"},
+    )
+
+    assert response.status_code == 422

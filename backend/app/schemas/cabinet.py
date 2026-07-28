@@ -60,7 +60,7 @@ class UserProfileResponse(BaseModel):
 class DashboardResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
-    subscription: SubscriptionResponse
+    subscription: SubscriptionResponse | None = None
     countries: list[CountryResponse]
     recent_payments: list[PaymentResponse] = Field(
         serialization_alias="recentPayments"

@@ -60,7 +60,7 @@ export type UserProfile = {
 };
 
 export type DashboardPayload = {
-  subscription: Subscription;
+  subscription: Subscription | null;
   countries: Country[];
   recentPayments: Payment[];
   profile: UserProfile;
@@ -70,6 +70,11 @@ export type RegisterPayload = {
   displayName: string;
   email: string;
   password: string;
+};
+
+export type UpdateProfilePayload = {
+  displayName: string;
+  email: string;
 };
 
 export type LoginPayload = {

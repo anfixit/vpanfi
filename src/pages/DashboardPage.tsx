@@ -6,7 +6,7 @@ import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ErrorState, LoadingState } from "../components/ResourceState";
-import { SubscriptionLinkForm } from "../components/SubscriptionLinkForm";
+import { SubscriptionOnboarding } from "../components/SubscriptionOnboarding";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { formatRubles } from "../utils/format";
 
@@ -71,10 +71,10 @@ export function DashboardPage() {
     return <LoadingState />;
   }
 
-  // Подписка живёт в панели, поэтому пока аккаунт с ней не связан,
-  // показывать сроки и устройства попросту нечего.
+  // Пока аккаунт не связан с подпиской, показывать сроки и устройства
+  // нечего: вместо этого предлагаем оформить её и перенести имеющуюся.
   if (subscriptionLink.data?.linked === false) {
-    return <SubscriptionLinkForm onLinked={reloadEverything} />;
+    return <SubscriptionOnboarding onLinked={reloadEverything} />;
   }
 
   if (dashboard.error || !dashboard.data) {
@@ -87,6 +87,14 @@ export function DashboardPage() {
   }
 
   const { subscription, countries, recentPayments } = dashboard.data;
+
+  // Сюда попадают только связанные аккаунты, но подписка может исчезнуть
+  // из панели между двумя запросами — тогда честнее предложить её
+  // добавить заново, чем показать пустые карточки.
+  if (!subscription) {
+    return <SubscriptionOnboarding onLinked={reloadEverything} />;
+  }
+
   const view = describeSubscription(subscription);
   const devicesFull = subscription.devicesUsed >= subscription.devicesLimit;
 
