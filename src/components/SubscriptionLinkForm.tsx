@@ -4,6 +4,8 @@ import type { SubscriptionLink } from "../api/contracts";
 import { Mascot } from "./Mascot";
 
 const FALLBACK_ERROR = "Не получилось привязать подписку. Попробуйте ещё раз.";
+const TELEGRAM_URL =
+  import.meta.env.VITE_TELEGRAM_SUPPORT_URL ?? "https://t.me/VPaNfi_bot";
 
 export function SubscriptionLinkForm({
   onLinked,
@@ -40,10 +42,10 @@ export function SubscriptionLinkForm({
       <Mascot variant="qr" className="card-mascot" decorative />
       <div className="subscription-link-copy">
         <span className="cabinet-kicker">Один шаг до кабинета</span>
-        <h2>Добавьте свою подписку</h2>
+        <h2>Если у Вас уже есть подписка</h2>
         <p className="muted">
-          Вставьте ссылку на подписку — ту самую, которую Вы получили в боте.
-          Анфиса найдёт её и покажет здесь срок, устройства и всё остальное.
+          Вставьте ссылку на неё — ту самую, которую прислал бот. Анфиса
+          найдёт подписку и покажет здесь срок, устройства и всё остальное.
         </p>
       </div>
 
@@ -78,6 +80,22 @@ export function SubscriptionLinkForm({
           {busy ? "Ищем подписку…" : "Привязать подписку"}
         </button>
       </form>
+
+      <div className="subscription-link-alternative">
+        <strong>А если подписки ещё нет?</strong>
+        <p className="muted">
+          Её оформляет бот — он же пришлёт ссылку, которую нужно вставить
+          сюда. Это займёт пару минут.
+        </p>
+        <a
+          className="button button-secondary"
+          href={TELEGRAM_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Открыть бота
+        </a>
+      </div>
     </section>
   );
 }
