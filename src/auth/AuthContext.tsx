@@ -23,6 +23,7 @@ type AuthContextValue = {
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
+  applyProfile: (profile: UserProfile) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -30,6 +31,12 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>(api.isDemoMode ? "anonymous" : "loading");
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  /*
+   * Считает смены сеанса. Без него вход под другим аккаунтом не менял
+   * status — он уже был "authenticated" — и кабинет продолжал
+   * здороваться именем предыдущего пользователя.
+   */
+  const [session, setSession] = useState(0);
 
   useEffect(() => {
     if (api.isDemoMode) return;
@@ -40,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setAccessToken(tokens.accessToken);
         setStatus("authenticated");
+        setSession((current) => current + 1);
       })
       .catch(() => {
         if (cancelled) return;
@@ -60,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAccessToken();
       setProfile(null);
       setStatus("anonymous");
+      setSession((current) => current + 1);
     });
 
     return () => setUnauthorizedHandler(null);
@@ -68,13 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (payload: LoginPayload) => {
     const tokens = await api.login(payload);
     setAccessToken(tokens.accessToken);
+    setProfile(null);
     setStatus("authenticated");
+    setSession((current) => current + 1);
   }, []);
 
   const register = useCallback(async (payload: RegisterPayload) => {
     const tokens = await api.register(payload);
     setAccessToken(tokens.accessToken);
+    setProfile(null);
     setStatus("authenticated");
+    setSession((current) => current + 1);
   }, []);
 
   const logout = useCallback(async () => {
@@ -84,11 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAccessToken();
       setProfile(null);
       setStatus("anonymous");
+      setSession((current) => current + 1);
     }
   }, []);
 
   useEffect(() => {
-    if (status !== "authenticated") return;
+    // В демо-режиме входа нет, но профиль всё равно нужен: иначе
+    // страница профиля осталась бы на бесконечной загрузке.
+    if (status !== "authenticated" && !api.isDemoMode) return;
 
     let cancelled = false;
     api.getProfile()
@@ -104,11 +120,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [status]);
+  }, [status, session]);
+
+  const applyProfile = useCallback((updated: UserProfile) => {
+    setProfile(updated);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, profile, login, register, logout }),
-    [status, profile, login, register, logout],
+    () => ({ status, profile, login, register, logout, applyProfile }),
+    [status, profile, login, register, logout, applyProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
