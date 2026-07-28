@@ -1,5 +1,31 @@
 import { useMemo } from "react";
-import qrcode from "qrcode-generator";
+import * as qrcodeModule from "qrcode-generator";
+
+type ErrorCorrection = "L" | "M" | "Q" | "H";
+
+type QrModel = {
+  addData(data: string): void;
+  make(): void;
+  getModuleCount(): number;
+  isDark(row: number, column: number): boolean;
+};
+
+type QrFactory = (
+  typeNumber: number,
+  errorCorrection: ErrorCorrection,
+) => QrModel;
+
+/*
+ * Пакет объявляет типы через export =, а его ESM-сборка отдаёт только
+ * именованный экспорт. Какую из сборок возьмёт сборщик, зависит от его
+ * настроек, поэтому подходят обе формы.
+ */
+const candidates = qrcodeModule as unknown as {
+  qrcode?: QrFactory;
+  default?: QrFactory;
+};
+const createQr: QrFactory =
+  candidates.qrcode ?? candidates.default ?? (qrcodeModule as unknown as QrFactory);
 
 /*
  * QR рисуется одним <path>: так он остаётся чётким на любом экране и
@@ -7,12 +33,12 @@ import qrcode from "qrcode-generator";
  */
 
 const AUTO_TYPE_NUMBER = 0;
-const ERROR_CORRECTION = "M";
+const ERROR_CORRECTION: ErrorCorrection = "M";
 const QUIET_ZONE_MODULES = 4;
 
 function buildPath(value: string): { path: string; size: number } | null {
   try {
-    const qr = qrcode(AUTO_TYPE_NUMBER, ERROR_CORRECTION);
+    const qr = createQr(AUTO_TYPE_NUMBER, ERROR_CORRECTION);
     qr.addData(value);
     qr.make();
 
