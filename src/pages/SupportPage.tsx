@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from "react";
+import { telegramSupportUrl } from "../config";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
 
-const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_SUPPORT_URL ?? "https://t.me/VPaNfi_bot";
 const MESSAGE_ROWS = 7;
 
 const faq = [
@@ -59,7 +59,7 @@ export function SupportPage() {
       <section className="support-channel-grid">
         <a
           className="cabinet-card support-channel is-primary"
-          href={TELEGRAM_URL}
+          href={telegramSupportUrl}
           target="_blank"
           rel="noreferrer"
         >
