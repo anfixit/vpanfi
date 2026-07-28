@@ -90,7 +90,7 @@ export function App() {
           pathname={pathname}
           theme={theme}
           onToggleTheme={toggleTheme}
-          displayName={DEMO_DISPLAY_NAME}
+          displayName={profile?.displayName ?? DEMO_DISPLAY_NAME}
         />
       );
     }

@@ -1,14 +1,39 @@
 import { api } from "../api/client";
 import { navigate, routes } from "../app/navigation";
+import { telegramSupportUrl } from "../config";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
-import { Mascot } from "../components/Mascot";
+import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
 import { countries, platforms, tariffs } from "../data";
 
-const TELEGRAM_URL = import.meta.env.VITE_TELEGRAM_SUPPORT_URL ?? "https://t.me/VPaNfi_bot";
-
 const advantages = ["Надёжное подключение", "Без лимита трафика", "Помощь рядом"];
+
+/*
+ * Шаги идут сверху вниз, один за другим: в три колонки на каждую
+ * приходилось около ста пикселей, и подпись ломалась на четыре строки.
+ */
+const steps = [
+  {
+    mascot: "greeting",
+    title: "Зарегистрируйтесь",
+    text: "Создайте аккаунт за пару минут — понадобится только почта.",
+  },
+  {
+    mascot: "phone",
+    title: "Выберите устройство",
+    text: "Мы сами покажем нужное приложение и дадим короткую инструкцию.",
+  },
+  {
+    mascot: "connected",
+    title: "Подключитесь",
+    text: "Одна кнопка — и интернет работает как обычно, без настроек.",
+  },
+] as const satisfies ReadonlyArray<{
+  mascot: MascotVariant;
+  title: string;
+  text: string;
+}>;
 
 export function LandingPage({
   theme,
@@ -106,28 +131,18 @@ export function LandingPage({
                 <Icon name="leaf" />
               </span>
             </div>
-            <div className="steps">
-              <div className="step">
-                <span className="step-number">1</span>
-                <Mascot variant="greeting" className="card-mascot-small" decorative />
-                <strong>Зарегистрируйтесь</strong>
-                <p>Создайте аккаунт за пару минут.</p>
-              </div>
-              <div className="step-line" aria-hidden="true" />
-              <div className="step">
-                <span className="step-number">2</span>
-                <Mascot variant="phone" className="card-mascot-small" decorative />
-                <strong>Выберите устройство</strong>
-                <p>Мы сами покажем нужное приложение.</p>
-              </div>
-              <div className="step-line" aria-hidden="true" />
-              <div className="step">
-                <span className="step-number">3</span>
-                <Mascot variant="connected" className="card-mascot-small" decorative />
-                <strong>Подключитесь</strong>
-                <p>Одна кнопка, и всё готово.</p>
-              </div>
-            </div>
+            <ol className="steps">
+              {steps.map((step, index) => (
+                <li className="step" key={step.title}>
+                  <Mascot variant={step.mascot} className="step-mascot" decorative />
+                  <div className="step-copy">
+                    <span className="step-number">{index + 1}</span>
+                    <strong>{step.title}</strong>
+                    <p>{step.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </article>
 
           <article className="panel panel-devices" id="devices">
@@ -215,34 +230,45 @@ export function LandingPage({
           </article>
 
           <article className="panel support-panel" id="support">
-            <div>
-              <span className="section-kicker">Отвечаем по-человечески</span>
-              <h2>Поддержка, которая помогает</h2>
-              <p>
-                Напишите в Telegram или оставьте обращение в кабинете. Позже здесь появится умный
-                помощник Анфиса.
-              </p>
-              <div className="support-actions">
+            <div className="support-heading">
+              <div>
+                <span className="section-kicker">Отвечаем по-человечески</span>
+                <h2>Поддержка, которая помогает</h2>
+                <p>Выберите, как Вам удобнее — оба способа доходят до нас.</p>
+              </div>
+              <Mascot variant="support" className="support-mascot-image" decorative />
+            </div>
+            <div className="support-choice">
                 <a
-                  className="support-button support-main"
-                  href={TELEGRAM_URL}
+                  className="support-option"
+                  href={telegramSupportUrl}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <Icon name="telegram" />
-                  Telegram
+                  <span className="support-option-icon">
+                    <Icon name="telegram" />
+                  </span>
+                  <span className="support-option-copy">
+                    <strong>Написать в Telegram</strong>
+                    <small>Живой человек ответит в мессенджере</small>
+                  </span>
+                  <Icon name="arrow-right" />
                 </a>
                 <button
-                  className="support-button"
+                  className="support-option"
                   type="button"
                   onClick={() => navigate(routes.support)}
                 >
-                  <Icon name="support" />
-                  Форма обращения
+                  <span className="support-option-icon">
+                    <Icon name="support" />
+                  </span>
+                  <span className="support-option-copy">
+                    <strong>Оставить обращение</strong>
+                    <small>Форма в кабинете, если писать некуда спешить</small>
+                  </span>
+                  <Icon name="arrow-right" />
                 </button>
-              </div>
             </div>
-            <Mascot variant="support" className="support-mascot-image" decorative />
           </article>
         </section>
 

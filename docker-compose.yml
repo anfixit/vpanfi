@@ -7,6 +7,7 @@ services:
         VITE_DEMO_MODE: ${VITE_DEMO_MODE:-true}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
         VITE_TELEGRAM_SUPPORT_URL: ${VITE_TELEGRAM_SUPPORT_URL:-https://t.me/VPaNfi_bot}
+        VITE_TELEGRAM_BOT_URL: ${VITE_TELEGRAM_BOT_URL:-https://t.me/VPaNfi_bot}
     image: vpanfi-web:local
     container_name: vpanfi-web
     restart: unless-stopped

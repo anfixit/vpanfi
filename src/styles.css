@@ -200,7 +200,6 @@ h3,
 .header-actions,
 .hero-actions,
 .trust-row,
-.support-actions,
 .cabinet-top-actions {
   display: flex;
   align-items: center;
@@ -463,25 +462,59 @@ h3,
   font-size: 22px;
 }
 
+/*
+ * Шаги идут сверху вниз одной колонкой. В три колонки на каждую
+ * приходилось около ста пикселей ширины, и подпись рвалась на четыре
+ * строки, а пунктир между ними только добавлял шума.
+ */
 .steps {
   display: grid;
-  grid-template-columns: 1fr 34px 1fr 34px 1fr;
-  align-items: start;
-  margin-top: 26px;
+  padding: 0;
+  margin: 24px 0 0;
+  list-style: none;
 }
 
 .step {
   position: relative;
-  text-align: center;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding-bottom: 20px;
+  text-align: left;
+}
+
+.step:last-child {
+  padding-bottom: 0;
+}
+
+/* Пунктир соединяет маскотов соседних шагов. */
+.step:not(:last-child)::before {
+  position: absolute;
+  top: 62px;
+  bottom: 8px;
+  left: 27px;
+  border-left: 2px dashed color-mix(in srgb, var(--primary) 34%, transparent);
+  content: "";
+}
+
+.step-mascot {
+  width: 56px;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+}
+
+.step-copy {
+  display: grid;
+  gap: 4px;
+  padding-top: 6px;
 }
 
 .step-number {
-  position: absolute;
-  top: -8px;
-  left: calc(50% - 38px);
-  display: grid;
-  width: 24px;
-  height: 24px;
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
   place-items: center;
   border-radius: 50%;
   color: #fff;
@@ -490,22 +523,10 @@ h3,
   font-weight: 900;
 }
 
-.mini-mascot {
-  display: grid;
-  width: 74px;
-  height: 74px;
-  margin: 0 auto 12px;
-  place-items: center;
-  border: 1px solid rgba(115, 117, 207, 0.14);
-  border-radius: 50% 50% 45% 55%;
-  background: var(--primary-soft);
-  font-size: 34px;
-}
-
 .step strong {
   display: block;
   font-family: "Nunito", sans-serif;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .step p,
@@ -516,13 +537,7 @@ h3,
 }
 
 .step p {
-  margin: 6px auto 0;
-}
-
-.step-line {
-  height: 1px;
-  margin-top: 38px;
-  border-top: 2px dashed color-mix(in srgb, var(--primary) 38%, transparent);
+  margin: 2px 0 0;
 }
 
 .platform-grid {
@@ -632,7 +647,6 @@ h3,
 .text-action,
 .alternative-apps,
 .connection-key button,
-.support-button,
 .auth-options button,
 .social-login button,
 .modal-tabs button {
@@ -675,12 +689,27 @@ h3,
   color: var(--muted) !important;
 }
 
+/*
+ * Маскот стоял в отдельной колонке и забирал 130px из 420px панели —
+ * карточкам выбора оставалось чуть больше двухсот, и заголовок
+ * «Написать в Telegram» ломался пополам. Теперь он над текстом.
+ */
 .support-panel {
   display: grid;
-  grid-template-columns: 1fr 130px;
-  align-items: center;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   overflow: hidden;
+}
+
+.support-panel .section-kicker {
+  display: block;
+}
+
+.support-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 14px;
 }
 
 .support-panel p,
@@ -689,25 +718,8 @@ h3,
   font-size: 13px;
 }
 
-.support-actions {
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.support-button {
-  min-height: 38px;
-  padding: 0 12px;
-  border-radius: 11px;
-  color: var(--primary-strong);
-  font-size: 11px;
-  font-weight: 800;
-}
 
-.support-main {
-  border-color: transparent;
-  color: #fff;
-  background: var(--primary);
-}
 
 .support-mascot {
   position: relative;
@@ -1637,19 +1649,6 @@ h3,
     grid-column: auto;
   }
 
-  .steps {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
-
-  .step-line {
-    width: 1px;
-    height: 20px;
-    margin: 0 auto;
-    border-top: 0;
-    border-left: 2px dashed color-mix(in srgb, var(--primary) 38%, transparent);
-  }
-
   .platform-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1870,7 +1869,6 @@ h3,
 }
 
 .platform-selector button > .icon,
-.support-button > .icon,
 .add-device > .icon,
 .eyebrow > .icon,
 .alternative-apps > .icon,
@@ -2107,8 +2105,7 @@ h3,
     justify-content: center;
   }
 
-  .hero-actions,
-  .support-actions {
+  .hero-actions {
     display: grid;
   }
 
@@ -2218,4 +2215,62 @@ h3,
   .cabinet-sidebar nav button {
     min-width: 0;
   }
+}
+
+/* --- Поддержка на главной: два явных варианта, а не пара пилюль --- */
+
+.support-choice {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.support-option {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.support-option:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line));
+  transform: translateY(-2px);
+}
+
+.support-option-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: var(--primary);
+}
+
+.support-option-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.support-option-copy strong {
+  font-size: 14px;
+}
+
+.support-option-copy small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.support-option > .icon:last-child {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
 }
