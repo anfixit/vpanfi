@@ -193,6 +193,7 @@ class SubscriptionService:
         return SubscriptionLinkResponse(
             linked=True,
             panel_username=panel_user.username or None,
+            subscription_url=panel_user.subscription_url,
             subscription=to_subscription(
                 panel_user,
                 devices_used=devices_used,

@@ -182,9 +182,15 @@ export function readDemoSubscriptionLink(): SubscriptionLink {
     ? {
         linked: true,
         panelUsername: "anfisa-demo",
+        subscriptionUrl: "https://connect.vpanfi.example/demo-subscription",
         subscription: demoDashboard.subscription,
       }
-    : { linked: false, panelUsername: null, subscription: null };
+    : {
+        linked: false,
+        panelUsername: null,
+        subscriptionUrl: null,
+        subscription: null,
+      };
 }
 
 export function setDemoSubscriptionLinked(linked: boolean): void {

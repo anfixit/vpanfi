@@ -90,6 +90,7 @@ export type ApiErrorPayload = {
 export type SubscriptionLink = {
   linked: boolean;
   panelUsername: string | null;
+  subscriptionUrl: string | null;
   subscription: Subscription | null;
 };
 

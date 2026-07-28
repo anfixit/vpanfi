@@ -8,6 +8,7 @@ from app.schemas.cabinet import SubscriptionStatus
 from app.services.panel import (
     UnreadablePanelUserError,
     read_panel_user,
+    to_device,
     to_subscription,
 )
 
@@ -98,3 +99,30 @@ def test_plain_number_traffic_counter_is_accepted() -> None:
 def test_user_without_uuid_is_rejected() -> None:
     with pytest.raises(UnreadablePanelUserError):
         read_panel_user(panel_payload(uuid=None))
+
+
+def test_platform_name_is_not_repeated_in_the_version() -> None:
+    device = to_device({
+        "hwid": "abc",
+        "platform": "Android",
+        "osVersion": "Android 16",
+        "deviceModel": "samsung SM-S938B",
+    })
+
+    assert device.platform == "Android 16"
+
+
+def test_platform_and_version_are_joined_when_they_differ() -> None:
+    device = to_device({
+        "hwid": "abc",
+        "platform": "iOS",
+        "osVersion": "18.2",
+    })
+
+    assert device.platform == "iOS 18.2"
+
+
+def test_device_without_a_version_keeps_the_platform() -> None:
+    device = to_device({"hwid": "abc", "platform": "Windows"})
+
+    assert device.platform == "Windows"

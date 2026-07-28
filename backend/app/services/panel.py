@@ -175,13 +175,29 @@ def to_device(
     return DeviceResponse(
         id=hwid or "unknown",
         name=model or platform,
-        platform=f"{platform} {version}".strip() if version else platform,
+        platform=_describe_platform(platform, version),
         last_seen_at=_read_moment(payload.get("updatedAt")),
         created_at=(
             _read_moment(payload.get("createdAt")) or datetime.now(UTC)
         ),
         current=bool(current_hwid) and hwid == current_hwid,
     )
+
+
+def _describe_platform(platform: str, version: str | None) -> str:
+    """Собрать читаемое название платформы.
+
+    Панель часто повторяет имя системы в версии: platform="Android",
+    osVersion="Android 16". Склеивать их дословно значит показать
+    пользователю "Android Android 16".
+    """
+    if not version:
+        return platform
+
+    if version.casefold().startswith(platform.casefold()):
+        return version
+
+    return f"{platform} {version}"
 
 
 def _read_moment(value: Any) -> datetime | None:

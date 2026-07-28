@@ -4,15 +4,16 @@ import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
 import { EmptyState, ErrorState, LoadingState } from "../components/ResourceState";
+import { QrCode } from "../components/QrCode";
 import { platforms } from "../data";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 
-const DEMO_CONNECTION_KEY = "https://connect.vpanfi.example/demo-subscription";
 const COPIED_HINT_MS = 2400;
 
 export function ConnectPage() {
   const clients = useAsyncResource(api.getConnectionClients);
-  const { isDemoMode, explain } = useDemoNotice();
+  const subscriptionLink = useAsyncResource(api.getSubscription);
+  const { explain } = useDemoNotice();
   const [selectedPlatform, setSelectedPlatform] = useState("Android");
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -24,9 +25,13 @@ export function ConnectPage() {
   const recommended = platformClients.find((client) => client.recommended) ?? platformClients[0];
   const alternatives = platformClients.filter((client) => client.id !== recommended?.id);
 
+  const connectionKey = subscriptionLink.data?.subscriptionUrl ?? null;
+
   const copyKey = async () => {
+    if (!connectionKey) return;
+
     try {
-      await navigator.clipboard.writeText(DEMO_CONNECTION_KEY);
+      await navigator.clipboard.writeText(connectionKey);
       setCopied(true);
       window.setTimeout(() => setCopied(false), COPIED_HINT_MS);
     } catch {
@@ -179,10 +184,17 @@ export function ConnectPage() {
               className="button button-secondary button-large"
               type="button"
               onClick={copyKey}
+              disabled={!connectionKey}
             >
               {copied ? "Ключ скопирован" : "Скопировать ключ"}
             </button>
           </div>
+          {!connectionKey && (
+            <p className="muted">
+              Ключ появится, как только Вы добавите подписку на главной
+              странице кабинета.
+            </p>
+          )}
           {copied && (
             <div className="connection-success" role="status">
               <Mascot variant="connected" className="card-mascot-small" decorative />
@@ -192,27 +204,31 @@ export function ConnectPage() {
               </div>
             </div>
           )}
-          <details className="technical-details">
-            <summary>Технические детали</summary>
-            <p className="muted">
-              Это ссылка на подписку. Обычно её не нужно открывать вручную — приложение всё сделает
-              само.
-            </p>
-            <code>{DEMO_CONNECTION_KEY}</code>
-          </details>
+          {connectionKey && (
+            <details className="technical-details">
+              <summary>Технические детали</summary>
+              <p className="muted">
+                Это ссылка на подписку. Обычно её не нужно открывать вручную — приложение всё
+                сделает само.
+              </p>
+              <code>{connectionKey}</code>
+            </details>
+          )}
         </article>
 
         <article className="cabinet-card qr-card">
           <Mascot variant="qr" className="card-mascot" decorative />
           <h3>QR-код</h3>
-          <div className="demo-qr" aria-hidden="true">
-            <span />
-          </div>
-          <p className="muted">
-            {isDemoMode
-              ? "Это демонстрационный QR-код. Настоящий появится вместе с рабочей подпиской."
-              : "Наведите камеру устройства, которое хотите подключить."}
-          </p>
+          {connectionKey ? (
+            <>
+              <QrCode value={connectionKey} label="QR-код Вашей подписки" />
+              <p className="muted">Наведите камеру устройства, которое хотите подключить.</p>
+            </>
+          ) : (
+            <p className="muted">
+              QR-код появится вместе с подпиской: в нём зашита именно Ваша ссылка.
+            </p>
+          )}
         </article>
       </section>
     </div>

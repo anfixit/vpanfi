@@ -104,4 +104,9 @@ class SubscriptionLinkResponse(BaseModel):
     panel_username: str | None = Field(
         default=None, serialization_alias="panelUsername"
     )
+    subscription_url: str | None = Field(
+        default=None,
+        serialization_alias="subscriptionUrl",
+        description="Ссылка подписки из панели: её вставляют в приложение",
+    )
     subscription: SubscriptionResponse | None = None

@@ -80,6 +80,7 @@ def test_linking_returns_the_panel_username(
     assert response.json() == {
         "linked": True,
         "panelUsername": "anfisa",
+        "subscriptionUrl": None,
         "subscription": None,
     }
 

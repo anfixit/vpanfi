@@ -793,3 +793,34 @@
   margin-bottom: 14px;
   line-height: 1.7;
 }
+
+.subscription-link-alternative {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 100%;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.subscription-link-alternative p {
+  max-width: 420px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.device-over-limit {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
+.qr-code {
+  width: min(200px, 100%);
+  height: auto;
+  margin: 10px auto 16px;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}
