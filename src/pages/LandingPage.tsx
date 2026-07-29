@@ -1,11 +1,13 @@
 import { api } from "../api/client";
 import { navigate, routes } from "../app/navigation";
+import { useAuth } from "../auth/AuthContext";
+import { useAsyncResource } from "../hooks/useAsyncResource";
 import { telegramSupportUrl } from "../config";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
-import { countries, platforms, tariffs } from "../data";
+import { platforms, tariffs } from "../data";
 
 const advantages = ["Надёжное подключение", "Без лимита трафика", "Помощь рядом"];
 
@@ -44,6 +46,23 @@ export function LandingPage({
   onToggleTheme: () => void;
   onOpenAuth: () => void;
 }) {
+  const { status } = useAuth();
+  // Список стран приходит с сервера: та же ручка кормит кабинет, так
+  // что витрина не может пообещать страну, которой нет.
+  const countries = useAsyncResource(api.getCountries);
+  const canOpenCabinet = api.isDemoMode || status === "authenticated";
+
+  // Форма обращения живёт в кабинете, а кабинет закрыт. Отправлять туда
+  // человека без аккаунта значило упереть его в стену входа без
+  // объяснений — поэтому сначала предлагаем войти.
+  const openRequestForm = () => {
+    if (canOpenCabinet) {
+      navigate(routes.support);
+      return;
+    }
+    onOpenAuth();
+  };
+
   return (
     <>
       <header className="site-header shell">
@@ -145,28 +164,6 @@ export function LandingPage({
             </ol>
           </article>
 
-          <article className="panel panel-devices" id="devices">
-            <div className="section-heading compact-heading">
-              <div>
-                <span className="section-kicker">На любом экране</span>
-                <h2>Все Ваши устройства</h2>
-              </div>
-              <span className="leaf-mark">
-                <Icon name="devices" />
-              </span>
-            </div>
-            <div className="platform-grid">
-              {platforms.map((platform) => (
-                <div className="platform" key={platform.name}>
-                  <span className="platform-icon">
-                    <Icon name={platform.icon} />
-                  </span>
-                  <span>{platform.name}</span>
-                </div>
-              ))}
-            </div>
-          </article>
-
           <article className="panel panel-tariffs" id="tariffs">
             <div className="section-heading compact-heading">
               <div>
@@ -206,9 +203,29 @@ export function LandingPage({
               Дополнительное устройство за 100 ₽
             </button>
           </article>
-        </section>
+          <article className="panel panel-devices" id="devices">
+            <div className="section-heading compact-heading">
+              <div>
+                <span className="section-kicker">На любом экране</span>
+                <h2>Все Ваши устройства</h2>
+              </div>
+              <span className="leaf-mark">
+                <Icon name="devices" />
+              </span>
+            </div>
+            <div className="platform-grid">
+              {platforms.map((platform) => (
+                <div className="platform" key={platform.name}>
+                  <span className="platform-icon">
+                    <Icon name={platform.icon} />
+                  </span>
+                  <span>{platform.name}</span>
+                </div>
+              ))}
+            </div>
+          </article>
 
-        <section className="lower-grid shell">
+
           <article className="panel countries-panel" id="countries">
             <div className="section-heading compact-heading">
               <div>
@@ -220,13 +237,17 @@ export function LandingPage({
               </span>
             </div>
             <div className="country-list">
-              {countries.map((country) => (
-                <span className="country-chip" key={country.name}>
+              {(countries.data ?? []).map((country) => (
+                <span className="country-chip" key={country.code}>
                   <span aria-hidden="true">{country.flag}</span> {country.name}
                 </span>
               ))}
             </div>
-            <p className="muted">Полный список будет доступен после подключения.</p>
+            <p className="muted">
+              {countries.loading && !countries.data
+                ? "Загружаем список…"
+                : "Страна выбирается внутри приложения в один тап."}
+            </p>
           </article>
 
           <article className="panel support-panel" id="support">
@@ -234,7 +255,10 @@ export function LandingPage({
               <div>
                 <span className="section-kicker">Отвечаем по-человечески</span>
                 <h2>Поддержка, которая помогает</h2>
-                <p>Выберите, как Вам удобнее — оба способа доходят до нас.</p>
+                <p>
+                Telegram работает без регистрации — если войти не получается,
+                пишите туда.
+              </p>
               </div>
               <Mascot variant="support" className="support-mascot-image" decorative />
             </div>
@@ -254,17 +278,17 @@ export function LandingPage({
                   </span>
                   <Icon name="arrow-right" />
                 </a>
-                <button
-                  className="support-option"
-                  type="button"
-                  onClick={() => navigate(routes.support)}
-                >
+                <button className="support-option" type="button" onClick={openRequestForm}>
                   <span className="support-option-icon">
                     <Icon name="support" />
                   </span>
                   <span className="support-option-copy">
                     <strong>Оставить обращение</strong>
-                    <small>Форма в кабинете, если писать некуда спешить</small>
+                    <small>
+                      {canOpenCabinet
+                        ? "Форма в кабинете — переписка сохранится"
+                        : "Форма в кабинете: понадобится вход"}
+                    </small>
                   </span>
                   <Icon name="arrow-right" />
                 </button>

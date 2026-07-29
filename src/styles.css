@@ -412,19 +412,18 @@ h3,
   object-position: center bottom;
 }
 
+/*
+ * Одна колонка на всю ширину: раздел за разделом. В три колонки каждая
+ * панель получала около четырёхсот пикселей, и всё внутри — шаги,
+ * тарифы, список устройств — жалось и рвалось по строкам.
+ */
 .product-grid {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
-  gap: 18px;
-  padding-block: 18px;
-}
-
-.lower-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.05fr 0.95fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   padding-block: 18px 44px;
 }
+
 
 .panel,
 .cabinet-card {
@@ -542,7 +541,7 @@ h3,
 
 .platform-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   margin-top: 22px;
 }
@@ -634,8 +633,9 @@ h3,
 
 .tariff-features {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 24px;
   margin-top: 16px;
   color: var(--green);
   font-size: 11px;
@@ -656,8 +656,12 @@ h3,
 }
 
 .add-device {
+  display: inline-flex;
   width: 100%;
   min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin-top: 11px;
   border-radius: 11px;
   color: var(--primary-strong);
@@ -1482,16 +1486,6 @@ h3,
     grid-template-columns: 1fr 0.9fr;
   }
 
-  .product-grid,
-  .lower-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .panel-tariffs,
-  .auth-panel {
-    grid-column: span 2;
-  }
-
   .cabinet-grid-top {
     grid-template-columns: 1.35fr 1fr 1fr;
   }
@@ -1637,16 +1631,6 @@ h3,
 
   .hero-actions .button {
     width: 100%;
-  }
-
-  .product-grid,
-  .lower-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .panel-tariffs,
-  .auth-panel {
-    grid-column: auto;
   }
 
   .platform-grid {
