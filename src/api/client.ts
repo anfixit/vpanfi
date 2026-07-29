@@ -10,6 +10,8 @@ import type {
   Device,
   LoginPayload,
   Payment,
+  ChangePasswordPayload,
+  Country,
   RegisterPayload,
   SubscriptionLink,
   UpdateProfilePayload,
@@ -17,6 +19,7 @@ import type {
 } from "./contracts";
 import {
   demoClients,
+  demoCountries,
   demoDashboard,
   demoDevices,
   demoPayments,
@@ -201,6 +204,25 @@ export const api = {
     });
   },
 
+  async changePassword(payload: ChangePasswordPayload): Promise<void> {
+    if (DEMO_MODE) return demoDelay(undefined);
+    const tokens = await request<AccessTokenPayload>("/v1/auth/password", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    // Смена пароля отзывает прежние сеансы, поэтому этому устройству
+    // выдаётся новый токен — иначе следующий же запрос вернул бы 401.
+    setAccessToken(tokens.accessToken);
+  },
+
+  async deleteAccount(password: string): Promise<void> {
+    if (DEMO_MODE) return demoDelay(undefined);
+    await request<void>("/v1/auth/me", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    });
+  },
+
   async getDashboard(): Promise<DashboardPayload> {
     if (DEMO_MODE) return demoDelay(demoDashboard);
     return request<DashboardPayload>("/v1/cabinet/dashboard");
@@ -221,6 +243,11 @@ export const api = {
   async getPayments(): Promise<Payment[]> {
     if (DEMO_MODE) return demoDelay(demoPayments);
     return request<Payment[]>("/v1/cabinet/payments");
+  },
+
+  async getCountries(): Promise<Country[]> {
+    if (DEMO_MODE) return demoDelay(demoCountries);
+    return request<Country[]>("/v1/cabinet/countries");
   },
 
   async getConnectionClients(): Promise<ConnectionClient[]> {

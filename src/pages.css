@@ -897,3 +897,32 @@
   font-size: 13px;
   font-weight: 800;
 }
+
+.password-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.password-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.password-form input {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
+.password-form p {
+  margin-bottom: 0;
+  font-size: 12px;
+}

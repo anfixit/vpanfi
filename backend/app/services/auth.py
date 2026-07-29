@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -38,6 +38,10 @@ class InvalidRefreshSessionError(ValueError):
 
 class EmailTakenError(ValueError):
     """Такой адрес уже принадлежит другому аккаунту."""
+
+
+class WrongPasswordError(ValueError):
+    """Введён неверный текущий пароль."""
 
 
 class AuthService:
@@ -100,6 +104,72 @@ class AuthService:
         user.display_name = display_name.strip()
         await self._session.commit()
         return user
+
+    async def change_password(
+        self,
+        user: User,
+        *,
+        current_password: str,
+        new_password: str,
+    ) -> TokenPairResponse:
+        """Сменить пароль и завершить остальные сеансы.
+
+        Возвращает свежую пару токенов: смена пароля отзывает все
+        refresh-сессии, поэтому текущему устройству нужна новая.
+
+        Raises:
+            WrongPasswordError: Текущий пароль не подошёл.
+        """
+        if user.password_digest is None or not verify_password(
+            current_password, user.password_digest
+        ):
+            raise WrongPasswordError
+
+        user.password_digest = hash_password(new_password)
+        await self._revoke_all_sessions(user)
+
+        tokens = await self._issue_token_pair(user)
+        await self._session.commit()
+        return tokens
+
+    async def delete_account(self, user: User, password: str) -> None:
+        """Удалить личные данные аккаунта.
+
+        Строка пользователя остаётся, но обезличивается: на неё
+        ссылаются платежи, а финансовую историю удалять нельзя. После
+        этого войти в аккаунт невозможно, а прежний адрес снова
+        свободен для регистрации.
+
+        Подписка в панели не трогается: она может быть оплачена и
+        принадлежит панели, а не кабинету.
+
+        Raises:
+            WrongPasswordError: Пароль не подошёл.
+        """
+        if user.password_digest is None or not verify_password(
+            password, user.password_digest
+        ):
+            raise WrongPasswordError
+
+        await self._revoke_all_sessions(user)
+        user.identities.clear()
+
+        user.email = f"deleted-{user.id}@vpanfi.ru"
+        user.display_name = "Удалённый аккаунт"
+        user.password_digest = None
+        user.is_active = False
+        user.is_admin = False
+        user.remnawave_user_uuid = None
+        user.remnawave_username = None
+
+        await self._session.commit()
+
+    async def _revoke_all_sessions(self, user: User) -> None:
+        await self._session.execute(
+            update(RefreshSession)
+            .where(RefreshSession.user_id == user.id)
+            .values(revoked=True)
+        )
 
     async def refresh(self, request: RefreshRequest) -> TokenPairResponse:
         try:

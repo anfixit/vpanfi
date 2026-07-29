@@ -77,6 +77,11 @@ export type UpdateProfilePayload = {
   email: string;
 };
 
+export type ChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+};
+
 export type LoginPayload = {
   email: string;
   password: string;

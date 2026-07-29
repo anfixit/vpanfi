@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiRequestError } from "../api/client";
+import { navigate, routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
@@ -7,8 +8,8 @@ import { Mascot } from "../components/Mascot";
 import { ErrorState, LoadingState } from "../components/ResourceState";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 
-const PENDING_BACKEND = "Это действие включится вместе с API профиля на сервере.";
 const SAVED_HINT_MS = 2600;
+const MIN_PASSWORD_LENGTH = 8;
 
 function ConnectionStatus({ connected }: { connected: boolean }) {
   return (
@@ -32,6 +33,13 @@ export function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!profile) return;
     setDisplayName(profile.displayName);
@@ -47,6 +55,53 @@ export function ProfilePage() {
 
     await api.unlinkSubscription();
     subscriptionLink.reload();
+  };
+
+  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (passwordBusy) return;
+
+    setPasswordBusy(true);
+    setPasswordError(null);
+    setPasswordSaved(false);
+
+    try {
+      await api.changePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      setPasswordSaved(true);
+      setChangingPassword(false);
+      window.setTimeout(() => setPasswordSaved(false), SAVED_HINT_MS);
+    } catch (reason: unknown) {
+      setPasswordError(
+        reason instanceof ApiRequestError
+          ? reason.message
+          : "Не удалось сменить пароль",
+      );
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    const password = window.prompt(
+      "Удаление необратимо: данные аккаунта будут стёрты, а войти станет " +
+        "нельзя. Подписка в панели сохранится. Введите пароль, чтобы " +
+        "подтвердить.",
+    );
+    if (!password) return;
+
+    try {
+      await api.deleteAccount(password);
+      await logout();
+      navigate(routes.landing);
+    } catch (reason: unknown) {
+      explain(
+        reason instanceof ApiRequestError
+          ? reason.message
+          : "Не удалось удалить аккаунт",
+      );
+    }
   };
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -185,17 +240,70 @@ export function ProfilePage() {
             <div>
               <strong>Пароль</strong>
               <p className="muted">
-                {profile.passwordEnabled ? "Пароль установлен" : "Пароль ещё не создан"}
+                {passwordSaved
+                  ? "Пароль изменён, остальные сеансы завершены"
+                  : profile.passwordEnabled
+                    ? "Пароль установлен"
+                    : "Пароль ещё не создан"}
               </p>
             </div>
             <button
               className="button button-secondary"
               type="button"
-              onClick={() => explain(PENDING_BACKEND)}
+              aria-expanded={changingPassword}
+              onClick={() => {
+                setChangingPassword((open) => !open);
+                setPasswordError(null);
+              }}
             >
-              Изменить
+              {changingPassword ? "Отмена" : "Изменить"}
             </button>
           </div>
+          {changingPassword && (
+            <form className="password-form" onSubmit={changePassword}>
+              <label>
+                Текущий пароль
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <label>
+                Новый пароль
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                  minLength={MIN_PASSWORD_LENGTH}
+                  required
+                />
+              </label>
+              <p className="muted">
+                Не короче {MIN_PASSWORD_LENGTH} символов. Вход на других
+                устройствах после смены придётся выполнить заново.
+              </p>
+              {passwordError && (
+                <div className="auth-error" role="alert">
+                  {passwordError}
+                </div>
+              )}
+              <button
+                className="button button-primary"
+                type="submit"
+                disabled={
+                  passwordBusy ||
+                  !currentPassword ||
+                  newPassword.length < MIN_PASSWORD_LENGTH
+                }
+              >
+                {passwordBusy ? "Меняем…" : "Сменить пароль"}
+              </button>
+            </form>
+          )}
           <div className="security-row">
             <div>
               <strong>Активные сеансы</strong>
@@ -270,15 +378,7 @@ export function ProfilePage() {
             возвращается автоматически.
           </p>
         </div>
-        <button
-          className="button button-ghost danger-action"
-          type="button"
-          onClick={() =>
-            explain(
-              "Удаление аккаунта включится вместе с API профиля: оно необратимо и требует подтверждения на сервере.",
-            )
-          }
-        >
+        <button className="button button-ghost danger-action" type="button" onClick={deleteAccount}>
           Удалить аккаунт
         </button>
       </section>

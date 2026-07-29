@@ -10,6 +10,8 @@ from app.api.dependencies import (
 from app.core.config import get_settings
 from app.schemas.auth import (
     AccessTokenResponse,
+    ChangePasswordRequest,
+    DeleteAccountRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -23,6 +25,7 @@ from app.services.auth import (
     EmailTakenError,
     InvalidCredentialsError,
     InvalidRefreshSessionError,
+    WrongPasswordError,
 )
 from app.services.cabinet import CabinetService
 
@@ -191,3 +194,81 @@ async def update_me(
         ) from error
 
     return service.build_profile(updated)
+
+
+def _wrong_password() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "wrong_password",
+            "message": "Неверный пароль",
+        },
+    )
+
+
+@router.post(
+    "/password",
+    response_model=AccessTokenResponse,
+    summary="Сменить пароль",
+    description=(
+        "Завершает все остальные сеансы и выдаёт этому устройству новую "
+        "пару токенов."
+    ),
+    responses={
+        401: {"description": "Требуется вход в кабинет"},
+        403: {"description": "Текущий пароль не подошёл"},
+    },
+)
+async def change_password(
+    request: ChangePasswordRequest,
+    response: Response,
+    user: CurrentUser,
+    auth: AuthServiceDep,
+) -> AccessTokenResponse:
+    try:
+        tokens = await auth.change_password(
+            user,
+            current_password=request.current_password,
+            new_password=request.new_password,
+        )
+    except WrongPasswordError as error:
+        raise _wrong_password() from error
+
+    set_refresh_cookie(response, tokens)
+    return public_token_response(tokens)
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить аккаунт",
+    description=(
+        "Обезличивает аккаунт и завершает все сеансы. Историю платежей "
+        "удалить нельзя, поэтому строка остаётся без личных данных. "
+        "Подписка в панели сохраняется: она может быть оплачена."
+    ),
+    responses={
+        401: {"description": "Требуется вход в кабинет"},
+        403: {"description": "Пароль не подошёл"},
+    },
+)
+async def delete_account(
+    request: DeleteAccountRequest,
+    response: Response,
+    user: CurrentUser,
+    auth: AuthServiceDep,
+) -> Response:
+    try:
+        await auth.delete_account(user, request.password)
+    except WrongPasswordError as error:
+        raise _wrong_password() from error
+
+    settings = get_settings()
+    response.delete_cookie(
+        key="vpanfi_refresh",
+        path=f"{settings.api_prefix}/auth",
+        secure=settings.is_production,
+        httponly=True,
+        samesite="lax",
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

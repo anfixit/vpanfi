@@ -153,3 +153,48 @@ def test_profile_update_validates_the_email(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_password_change_requires_a_token(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.post(
+        "/api/v1/auth/password",
+        json={"currentPassword": "old", "newPassword": "new-password-1"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_password_change_rejects_a_short_password(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/password",
+        json={"currentPassword": "whatever", "newPassword": "short"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_account_deletion_requires_a_token(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.request(
+        "DELETE",
+        "/api/v1/auth/me",
+        json={"password": "whatever"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_countries_are_public_and_real(anonymous_client: TestClient) -> None:
+    response = anonymous_client.get("/api/v1/cabinet/countries")
+
+    assert response.status_code == 200
+    names = {country["name"] for country in response.json()}
+    # Витрина обещала Японию и Испанию, которых у сервиса нет.
+    assert "Япония" not in names
+    assert "Испания" not in names
+    assert {"Германия", "Финляндия", "Швеция"} <= names

@@ -43,3 +43,20 @@ class UpdateProfileRequest(AuthSchema):
         description="Имя, которым кабинет обращается к человеку",
     )
     email: EmailStr
+
+
+class ChangePasswordRequest(AuthSchema):
+    current_password: str = Field(
+        min_length=1,
+        max_length=128,
+        alias="currentPassword",
+    )
+    new_password: str = Field(
+        min_length=8,
+        max_length=128,
+        alias="newPassword",
+    )
+
+
+class DeleteAccountRequest(AuthSchema):
+    password: str = Field(min_length=1, max_length=128)
