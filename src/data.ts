@@ -35,13 +35,4 @@ export const platforms: Platform[] = [
   { name: "Apple TV", icon: "tv" },
 ];
 
-export const countries = [
-  { name: "Нидерланды", flag: "🇳🇱" },
-  { name: "Германия", flag: "🇩🇪" },
-  { name: "США", flag: "🇺🇸" },
-  { name: "Испания", flag: "🇪🇸" },
-  { name: "Япония", flag: "🇯🇵" },
-  { name: "Казахстан", flag: "🇰🇿" },
-];
-
 export const EXTRA_DEVICE_PRICE_RUB = 100;

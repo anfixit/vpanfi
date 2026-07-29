@@ -1,9 +1,11 @@
 import type { SubscriptionLink } from "../api/contracts";
+import { api } from "../api/client";
 import { telegramBotUrl } from "../config";
-import { countries, tariffs } from "../data";
+import { tariffs } from "../data";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 import { SubscriptionLinkForm } from "./SubscriptionLinkForm";
+import { useAsyncResource } from "../hooks/useAsyncResource";
 
 /*
  * Экран для аккаунта без подписки. Порядок важен: сначала предложение
@@ -25,6 +27,8 @@ export function SubscriptionOnboarding({
 }: {
   onLinked: (result: SubscriptionLink) => void;
 }) {
+  const countries = useAsyncResource(api.getCountries);
+
   return (
     <div className="cabinet-page subscription-onboarding">
       <section className="page-intro cabinet-card">
@@ -73,8 +77,8 @@ export function SubscriptionOnboarding({
         <div className="offer-countries">
           <span className="muted">Страны на выбор</span>
           <div className="country-list">
-            {countries.slice(0, VISIBLE_COUNTRIES).map((country) => (
-              <span className="country-chip" key={country.name}>
+            {(countries.data ?? []).slice(0, VISIBLE_COUNTRIES).map((country) => (
+              <span className="country-chip" key={country.code}>
                 <span aria-hidden="true">{country.flag}</span> {country.name}
               </span>
             ))}

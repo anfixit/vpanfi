@@ -52,14 +52,20 @@ class CabinetService:
         )
 
     def get_countries(self) -> list[CountryResponse]:
+        """Страны, где у сервиса действительно есть узлы.
+
+        Список отдаётся и витрине, и кабинету, чтобы они не разъехались.
+        Обновлять его нужно вместе с узлами в панели: обещать страну,
+        которой нет, значит обманывать на главной странице.
+        """
         return [
-            CountryResponse(code="NL", name="Нидерланды", flag="🇳🇱"),
-            CountryResponse(code="DE", name="Германия", flag="🇩🇪"),
             CountryResponse(code="AT", name="Австрия", flag="🇦🇹"),
-            CountryResponse(code="US", name="США", flag="🇺🇸"),
+            CountryResponse(code="DE", name="Германия", flag="🇩🇪"),
+            CountryResponse(code="NL", name="Нидерланды", flag="🇳🇱"),
+            CountryResponse(code="FI", name="Финляндия", flag="🇫🇮"),
+            CountryResponse(code="SE", name="Швеция", flag="🇸🇪"),
             CountryResponse(code="KZ", name="Казахстан", flag="🇰🇿"),
-            CountryResponse(code="ES", name="Испания", flag="🇪🇸"),
-            CountryResponse(code="JP", name="Япония", flag="🇯🇵"),
+            CountryResponse(code="US", name="США", flag="🇺🇸"),
         ]
 
     def get_demo_payments(self) -> list[PaymentResponse]:

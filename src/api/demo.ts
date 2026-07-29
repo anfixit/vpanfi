@@ -8,13 +8,13 @@ import type {
 } from "./contracts";
 
 export const demoCountries: Country[] = [
-  { code: "NL", name: "Нидерланды", flag: "🇳🇱", available: true },
-  { code: "DE", name: "Германия", flag: "🇩🇪", available: true },
   { code: "AT", name: "Австрия", flag: "🇦🇹", available: true },
-  { code: "US", name: "США", flag: "🇺🇸", available: true },
+  { code: "DE", name: "Германия", flag: "🇩🇪", available: true },
+  { code: "NL", name: "Нидерланды", flag: "🇳🇱", available: true },
+  { code: "FI", name: "Финляндия", flag: "🇫🇮", available: true },
+  { code: "SE", name: "Швеция", flag: "🇸🇪", available: true },
   { code: "KZ", name: "Казахстан", flag: "🇰🇿", available: true },
-  { code: "ES", name: "Испания", flag: "🇪🇸", available: true },
-  { code: "JP", name: "Япония", flag: "🇯🇵", available: true },
+  { code: "US", name: "США", flag: "🇺🇸", available: true },
 ];
 
 export const demoPayments: Payment[] = [

@@ -9,6 +9,7 @@ from app.api.dependencies import (
 )
 from app.schemas.cabinet import (
     ConnectionClientResponse,
+    CountryResponse,
     DashboardResponse,
     DeviceResponse,
     PaymentResponse,
@@ -244,3 +245,18 @@ async def unlink_subscription(
 ) -> Response:
     await service.unlink(user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/countries",
+    response_model=list[CountryResponse],
+    summary="Страны, где есть узлы",
+    description=(
+        "Открыт без входа: тот же список показывает публичная страница, "
+        "и расходиться они не должны."
+    ),
+)
+async def get_countries(
+    service: CabinetServiceDep,
+) -> list[CountryResponse]:
+    return service.get_countries()
