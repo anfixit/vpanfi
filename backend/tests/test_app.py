@@ -198,3 +198,44 @@ def test_countries_are_public_and_real(anonymous_client: TestClient) -> None:
     assert "Япония" not in names
     assert "Испания" not in names
     assert {"Германия", "Финляндия", "Швеция"} <= names
+
+
+def test_provider_list_is_empty_without_credentials(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.get("/api/v1/auth/providers")
+
+    # Кнопка, которая заведомо не работает, хуже её отсутствия.
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_telegram_login_is_refused_when_not_configured(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.post(
+        "/api/v1/auth/telegram",
+        json={"id": 1, "auth_date": 1, "hash": "deadbeef"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "provider_not_configured"
+
+
+def test_oauth_callback_is_refused_when_not_configured(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.post(
+        "/api/v1/auth/oauth/vk/callback",
+        json={"code": "abc", "state": "xyz"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_unlinking_a_provider_requires_a_token(
+    anonymous_client: TestClient,
+) -> None:
+    response = anonymous_client.delete("/api/v1/auth/providers/telegram")
+
+    assert response.status_code == 401

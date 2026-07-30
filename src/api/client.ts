@@ -5,6 +5,7 @@ import {
 } from "../auth/tokenStore";
 import type {
   AccessTokenPayload,
+  AuthProvider,
   ConnectionClient,
   DashboardPayload,
   Device,
@@ -177,6 +178,40 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  async getAuthProviders(): Promise<AuthProvider[]> {
+    // В демо-режиме внешнего входа нет: там нечего подтверждать.
+    if (DEMO_MODE) return demoDelay([]);
+    return request<AuthProvider[]>("/v1/auth/providers");
+  },
+
+  async completeOAuth(
+    provider: string,
+    code: string,
+    state: string,
+  ): Promise<AccessTokenPayload> {
+    return request<AccessTokenPayload>(
+      `/v1/auth/oauth/${encodeURIComponent(provider)}/callback`,
+      { method: "POST", body: JSON.stringify({ code, state }) },
+    );
+  },
+
+  async loginWithTelegram(
+    payload: Record<string, unknown>,
+  ): Promise<AccessTokenPayload> {
+    return request<AccessTokenPayload>("/v1/auth/telegram", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async unlinkProvider(provider: string): Promise<void> {
+    if (DEMO_MODE) return demoDelay(undefined);
+    await request<void>(
+      `/v1/auth/providers/${encodeURIComponent(provider)}`,
+      { method: "DELETE" },
+    );
   },
 
   async refreshSession(): Promise<AccessTokenPayload> {

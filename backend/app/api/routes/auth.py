@@ -6,15 +6,20 @@ from app.api.dependencies import (
     CurrentUser,
     get_auth_service,
     get_cabinet_service,
+    get_oauth_service,
 )
 from app.core.config import get_settings
+from app.models.user import IdentityProvider
 from app.schemas.auth import (
     AccessTokenResponse,
+    AuthProviderResponse,
     ChangePasswordRequest,
     DeleteAccountRequest,
     LoginRequest,
+    OAuthCallbackRequest,
     RefreshRequest,
     RegisterRequest,
+    TelegramLoginRequest,
     TokenPairResponse,
     UpdateProfileRequest,
 )
@@ -28,11 +33,25 @@ from app.services.auth import (
     WrongPasswordError,
 )
 from app.services.cabinet import CabinetService
+from app.services.oauth import (
+    IdentityAlreadyLinkedError,
+    OAuthService,
+    ProviderNotConfiguredError,
+    ProviderRejectedError,
+    ProviderUnavailableError,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 RefreshCookie = Annotated[str | None, Cookie(alias="vpanfi_refresh")]
 CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
+OAuthServiceDep = Annotated[OAuthService, Depends(get_oauth_service)]
+
+PROVIDER_NAMES = {
+    IdentityProvider.TELEGRAM: "Telegram",
+    IdentityProvider.VK: "VK",
+    IdentityProvider.YANDEX: "Яндекс",
+}
 
 
 def set_refresh_cookie(response: Response, tokens: TokenPairResponse) -> None:
@@ -271,4 +290,163 @@ async def delete_account(
         httponly=True,
         samesite="lax",
     )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _provider_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "provider_unavailable",
+            "message": "Сервис входа сейчас недоступен, попробуйте позже",
+        },
+    )
+
+
+def _provider_not_configured() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": "provider_not_configured",
+            "message": "Этот способ входа пока не подключён",
+        },
+    )
+
+
+@router.get(
+    "/providers",
+    response_model=list[AuthProviderResponse],
+    summary="Способы входа, доступные сейчас",
+    description=(
+        "Экран входа показывает только настроенные провайдеры: кнопка, "
+        "которая заведомо не работает, хуже её отсутствия."
+    ),
+)
+async def list_providers(
+    service: OAuthServiceDep,
+) -> list[AuthProviderResponse]:
+    settings = get_settings()
+    providers = []
+
+    for provider in service.available_providers():
+        url = None
+        if provider is not IdentityProvider.TELEGRAM:
+            url = service.authorization_url(provider)
+
+        providers.append(
+            AuthProviderResponse(
+                provider=str(provider),
+                name=PROVIDER_NAMES[provider],
+                authorization_url=url,
+                bot_username=(
+                    settings.telegram_bot_username
+                    if provider is IdentityProvider.TELEGRAM
+                    else None
+                ),
+            )
+        )
+
+    return providers
+
+
+@router.post(
+    "/oauth/{provider}/callback",
+    response_model=AccessTokenResponse,
+    summary="Завершить вход через VK или Яндекс",
+    responses={
+        403: {"description": "Ссылка входа устарела или подменена"},
+        404: {"description": "Способ входа не подключён"},
+        409: {"description": "Аккаунт привязан к другому пользователю"},
+        503: {"description": "Провайдер недоступен"},
+    },
+)
+async def complete_oauth(
+    provider: IdentityProvider,
+    request: OAuthCallbackRequest,
+    response: Response,
+    service: OAuthServiceDep,
+) -> AccessTokenResponse:
+    try:
+        tokens = await service.complete(
+            provider, code=request.code, state=request.state
+        )
+    except ProviderNotConfiguredError as error:
+        raise _provider_not_configured() from error
+    except IdentityAlreadyLinkedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "identity_already_linked",
+                "message": "Этот аккаунт уже привязан к другому профилю",
+            },
+        ) from error
+    except ProviderRejectedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "provider_rejected", "message": str(error)},
+        ) from error
+    except ProviderUnavailableError as error:
+        raise _provider_unavailable() from error
+
+    set_refresh_cookie(response, tokens)
+    return public_token_response(tokens)
+
+
+@router.post(
+    "/telegram",
+    response_model=AccessTokenResponse,
+    summary="Войти через виджет Telegram",
+    description=(
+        "Принимает данные виджета вместе с подписью. Без совпадающей "
+        "подписи вход отклоняется: иначе можно было бы прислать чужой "
+        "идентификатор."
+    ),
+    responses={
+        403: {"description": "Подпись не сошлась или данные устарели"},
+        404: {"description": "Вход через Telegram не подключён"},
+    },
+)
+async def complete_telegram(
+    request: TelegramLoginRequest,
+    response: Response,
+    service: OAuthServiceDep,
+) -> AccessTokenResponse:
+    try:
+        tokens = await service.complete_telegram(
+            request.model_dump(by_alias=True)
+        )
+    except ProviderNotConfiguredError as error:
+        raise _provider_not_configured() from error
+    except ProviderRejectedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "provider_rejected", "message": str(error)},
+        ) from error
+
+    set_refresh_cookie(response, tokens)
+    return public_token_response(tokens)
+
+
+@router.delete(
+    "/providers/{provider}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Убрать способ входа",
+    responses={
+        401: {"description": "Требуется вход в кабинет"},
+        403: {"description": "Это последний способ войти"},
+    },
+)
+async def unlink_provider(
+    provider: IdentityProvider,
+    user: CurrentUser,
+    service: OAuthServiceDep,
+) -> Response:
+    try:
+        await service.unlink(user, provider)
+    except ProviderRejectedError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "last_sign_in_method", "message": str(error)},
+        ) from error
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)

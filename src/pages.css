@@ -926,3 +926,30 @@
   margin-bottom: 0;
   font-size: 12px;
 }
+
+.auth-callback {
+  display: grid;
+  min-height: 70vh;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding-block: 60px;
+  text-align: center;
+}
+
+.auth-callback h1 {
+  margin: 8px 0 4px;
+  font-size: clamp(26px, 4vw, 40px);
+}
+
+.auth-callback p {
+  max-width: 480px;
+  margin-bottom: 14px;
+  line-height: 1.7;
+}
+
+.telegram-login {
+  display: grid;
+  place-items: center;
+  min-height: 48px;
+}

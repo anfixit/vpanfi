@@ -25,6 +25,9 @@ export function ProfilePage() {
   // демонстрационные данные.
   const { profile, applyProfile, logout } = useAuth();
   const subscriptionLink = useAsyncResource(api.getSubscription);
+  // Те же провайдеры, что и на экране входа: привязка и вход — одно и
+  // то же действие, разница лишь в том, вошёл ли человек уже.
+  const providers = useAsyncResource(api.getAuthProviders);
   const { explain } = useDemoNotice();
 
   const [displayName, setDisplayName] = useState("");
@@ -144,11 +147,12 @@ export function ProfilePage() {
   const unchanged =
     displayName.trim() === profile.displayName && email.trim() === profile.email;
 
+  const configured = providers.data ?? [];
   const linkedAccounts = [
     {
       key: "telegram",
       name: "Telegram",
-      note: "Вход через знакомый аккаунт и связь с поддержкой.",
+      note: "Вход одним нажатием через знакомый аккаунт.",
       mark: "TG",
       markClass: "tg",
       connected: profile.telegramLinked,
@@ -169,7 +173,44 @@ export function ProfilePage() {
       markClass: "vk",
       connected: profile.vkLinked,
     },
-  ];
+  ].map((account) => ({
+    ...account,
+    available: configured.some((item) => item.provider === account.key),
+    authorizationUrl:
+      configured.find((item) => item.provider === account.key)
+        ?.authorizationUrl ?? null,
+  }));
+
+  const toggleProvider = async (account: (typeof linkedAccounts)[number]) => {
+    if (!account.available) {
+      explain(
+        `Вход через ${account.name} появится, когда будут добавлены ключи приложения.`,
+      );
+      return;
+    }
+
+    if (!account.connected) {
+      if (account.authorizationUrl) {
+        window.location.assign(account.authorizationUrl);
+      } else {
+        explain(
+          `Вход через ${account.name} подключается на экране входа: выйдите и нажмите там его кнопку.`,
+        );
+      }
+      return;
+    }
+
+    try {
+      await api.unlinkProvider(account.key);
+      applyProfile(await api.getProfile());
+    } catch (reason: unknown) {
+      explain(
+        reason instanceof ApiRequestError
+          ? reason.message
+          : `Не удалось отвязать ${account.name}`,
+      );
+    }
+  };
 
   return (
     <div className="cabinet-page">
@@ -337,9 +378,7 @@ export function ProfilePage() {
               <button
                 className="button button-ghost"
                 type="button"
-                onClick={() =>
-                  explain(`Вход через ${account.name} появится после настройки ключей приложения.`)
-                }
+                onClick={() => toggleProvider(account)}
               >
                 {account.connected ? "Отвязать" : "Подключить"}
               </button>

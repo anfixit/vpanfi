@@ -69,6 +69,13 @@ jobs:
           VPANFI_REMNAWAVE_BASE_URL: ${{ secrets.VPANFI_REMNAWAVE_BASE_URL }}
           VPANFI_REMNAWAVE_API_TOKEN: ${{ secrets.VPANFI_REMNAWAVE_API_TOKEN }}
           VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
+          VPANFI_TELEGRAM_BOT_TOKEN: ${{ secrets.VPANFI_TELEGRAM_BOT_TOKEN }}
+          VPANFI_TELEGRAM_BOT_USERNAME: ${{ vars.VPANFI_TELEGRAM_BOT_USERNAME }}
+          VPANFI_VK_CLIENT_ID: ${{ vars.VPANFI_VK_CLIENT_ID }}
+          VPANFI_VK_CLIENT_SECRET: ${{ secrets.VPANFI_VK_CLIENT_SECRET }}
+          VPANFI_YANDEX_CLIENT_ID: ${{ vars.VPANFI_YANDEX_CLIENT_ID }}
+          VPANFI_YANDEX_CLIENT_SECRET: ${{ secrets.VPANFI_YANDEX_CLIENT_SECRET }}
+          VPANFI_OAUTH_REDIRECT_URL: ${{ vars.VPANFI_OAUTH_REDIRECT_URL }}
         run: |
           set -euo pipefail
 
@@ -83,6 +90,19 @@ jobs:
             printf 'export VPANFI_REMNAWAVE_API_TOKEN=%q\n' \
               "${VPANFI_REMNAWAVE_API_TOKEN:-}"
             printf 'export VITE_DEMO_MODE=%q\n' "${VITE_DEMO_MODE:-}"
+            printf 'export VPANFI_TELEGRAM_BOT_TOKEN=%q\n' \
+              "${VPANFI_TELEGRAM_BOT_TOKEN:-}"
+            printf 'export VPANFI_TELEGRAM_BOT_USERNAME=%q\n' \
+              "${VPANFI_TELEGRAM_BOT_USERNAME:-}"
+            printf 'export VPANFI_VK_CLIENT_ID=%q\n' "${VPANFI_VK_CLIENT_ID:-}"
+            printf 'export VPANFI_VK_CLIENT_SECRET=%q\n' \
+              "${VPANFI_VK_CLIENT_SECRET:-}"
+            printf 'export VPANFI_YANDEX_CLIENT_ID=%q\n' \
+              "${VPANFI_YANDEX_CLIENT_ID:-}"
+            printf 'export VPANFI_YANDEX_CLIENT_SECRET=%q\n' \
+              "${VPANFI_YANDEX_CLIENT_SECRET:-}"
+            printf 'export VPANFI_OAUTH_REDIRECT_URL=%q\n' \
+              "${VPANFI_OAUTH_REDIRECT_URL:-}"
             cat scripts/remote-bootstrap.sh
           } > "$payload"
 

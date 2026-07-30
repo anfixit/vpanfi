@@ -77,6 +77,13 @@ export type UpdateProfilePayload = {
   email: string;
 };
 
+export type AuthProvider = {
+  provider: "telegram" | "vk" | "yandex";
+  name: string;
+  authorizationUrl: string | null;
+  botUsername: string | null;
+};
+
 export type ChangePasswordPayload = {
   currentPassword: string;
   newPassword: string;

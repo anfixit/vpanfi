@@ -40,8 +40,28 @@ class Settings(BaseSettings):
 
     telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/VPaNfi_bot")
 
+    # Способы входа в кабинет. Каждый включается независимо: провайдер
+    # без учётных данных просто не предлагается на экране входа, а не
+    # ломает вход остальным.
+    telegram_bot_token: SecretStr | None = None
+    telegram_bot_username: str | None = None
+    vk_client_id: str | None = None
+    vk_client_secret: SecretStr | None = None
+    yandex_client_id: str | None = None
+    yandex_client_secret: SecretStr | None = None
+    oauth_redirect_url: AnyHttpUrl | None = None
+
     @field_validator(
-        "remnawave_base_url", "remnawave_api_token", mode="before"
+        "remnawave_base_url",
+        "remnawave_api_token",
+        "telegram_bot_token",
+        "telegram_bot_username",
+        "vk_client_id",
+        "vk_client_secret",
+        "yandex_client_id",
+        "yandex_client_secret",
+        "oauth_redirect_url",
+        mode="before",
     )
     @classmethod
     def empty_optional_secret_to_none(cls, value: object) -> object:
@@ -83,6 +103,27 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def vk_enabled(self) -> bool:
+        return bool(self.vk_client_id and self.vk_client_secret)
+
+    @property
+    def yandex_enabled(self) -> bool:
+        return bool(self.yandex_client_id and self.yandex_client_secret)
+
+    @property
+    def telegram_enabled(self) -> bool:
+        return bool(self.telegram_bot_token and self.telegram_bot_username)
+
+    @property
+    def redirect_url(self) -> str:
+        """Куда провайдер возвращает пользователя после согласия."""
+        if self.oauth_redirect_url is not None:
+            return str(self.oauth_redirect_url)
+
+        origin = self.allowed_origins[0] if self.allowed_origins else ""
+        return f"{origin.rstrip('/')}/auth/callback"
 
     @property
     def allowed_origins(self) -> list[str]:

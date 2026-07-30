@@ -1,7 +1,16 @@
 import { useState, type FormEvent } from "react";
+import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useAsyncResource } from "../hooks/useAsyncResource";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
+import { TelegramLoginButton } from "./TelegramLoginButton";
+
+const PROVIDER_MARKS: Record<string, string> = {
+  telegram: "tg",
+  vk: "vk",
+  yandex: "ya",
+};
 
 export function AuthModal({
   onClose,
@@ -10,7 +19,10 @@ export function AuthModal({
   onClose: () => void;
   onAuthenticated: () => void;
 }) {
-  const { login, register } = useAuth();
+  const { login, register, signInWithTelegram } = useAuth();
+  // Показываем только настроенные способы: кнопка, которая заведомо не
+  // работает, хуже её отсутствия.
+  const providers = useAsyncResource(api.getAuthProviders);
   const [mode, setMode] = useState<"login" | "register">("register");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -42,9 +54,27 @@ export function AuthModal({
     setError(null);
   };
 
-  const showProviderNotice = (provider: string) => {
-    setError(`Вход через ${provider} появится после настройки ключей приложения.`);
+  const signInWithProvider = (url: string) => {
+    // Провайдер вернёт человека на /auth/callback с кодом и state.
+    window.location.assign(url);
   };
+
+  const telegramAuth = async (payload: Record<string, unknown>) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await signInWithTelegram(payload);
+      onAuthenticated();
+    } catch (reason: unknown) {
+      setError(
+        reason instanceof Error ? reason.message : "Не удалось войти через Telegram",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const available = providers.data ?? [];
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -89,18 +119,47 @@ export function AuthModal({
             {busy ? "Подождите…" : mode === "register" ? "Получить 7 дней бесплатно" : "Войти"}
           </button>
         </form>
-        <div className="modal-divider"><span>или</span></div>
-        <div className="social-login">
-          <button type="button" onClick={() => showProviderNotice("Яндекс")}>
-            <span className="ya" aria-hidden="true">Я</span> Яндекс
-          </button>
-          <button type="button" onClick={() => showProviderNotice("VK")}>
-            <span className="vk" aria-hidden="true">VK</span> VK
-          </button>
-          <button type="button" onClick={() => showProviderNotice("Telegram")}>
-            <span className="tg" aria-hidden="true"><Icon name="telegram" /></span> Telegram
-          </button>
-        </div>
+        {available.length > 0 && (
+          <>
+            <div className="modal-divider">
+              <span>или войдите через</span>
+            </div>
+            <div className="social-login">
+              {available.map((provider) =>
+                provider.provider === "telegram" && provider.botUsername ? (
+                  <TelegramLoginButton
+                    key={provider.provider}
+                    botUsername={provider.botUsername}
+                    onAuth={telegramAuth}
+                  />
+                ) : (
+                  provider.authorizationUrl && (
+                    <button
+                      key={provider.provider}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => signInWithProvider(provider.authorizationUrl!)}
+                    >
+                      <span
+                        className={PROVIDER_MARKS[provider.provider]}
+                        aria-hidden="true"
+                      >
+                        {provider.provider === "telegram" ? (
+                          <Icon name="telegram" />
+                        ) : provider.provider === "vk" ? (
+                          "VK"
+                        ) : (
+                          "Я"
+                        )}
+                      </span>{" "}
+                      {provider.name}
+                    </button>
+                  )
+                ),
+              )}
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

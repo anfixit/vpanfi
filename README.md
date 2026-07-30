@@ -97,6 +97,30 @@ The workflow refuses to continue unless the domain already resolves to this serv
 
 `scripts/deploy.sh` reattaches `vpanfi-web` to that network on every release, because Compose drops the extra network whenever it recreates the container.
 
+## Signing in
+
+Password sign-in always works. Telegram, VK and Yandex are additional
+ways to sign in to the cabinet, and each is enabled independently by its
+credentials — a provider without them is simply not offered on the
+sign-in screen, because a button that cannot work is worse than no button.
+
+The same mechanism serves the profile: linking an account there and
+signing in with it are the same operation, differing only in whether
+someone is already signed in.
+
+| Provider | What it needs |
+|---|---|
+| Telegram | `VPANFI_TELEGRAM_BOT_TOKEN` secret, `VPANFI_TELEGRAM_BOT_USERNAME` variable, and the domain registered through BotFather `/setdomain` |
+| VK | a VK ID application: `VPANFI_VK_CLIENT_ID` variable and `VPANFI_VK_CLIENT_SECRET` secret |
+| Yandex | a Yandex OAuth application: `VPANFI_YANDEX_CLIENT_ID` variable and `VPANFI_YANDEX_CLIENT_SECRET` secret |
+
+Every provider must be told to return the visitor to `https://<domain>/auth/callback`.
+
+Telegram does not use OAuth: its widget signs the user data in the
+browser and the server verifies that signature with the bot token. Without
+that check anyone could post someone else's Telegram id and sign in as
+them, so an unsigned, tampered or stale payload is rejected.
+
 ## Security
 
 - `.env` is never committed; `.env.example` documents every variable.

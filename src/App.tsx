@@ -8,6 +8,7 @@ import { LoadingState } from "./components/ResourceState";
 import { type Theme } from "./components/ThemeToggle";
 import { useTheme } from "./hooks/useTheme";
 import { AdminPage } from "./pages/AdminPage";
+import { AuthCallbackPage } from "./pages/AuthCallbackPage";
 import { ConnectPage } from "./pages/ConnectPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
@@ -149,6 +150,8 @@ export function App() {
     page = (
       <LandingPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={openAuth} />
     );
+  } else if (pathname === routes.authCallback) {
+    page = <AuthCallbackPage />;
   } else if (pathname === routes.admin) {
     page = renderAdmin();
   } else if (isCabinetRoute(pathname)) {

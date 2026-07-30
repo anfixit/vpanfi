@@ -14,6 +14,7 @@ from app.repositories.users import UserRepository
 from app.services.admin import AdminService
 from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
+from app.services.oauth import OAuthService
 from app.services.subscription import SubscriptionService
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "get_auth_service",
     "get_cabinet_service",
     "get_current_user",
+    "get_oauth_service",
     "get_subscription_service",
     "require_admin",
 ]
@@ -128,3 +130,10 @@ def get_admin_service(
     settings: SettingsDep,
 ) -> AdminService:
     return AdminService(session, settings)
+
+
+def get_oauth_service(
+    session: DatabaseSession,
+    settings: SettingsDep,
+) -> OAuthService:
+    return OAuthService(session, settings)

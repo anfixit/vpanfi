@@ -164,6 +164,38 @@ class AuthService:
 
         await self._session.commit()
 
+    async def issue_tokens(self, user: User) -> TokenPairResponse:
+        """Выдать пару токенов уже известному пользователю.
+
+        Нужна входу через внешних провайдеров: пароль там не проверяется,
+        личность подтверждает провайдер.
+        """
+        return await self._issue_token_pair(user)
+
+    async def find_by_email(self, email: str) -> User | None:
+        """Найти пользователя по адресу."""
+        return await self._users.get_by_email(email)
+
+    async def create_external_user(
+        self,
+        *,
+        email: str,
+        display_name: str,
+    ) -> User:
+        """Создать аккаунт для входа через провайдера, без пароля.
+
+        Пароль остаётся пустым: человек не задавал его и войти по нему
+        нельзя. Задать его можно позже в профиле.
+        """
+        user = User(
+            email=email.strip().lower(),
+            display_name=display_name.strip() or "Пользователь",
+            password_digest=None,
+        )
+        await self._users.add(user)
+        self._session.add(BillingAccount(user_id=user.id))
+        return user
+
     async def _revoke_all_sessions(self, user: User) -> None:
         await self._session.execute(
             update(RefreshSession)

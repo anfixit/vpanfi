@@ -24,6 +24,12 @@ type AuthContextValue = {
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
   applyProfile: (profile: UserProfile) => void;
+  signInWithTelegram: (payload: Record<string, unknown>) => Promise<void>;
+  completeOAuth: (
+    provider: string,
+    code: string,
+    state: string,
+  ) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -126,9 +132,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(updated);
   }, []);
 
+  // Вход через провайдера завершается тем же, чем и вход по паролю:
+  // новым сеансом. Поэтому счётчик сессии тоже сдвигается.
+  const startSession = useCallback((accessToken: string) => {
+    setAccessToken(accessToken);
+    setProfile(null);
+    setStatus("authenticated");
+    setSession((current) => current + 1);
+  }, []);
+
+  const signInWithTelegram = useCallback(
+    async (payload: Record<string, unknown>) => {
+      const tokens = await api.loginWithTelegram(payload);
+      startSession(tokens.accessToken);
+    },
+    [startSession],
+  );
+
+  const completeOAuth = useCallback(
+    async (provider: string, code: string, state: string) => {
+      const tokens = await api.completeOAuth(provider, code, state);
+      startSession(tokens.accessToken);
+    },
+    [startSession],
+  );
+
   const value = useMemo<AuthContextValue>(
-    () => ({ status, profile, login, register, logout, applyProfile }),
-    [status, profile, login, register, logout, applyProfile],
+    () => ({
+      status,
+      profile,
+      login,
+      register,
+      logout,
+      applyProfile,
+      signInWithTelegram,
+      completeOAuth,
+    }),
+    [
+      status,
+      profile,
+      login,
+      register,
+      logout,
+      applyProfile,
+      signInWithTelegram,
+      completeOAuth,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
