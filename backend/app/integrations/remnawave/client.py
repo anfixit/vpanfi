@@ -1,9 +1,13 @@
 """Изолированный адаптер над HTTP API панели Remnawave.
 
-Панель — единственный источник правды о подписках: тем же данным
-управляет Telegram-бот. Поэтому кабинет ничего не кэширует у себя, а
-каждый запрос идёт в панель через этот модуль. Наружу отдаются обычные
-словари, чтобы смена версии панели правилась в одном файле.
+Панель — единственный источник правды о подписках. Сайт и бот равные
+интерфейсы к ней: ни один из них не хранит своей копии и не является
+источником. Поэтому кабинет ничего не кэширует, а каждый запрос идёт в
+панель через этот модуль.
+
+Пользователь панели ищется только по идентификатору подписки: связывать
+его с личностью из Telegram нельзя. Вход через Telegram подтверждает,
+кто человек, но ничего не говорит о том, какая подписка ему принадлежит.
 """
 
 from collections.abc import Mapping
@@ -142,34 +146,11 @@ class RemnawaveGateway:
             await self._get(f"{USERS_PATH}/by-username/{username}")
         )
 
-    async def get_user_by_telegram_id(
-        self,
-        telegram_id: int,
-    ) -> Mapping[str, Any]:
-        """Вернуть пользователя панели по Telegram-идентификатору."""
-        payload = await self._get(
-            f"{USERS_PATH}/by-telegram-id/{telegram_id}"
-        )
-        body = _unwrap(payload)
-        # Эта ручка отдаёт массив: у одного Telegram-аккаунта может быть
-        # несколько пользователей панели.
-        if isinstance(body, list):
-            if not body:
-                raise RemnawaveUserNotFoundError(str(telegram_id))
-            first = body[0]
-            if not isinstance(first, Mapping):
-                raise RemnawaveUnavailableError(
-                    "Remnawave returned an unexpected user payload"
-                )
-            return first
-        return _as_user(payload)
-
     async def create_user(
         self,
         *,
         username: str,
         expire_at: datetime,
-        telegram_id: int | None = None,
         email: str | None = None,
         traffic_limit_bytes: int = 0,
         hwid_device_limit: int | None = None,
@@ -185,8 +166,6 @@ class RemnawaveGateway:
             "trafficLimitBytes": traffic_limit_bytes,
             "status": "ACTIVE",
         }
-        if telegram_id is not None:
-            body["telegramId"] = telegram_id
         if email is not None:
             body["email"] = email
         if hwid_device_limit is not None:

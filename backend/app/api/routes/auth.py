@@ -339,7 +339,7 @@ async def list_providers(
                 name=PROVIDER_NAMES[provider],
                 authorization_url=url,
                 bot_username=(
-                    settings.telegram_bot_username
+                    settings.telegram_login_bot_username
                     if provider is IdentityProvider.TELEGRAM
                     else None
                 ),

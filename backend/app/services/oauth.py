@@ -167,9 +167,9 @@ class OAuthService:
             TelegramCheckFailedError: Подпись не сошлась или устарела.
         """
         self._require(IdentityProvider.TELEGRAM)
-        assert self._settings.telegram_bot_token is not None
+        assert self._settings.telegram_login_bot_token is not None
 
-        token = self._settings.telegram_bot_token.get_secret_value()
+        token = self._settings.telegram_login_bot_token.get_secret_value()
         profile = _verify_telegram(payload, bot_token=token)
         return await self._sign_in(
             IdentityProvider.TELEGRAM, profile, current_user

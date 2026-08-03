@@ -22,6 +22,8 @@ from app.services.oauth import (
     _verify_telegram,
 )
 
+# Токен бота входа. Он не имеет отношения к боту, который
+# продаёт подписки: Telegram здесь только подтверждает личность.
 BOT_TOKEN = "123456:AAaaBBbbCCccDDdd"
 STRONG_SECRET = "s" * 64
 
@@ -117,7 +119,8 @@ def test_yandex_authorization_url_is_built() -> None:
 
 def test_telegram_has_no_authorization_url() -> None:
     configured = service(
-        telegram_bot_token=BOT_TOKEN, telegram_bot_username="VPaNfi_bot"
+        telegram_login_bot_token=BOT_TOKEN,
+        telegram_login_bot_username="vpanfi_login_bot",
     )
 
     # У Telegram виджет, а не страница согласия.

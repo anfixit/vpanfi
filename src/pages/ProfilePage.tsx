@@ -152,7 +152,7 @@ export function ProfilePage() {
     {
       key: "telegram",
       name: "Telegram",
-      note: "Вход одним нажатием через знакомый аккаунт.",
+      note: "Вход одним нажатием. Подписку не переносит.",
       mark: "TG",
       markClass: "tg",
       connected: profile.telegramLinked,
@@ -361,7 +361,11 @@ export function ProfilePage() {
         <div className="section-heading compact-heading">
           <div>
             <span className="section-kicker">Вход без лишних препятствий</span>
-            <h2>Связанные аккаунты</h2>
+            <h2>Способы входа</h2>
+            <p className="muted">
+              Подтверждают, что это Вы. Подписка к ним не привязана — её
+              переносит только её собственная ссылка.
+            </p>
           </div>
         </div>
         <div className="linked-account-list">

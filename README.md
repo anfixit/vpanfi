@@ -6,6 +6,19 @@ VPaNfi is a standalone customer portal for simple internet access, subscription 
 
 The service is designed for people who do not want to understand protocols, configuration links or network terminology. The user sees one clear next action, while the technical details remain hidden behind an advanced section.
 
+## How the pieces fit together
+
+The Remnawave panel owns every subscription. The website and the Telegram
+bot are two equal interfaces to it — neither keeps its own copy and
+neither is a source of truth. The cabinet stores only which panel user an
+account belongs to, and reads everything else from the panel on request.
+
+A subscription reaches the cabinet by exactly one route: its own
+subscription link, which the bot sends to the customer. Signing in with
+Telegram says who a person is; it says nothing about which subscription
+is theirs, and the two are deliberately never joined. The panel is
+therefore never queried by Telegram identity.
+
 The brand mascot is Анфиса, a friendly monkey travelling through the internet jungle.
 
 ## Mascot
@@ -100,26 +113,33 @@ The workflow refuses to continue unless the domain already resolves to this serv
 ## Signing in
 
 Password sign-in always works. Telegram, VK and Yandex are additional
-ways to sign in to the cabinet, and each is enabled independently by its
-credentials — a provider without them is simply not offered on the
-sign-in screen, because a button that cannot work is worse than no button.
+ways to sign in, and each is enabled independently by its credentials — a
+provider without them is simply not offered on the sign-in screen,
+because a button that cannot work is worse than no button.
 
-The same mechanism serves the profile: linking an account there and
-signing in with it are the same operation, differing only in whether
-someone is already signed in.
+These providers only establish identity. They never bring a subscription
+with them: that arrives solely through the subscription link. The same
+mechanism serves the profile, where linking a provider and signing in
+with it are one operation, differing only in whether someone is already
+signed in.
+
+The Telegram **login bot is a separate thing from the bot that sells
+subscriptions**, which is why its settings are named for logging in. It
+may be a dedicated bot; nothing in the cabinet assumes otherwise.
 
 | Provider | What it needs |
 |---|---|
-| Telegram | `VPANFI_TELEGRAM_BOT_TOKEN` secret, `VPANFI_TELEGRAM_BOT_USERNAME` variable, and the domain registered through BotFather `/setdomain` |
+| Telegram | `VPANFI_TELEGRAM_LOGIN_BOT_TOKEN` secret, `VPANFI_TELEGRAM_LOGIN_BOT_USERNAME` variable, and the domain registered through BotFather `/setdomain` |
 | VK | a VK ID application: `VPANFI_VK_CLIENT_ID` variable and `VPANFI_VK_CLIENT_SECRET` secret |
 | Yandex | a Yandex OAuth application: `VPANFI_YANDEX_CLIENT_ID` variable and `VPANFI_YANDEX_CLIENT_SECRET` secret |
 
-Every provider must be told to return the visitor to `https://<domain>/auth/callback`.
+VK and Yandex must be told to return the visitor to
+`https://<domain>/auth/callback`.
 
 Telegram does not use OAuth: its widget signs the user data in the
-browser and the server verifies that signature with the bot token. Without
-that check anyone could post someone else's Telegram id and sign in as
-them, so an unsigned, tampered or stale payload is rejected.
+browser and the server verifies that signature with the login bot token.
+Without that check anyone could post someone else's Telegram id and sign
+in as them, so an unsigned, tampered or stale payload is rejected.
 
 ## Security
 

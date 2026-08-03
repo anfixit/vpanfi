@@ -43,8 +43,13 @@ class Settings(BaseSettings):
     # Способы входа в кабинет. Каждый включается независимо: провайдер
     # без учётных данных просто не предлагается на экране входа, а не
     # ломает вход остальным.
-    telegram_bot_token: SecretStr | None = None
-    telegram_bot_username: str | None = None
+    #
+    # Бот входа — отдельная сущность от бота, который продаёт подписки.
+    # Telegram здесь только подтверждает личность и ничего не говорит о
+    # том, какая подписка принадлежит человеку: её находит собственная
+    # ссылка подписки.
+    telegram_login_bot_token: SecretStr | None = None
+    telegram_login_bot_username: str | None = None
     vk_client_id: str | None = None
     vk_client_secret: SecretStr | None = None
     yandex_client_id: str | None = None
@@ -54,8 +59,8 @@ class Settings(BaseSettings):
     @field_validator(
         "remnawave_base_url",
         "remnawave_api_token",
-        "telegram_bot_token",
-        "telegram_bot_username",
+        "telegram_login_bot_token",
+        "telegram_login_bot_username",
         "vk_client_id",
         "vk_client_secret",
         "yandex_client_id",
@@ -114,7 +119,10 @@ class Settings(BaseSettings):
 
     @property
     def telegram_enabled(self) -> bool:
-        return bool(self.telegram_bot_token and self.telegram_bot_username)
+        return bool(
+            self.telegram_login_bot_token
+            and self.telegram_login_bot_username
+        )
 
     @property
     def redirect_url(self) -> str:

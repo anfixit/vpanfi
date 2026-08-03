@@ -81,32 +81,6 @@ async def test_unknown_subscription_raises_lookup_error() -> None:
 
 
 @respx.mock
-async def test_lookup_by_telegram_id_takes_the_first_match() -> None:
-    respx.get(f"{USERS_URL}/by-telegram-id/42").mock(
-        return_value=httpx.Response(
-            200,
-            json={"response": [{"uuid": str(USER_UUID)}, {"uuid": "other"}]},
-        )
-    )
-
-    async with _gateway() as gateway:
-        user = await gateway.get_user_by_telegram_id(42)
-
-    assert user["uuid"] == str(USER_UUID)
-
-
-@respx.mock
-async def test_lookup_by_telegram_id_without_matches() -> None:
-    respx.get(f"{USERS_URL}/by-telegram-id/42").mock(
-        return_value=httpx.Response(200, json={"response": []})
-    )
-
-    async with _gateway() as gateway:
-        with pytest.raises(RemnawaveUserNotFoundError):
-            await gateway.get_user_by_telegram_id(42)
-
-
-@respx.mock
 async def test_create_user_sends_the_panel_payload() -> None:
     route = respx.post(USERS_URL).mock(
         return_value=httpx.Response(
@@ -118,13 +92,14 @@ async def test_create_user_sends_the_panel_payload() -> None:
         await gateway.create_user(
             username="anfisa",
             expire_at=datetime(2027, 1, 1, tzinfo=UTC),
-            telegram_id=42,
         )
 
     body = route.calls.last.request.content.decode()
     assert '"username":"anfisa"' in body
-    assert '"telegramId":42' in body
     assert '"status":"ACTIVE"' in body
+    # Личность из Telegram к пользователю панели не привязывается:
+    # подписку находит только её собственная ссылка.
+    assert "telegramId" not in body
 
 
 @respx.mock
