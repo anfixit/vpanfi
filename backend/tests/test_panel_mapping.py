@@ -72,10 +72,15 @@ def test_past_expiry_wins_over_a_stale_active_status() -> None:
     assert subscription.days_left == 0
 
 
-def test_devices_used_never_exceeds_the_limit() -> None:
+def test_devices_over_the_limit_are_shown_as_they_are() -> None:
+    # Подрезка под лимит показывала «2 из 2» тому, у кого в панели пять
+    # устройств, и человек не понимал, почему новое не подключается.
     user = read_panel_user(panel_payload(hwidDeviceLimit=2))
 
-    assert to_subscription(user, devices_used=5).devices_used == 2
+    subscription = to_subscription(user, devices_used=5)
+
+    assert subscription.devices_used == 5
+    assert subscription.devices_limit == 2
 
 
 def test_missing_device_limit_falls_back_to_the_tariff() -> None:

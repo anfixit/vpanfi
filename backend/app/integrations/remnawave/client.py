@@ -10,6 +10,8 @@
 кто человек, но ничего не говорит о том, какая подписка ему принадлежит.
 """
 
+import asyncio
+import logging
 from collections.abc import Mapping
 from datetime import datetime
 from types import TracebackType
@@ -20,6 +22,8 @@ from uuid import UUID
 import httpx
 
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "RemnawaveError",
@@ -37,6 +41,12 @@ HWID_DEVICES_PATH = "/api/hwid/devices"
 # ссылки вида https://panel.example/sub/<shortUuid>.
 MIN_SHORT_UUID_LENGTH = 8
 MAX_SHORT_UUID_LENGTH = 64
+
+# Панель живёт на отдельном хосте, и короткий сетевой сбой между нами —
+# обычное дело. Одна повторная попытка превращает его в незаметную
+# задержку вместо экрана «Панель недоступна» на весь кабинет.
+TRANSPORT_RETRIES = 1
+RETRY_PAUSE_SECONDS = 0.3
 
 
 class RemnawaveError(RuntimeError):
@@ -215,26 +225,82 @@ class RemnawaveGateway:
         *,
         json: Mapping[str, Any] | None = None,
     ) -> Any:
+        """Сходить в панель, пережив короткий сетевой сбой.
+
+        Каждый отказ пишется в лог: без него ответ 503 приходил к
+        пользователю без единой строчки о том, что именно случилось.
+        """
+        response = await self._send(method, path, json=json)
+
+        if response.status_code == httpx.codes.NOT_FOUND:
+            raise RemnawaveUserNotFoundError(path)
+
         try:
-            response = await self._client.request(method, path, json=json)
-            if response.status_code == httpx.codes.NOT_FOUND:
-                raise RemnawaveUserNotFoundError(path)
             response.raise_for_status()
-            if not response.content:
-                return None
-            return response.json()
         except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "Remnawave %s %s responded with %s",
+                method,
+                path,
+                exc.response.status_code,
+            )
             raise RemnawaveUnavailableError(
                 f"Remnawave responded with {exc.response.status_code}"
             ) from exc
-        except httpx.HTTPError as exc:
-            raise RemnawaveUnavailableError(
-                "Remnawave panel is unreachable"
-            ) from exc
+
+        if not response.content:
+            return None
+
+        try:
+            return response.json()
         except ValueError as exc:
+            logger.warning(
+                "Remnawave %s %s returned a non-JSON body", method, path
+            )
             raise RemnawaveUnavailableError(
                 "Remnawave returned a non-JSON response"
             ) from exc
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Mapping[str, Any] | None,
+    ) -> httpx.Response:
+        last: httpx.TransportError | None = None
+
+        for attempt in range(TRANSPORT_RETRIES + 1):
+            try:
+                return await self._client.request(method, path, json=json)
+            except httpx.TransportError as exc:
+                # Обрыв соединения или таймаут — стоит попробовать ещё раз.
+                # Ошибку самого запроса повторять бессмысленно.
+                last = exc
+                logger.warning(
+                    "Remnawave %s %s failed (attempt %s/%s): %s",
+                    method,
+                    path,
+                    attempt + 1,
+                    TRANSPORT_RETRIES + 1,
+                    type(exc).__name__,
+                )
+                if attempt < TRANSPORT_RETRIES:
+                    await asyncio.sleep(RETRY_PAUSE_SECONDS)
+            except httpx.HTTPError as exc:
+                logger.warning(
+                    "Remnawave %s %s is malformed: %s",
+                    method,
+                    path,
+                    type(exc).__name__,
+                )
+                raise RemnawaveUnavailableError(
+                    "Remnawave panel is unreachable"
+                ) from exc
+
+        raise RemnawaveUnavailableError(
+            "Remnawave panel is unreachable"
+        ) from last
 
 
 def _to_panel_time(moment: datetime) -> str:

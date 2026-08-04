@@ -168,3 +168,36 @@ async def test_unreachable_panel_becomes_domain_error() -> None:
     async with _gateway() as gateway:
         with pytest.raises(RemnawaveUnavailableError):
             await gateway.get_user_by_uuid(USER_UUID)
+
+
+@respx.mock
+async def test_one_dropped_connection_is_retried() -> None:
+    # Кабинету незачем показывать «Панель недоступна» из-за мгновенной
+    # сетевой икоты: панель живёт на другом хосте, и это случается.
+    route = respx.get(f"{USERS_URL}/{USER_UUID}").mock(
+        side_effect=[
+            httpx.ConnectError("blip"),
+            httpx.Response(200, json={"response": {"uuid": str(USER_UUID)}}),
+        ]
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_uuid(USER_UUID)
+
+    assert user["uuid"] == str(USER_UUID)
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_a_persistent_outage_still_fails() -> None:
+    route = respx.get(f"{USERS_URL}/{USER_UUID}").mock(
+        side_effect=httpx.ReadTimeout("still down")
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(RemnawaveUnavailableError):
+            await gateway.get_user_by_uuid(USER_UUID)
+
+    # Повтор ровно один: бесконечные попытки держали бы запрос
+    # пользователя, пока он не отвалится по таймауту сам.
+    assert route.call_count == 2

@@ -91,7 +91,10 @@ def to_subscription(
         days_left=days_left,
         expires_at=expires_at,
         traffic_label=_traffic_label(user.traffic_limit_bytes),
-        devices_used=min(devices_used, user.devices_limit),
+        # Не подрезаем под лимит: если в панели устройств больше, чем мест,
+        # человеку нужно об этом узнать, а не увидеть «2 из 2» и гадать,
+        # почему на новом телефоне ничего не работает.
+        devices_used=devices_used,
         devices_limit=user.devices_limit,
         auto_renew_enabled=auto_renew_enabled,
         balance_rub=balance_rub,
