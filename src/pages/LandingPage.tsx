@@ -3,6 +3,7 @@ import { navigate, routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { telegramSupportUrl } from "../config";
+import { offerUrl, privacyPolicyUrl } from "../legal";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
@@ -321,6 +322,28 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#devices">Устройства</a>
           <a href="#support">Поддержка</a>
+        </div>
+        {/*
+          Документы отдельной группой, а не вперемешку с разделами
+          страницы: их ищут глазами внизу сайта, и платёжный провайдер
+          проверяет, что они доступны с любой страницы.
+        */}
+        <div className="footer-links footer-legal">
+          <a href={offerUrl} target="_blank" rel="noreferrer noopener">
+            Публичная оферта
+          </a>
+          <a href={privacyPolicyUrl} target="_blank" rel="noreferrer noopener">
+            Политика конфиденциальности
+          </a>
+          <a
+            href={routes.legal}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(routes.legal);
+            }}
+          >
+            Правила использования
+          </a>
         </div>
         <div className="footer-note">© VPaNfi, 2026</div>
       </footer>

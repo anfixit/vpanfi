@@ -829,11 +829,19 @@ h3,
 
 .footer {
   display: grid;
-  grid-template-columns: 1.2fr 1fr auto;
+  /* Четвёртая колонка — документы: оферта и политика должны быть видны
+     с любой страницы, а не прятаться в разделе кабинета. */
+  grid-template-columns: 1.2fr auto auto auto;
   align-items: center;
   gap: 30px;
   padding-block: 28px 46px;
   border-top: 1px solid var(--line);
+}
+
+.footer-legal {
+  flex-direction: column;
+  gap: 8px;
+  font-weight: 600;
 }
 
 .footer-brand p {
@@ -957,6 +965,34 @@ h3,
   border-radius: 13px;
   color: var(--text);
   background: var(--surface);
+}
+
+/*
+ * Согласие с офертой — единственная метка в форме, где галочка стоит
+ * рядом с текстом, а не над полем во всю ширину.
+ */
+.auth-modal label.auth-consent {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  margin: 4px 0 16px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.auth-consent input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 1px;
+  padding: 0;
+  accent-color: var(--accent-strong);
+}
+
+.auth-consent a {
+  color: var(--accent-strong);
+  font-weight: 700;
 }
 
 .full-button {

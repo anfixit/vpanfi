@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../api/client";
+import { routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useAsyncResource } from "../hooks/useAsyncResource";
+import { offerUrl, privacyPolicyUrl } from "../legal";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 import { TelegramLoginButton } from "./TelegramLoginButton";
@@ -28,6 +30,7 @@ export function AuthModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -114,8 +117,55 @@ export function AuthModal({
             Пароль
             <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Не короче 8 символов" required minLength={mode === "register" ? 8 : 1} maxLength={128} autoComplete={mode === "login" ? "current-password" : "new-password"} />
           </label>
+          {mode === "register" && (
+            /*
+             * Согласие даётся отдельным осознанным действием, а не
+             * припиской мелким шрифтом: договор заключается здесь, и
+             * платёжный провайдер проверяет, что человек принял оферту
+             * до того, как с него возьмут деньги.
+             */
+            <label className="auth-consent">
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(event) => setAccepted(event.target.checked)}
+                required
+                /*
+                 * Ссылки внутри метки не складываются в имя для
+                 * скринридера: без этого галочка читалась как «on».
+                 */
+                aria-label={
+                  "Я принимаю публичную оферту, политику " +
+                  "конфиденциальности и правила использования"
+                }
+              />
+              <span>
+                Я принимаю{" "}
+                <a href={offerUrl} target="_blank" rel="noreferrer noopener">
+                  публичную оферту
+                </a>
+                ,{" "}
+                <a
+                  href={privacyPolicyUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  политику конфиденциальности
+                </a>{" "}
+                и{" "}
+                <a href={routes.legal} target="_blank" rel="noreferrer noopener">
+                  правила использования
+                </a>
+                .
+              </span>
+            </label>
+          )}
           {error && <div className="auth-error" role="alert">{error}</div>}
-          <button className="button button-primary full-button" type="submit" disabled={busy}>
+          <button
+            className="button button-primary full-button"
+            type="submit"
+            disabled={busy || (mode === "register" && !accepted)}
+          >
             {busy ? "Подождите…" : mode === "register" ? "Получить 7 дней бесплатно" : "Войти"}
           </button>
         </form>

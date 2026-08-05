@@ -13,6 +13,7 @@ import { ConnectPage } from "./pages/ConnectPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { LandingPage } from "./pages/LandingPage";
+import { LegalPage } from "./pages/LegalPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -152,6 +153,9 @@ export function App() {
     );
   } else if (pathname === routes.authCallback) {
     page = <AuthCallbackPage />;
+  } else if (pathname === routes.legal) {
+    // Документы открыты всем: их читают до регистрации и до оплаты.
+    page = <LegalPage theme={theme} onToggleTheme={toggleTheme} />;
   } else if (pathname === routes.admin) {
     page = renderAdmin();
   } else if (isCabinetRoute(pathname)) {

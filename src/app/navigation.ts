@@ -10,6 +10,7 @@ export const routes = {
   profile: "/app/profile",
   admin: "/admin",
   authCallback: "/auth/callback",
+  legal: "/legal",
 } as const;
 
 export type AppRoute = (typeof routes)[keyof typeof routes];
