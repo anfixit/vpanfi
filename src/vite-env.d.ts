@@ -5,8 +5,6 @@ interface ImportMetaEnv {
   readonly VITE_DEMO_MODE?: string;
   readonly VITE_TELEGRAM_SUPPORT_URL?: string;
   readonly VITE_TELEGRAM_BOT_URL?: string;
-  readonly VITE_OFFER_URL?: string;
-  readonly VITE_PRIVACY_POLICY_URL?: string;
 }
 
 interface ImportMeta {

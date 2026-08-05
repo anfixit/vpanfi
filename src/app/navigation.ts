@@ -15,6 +15,13 @@ export const routes = {
 
 export type AppRoute = (typeof routes)[keyof typeof routes];
 
+/*
+ * Каждый документ живёт по собственному адресу, поэтому список маршрутов
+ * не может быть закрытым. Шаблонный тип оставляет проверку на месте:
+ * опечатка вроде "/lega/offer" по-прежнему не пройдёт компиляцию.
+ */
+export type NavigablePath = AppRoute | `${typeof routes.legal}/${string}`;
+
 function normalizePathname(pathname: string): string {
   if (pathname.length > 1 && pathname.endsWith("/")) {
     return pathname.slice(0, -1);
@@ -36,7 +43,10 @@ export function usePathname(): string {
   return pathname;
 }
 
-export function navigate(path: AppRoute, options?: { replace?: boolean }): void {
+export function navigate(
+  path: NavigablePath,
+  options?: { replace?: boolean },
+): void {
   const current = normalizePathname(window.location.pathname);
   const next = normalizePathname(path);
 

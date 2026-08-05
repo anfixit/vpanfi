@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "./api/client";
 import { isCabinetRoute, navigate, routes, usePathname } from "./app/navigation";
 import { useAuth } from "./auth/AuthContext";
+import { findLegalDocument } from "./legal";
 import { AuthModal } from "./components/AuthModal";
 import { CabinetShell } from "./components/CabinetShell";
 import { LoadingState } from "./components/ResourceState";
@@ -13,6 +14,7 @@ import { ConnectPage } from "./pages/ConnectPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { LandingPage } from "./pages/LandingPage";
+import { LegalDocumentPage } from "./pages/LegalDocumentPage";
 import { LegalPage } from "./pages/LegalPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
@@ -145,6 +147,7 @@ export function App() {
     return <AdminPage />;
   };
 
+  const legalDocument = findLegalDocument(pathname);
   let page;
 
   if (pathname === routes.landing) {
@@ -156,6 +159,14 @@ export function App() {
   } else if (pathname === routes.legal) {
     // Документы открыты всем: их читают до регистрации и до оплаты.
     page = <LegalPage theme={theme} onToggleTheme={toggleTheme} />;
+  } else if (legalDocument) {
+    page = (
+      <LegalDocumentPage
+        document={legalDocument}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
   } else if (pathname === routes.admin) {
     page = renderAdmin();
   } else if (isCabinetRoute(pathname)) {

@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../api/client";
-import { routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { offerUrl, privacyPolicyUrl } from "../legal";
+import { legalDocuments, legalPath } from "../legal";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
 import { TelegramLoginButton } from "./TelegramLoginButton";
@@ -30,7 +29,7 @@ export function AuthModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [accepted, setAccepted] = useState(false);
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -78,6 +77,7 @@ export function AuthModal({
   };
 
   const available = providers.data ?? [];
+  const allAccepted = legalDocuments.every((item) => accepted[item.slug]);
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
@@ -119,52 +119,50 @@ export function AuthModal({
           </label>
           {mode === "register" && (
             /*
-             * Согласие даётся отдельным осознанным действием, а не
-             * припиской мелким шрифтом: договор заключается здесь, и
-             * платёжный провайдер проверяет, что человек принял оферту
-             * до того, как с него возьмут деньги.
+             * Отметка ставится напротив каждого документа отдельно.
+             * Одна общая галочка на три документа означала бы, что
+             * человек согласился с тем, чего мог не открыть, — а
+             * платёжный провайдер проверяет именно принятие оферты.
              */
-            <label className="auth-consent">
-              <input
-                type="checkbox"
-                checked={accepted}
-                onChange={(event) => setAccepted(event.target.checked)}
-                required
-                /*
-                 * Ссылки внутри метки не складываются в имя для
-                 * скринридера: без этого галочка читалась как «on».
-                 */
-                aria-label={
-                  "Я принимаю публичную оферту, политику " +
-                  "конфиденциальности и правила использования"
-                }
-              />
-              <span>
-                Я принимаю{" "}
-                <a href={offerUrl} target="_blank" rel="noreferrer noopener">
-                  публичную оферту
-                </a>
-                ,{" "}
-                <a
-                  href={privacyPolicyUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  политику конфиденциальности
-                </a>{" "}
-                и{" "}
-                <a href={routes.legal} target="_blank" rel="noreferrer noopener">
-                  правила использования
-                </a>
-                .
-              </span>
-            </label>
+            <fieldset className="auth-consent-group">
+              <legend>Перед регистрацией подтвердите согласие</legend>
+              {legalDocuments.map((item) => (
+                <label className="auth-consent" key={item.slug}>
+                  <input
+                    type="checkbox"
+                    checked={accepted[item.slug] ?? false}
+                    onChange={(event) =>
+                      setAccepted((current) => ({
+                        ...current,
+                        [item.slug]: event.target.checked,
+                      }))
+                    }
+                    required
+                    /*
+                     * Ссылка внутри метки не складывается в имя для
+                     * скринридера: без этого галочка читалась как «on».
+                     */
+                    aria-label={`Я принимаю ${item.titleAccusative}`}
+                  />
+                  <span>
+                    Я принимаю{" "}
+                    <a
+                      href={legalPath(item.slug)}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {item.titleAccusative}
+                    </a>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
           )}
           {error && <div className="auth-error" role="alert">{error}</div>}
           <button
             className="button button-primary full-button"
             type="submit"
-            disabled={busy || (mode === "register" && !accepted)}
+            disabled={busy || (mode === "register" && !allAccepted)}
           >
             {busy ? "Подождите…" : mode === "register" ? "Получить 7 дней бесплатно" : "Войти"}
           </button>

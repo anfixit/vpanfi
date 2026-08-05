@@ -3,13 +3,11 @@ import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
 import { telegramSupportUrl } from "../config";
-import { offerUrl, privacyPolicyUrl, serviceRules } from "../legal";
+import { legalDocuments, legalPath, requisites } from "../legal";
 
 /*
- * Страница открыта без входа: платёжный провайдер проверяет документы до
- * того, как у него появится аккаунт, и человек читает их до оплаты, а не
- * после. Всё, что здесь есть, ведёт наружу на подписанные документы —
- * пересказывать их своими словами нельзя, разойдутся.
+ * Страница открыта без входа: её читают до регистрации и до оплаты, а
+ * платёжный провайдер проверяет ещё до появления аккаунта.
  */
 export function LegalPage({
   theme,
@@ -49,43 +47,57 @@ export function LegalPage({
         </section>
 
         <section className="legal-docs">
-          <a
-            className="legal-doc-card"
-            href={offerUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            <strong>Публичная оферта</strong>
-            <p>
-              Договор между Вами и сервисом: тарифы, порядок оплаты,
-              сроки и условия возврата средств.
-            </p>
-            <span className="legal-doc-link">Открыть документ</span>
-          </a>
-          <a
-            className="legal-doc-card"
-            href={privacyPolicyUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            <strong>Политика конфиденциальности</strong>
-            <p>
-              Какие данные сервис собирает, зачем, сколько хранит и как
-              их удалить по Вашему требованию.
-            </p>
-            <span className="legal-doc-link">Открыть документ</span>
-          </a>
+          {legalDocuments.map((item) => (
+            <a
+              className="legal-doc-card"
+              key={item.slug}
+              href={legalPath(item.slug)}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(legalPath(item.slug));
+              }}
+            >
+              <strong>{item.title}</strong>
+              <p>{item.summary}</p>
+              <span className="legal-doc-link">
+                Читать · редакция от {item.updatedAt}
+              </span>
+            </a>
+          ))}
         </section>
 
-        <section className="legal-rules" id="rules">
-          <h2>Правила использования сервиса</h2>
-          <ol className="legal-rule-list">
-            {serviceRules.map((rule) => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ol>
+        <section className="legal-requisites">
+          <h2>Сведения об исполнителе</h2>
+          <dl>
+            <div>
+              <dt>Исполнитель</dt>
+              <dd>{requisites.legalName}</dd>
+            </div>
+            <div>
+              <dt>ОГРНИП</dt>
+              <dd>{requisites.ogrnip}</dd>
+            </div>
+            <div>
+              <dt>ИНН</dt>
+              <dd>{requisites.inn}</dd>
+            </div>
+            <div>
+              <dt>Дата регистрации</dt>
+              <dd>{requisites.registeredAt}</dd>
+            </div>
+            <div>
+              <dt>Регистрирующий орган</dt>
+              <dd>{requisites.registrar}</dd>
+            </div>
+            <div>
+              <dt>Электронная почта</dt>
+              <dd>
+                <a href={`mailto:${requisites.email}`}>{requisites.email}</a>
+              </dd>
+            </div>
+          </dl>
           <p className="muted legal-support-note">
-            По всем вопросам — техническая поддержка:{" "}
+            По вопросам работы сервиса — техническая поддержка:{" "}
             <a href={telegramSupportUrl} target="_blank" rel="noreferrer noopener">
               написать в Telegram
             </a>

@@ -3,7 +3,7 @@ import { navigate, routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { telegramSupportUrl } from "../config";
-import { offerUrl, privacyPolicyUrl } from "../legal";
+import { legalDocuments, legalPath } from "../legal";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
@@ -74,6 +74,7 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#countries">Страны</a>
           <a href="#support">Поддержка</a>
+          <a href="#documents">Документы</a>
         </nav>
         <div className="header-actions">
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
@@ -297,6 +298,46 @@ export function LandingPage({
           </article>
         </section>
 
+        {/*
+          Документы стоят перед призывом оплатить, а не после него:
+          человек должен успеть их прочитать до того, как нажмёт кнопку.
+        */}
+        <section className="documents-section shell" id="documents">
+          <div className="section-heading compact-heading">
+            <div>
+              <span className="section-kicker">Всё честно и заранее</span>
+              <h2>Документы</h2>
+              <p className="muted">
+                Условия, на которых работает сервис. Открываются без
+                регистрации — прочитайте до оплаты.
+              </p>
+            </div>
+          </div>
+          <div className="documents-grid">
+            {legalDocuments.map((item) => (
+              <a
+                className="document-card"
+                key={item.slug}
+                href={legalPath(item.slug)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(legalPath(item.slug));
+                }}
+              >
+                <span className="document-card-icon">
+                  <Icon name="shield" />
+                </span>
+                <strong>{item.title}</strong>
+                <p>{item.summary}</p>
+                <span className="document-card-link">
+                  Читать
+                  <Icon name="arrow-right" />
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+
         <section className="final-cta shell">
           <div>
             <span className="section-kicker">Первую неделю оплачивать не нужно</span>
@@ -329,21 +370,18 @@ export function LandingPage({
           проверяет, что они доступны с любой страницы.
         */}
         <div className="footer-links footer-legal">
-          <a href={offerUrl} target="_blank" rel="noreferrer noopener">
-            Публичная оферта
-          </a>
-          <a href={privacyPolicyUrl} target="_blank" rel="noreferrer noopener">
-            Политика конфиденциальности
-          </a>
-          <a
-            href={routes.legal}
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(routes.legal);
-            }}
-          >
-            Правила использования
-          </a>
+          {legalDocuments.map((item) => (
+            <a
+              key={item.slug}
+              href={legalPath(item.slug)}
+              onClick={(event) => {
+                event.preventDefault();
+                navigate(legalPath(item.slug));
+              }}
+            >
+              {item.title}
+            </a>
+          ))}
         </div>
         <div className="footer-note">© VPaNfi, 2026</div>
       </footer>
