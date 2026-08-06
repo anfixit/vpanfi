@@ -1340,3 +1340,15 @@
     padding: 20px 0 48px;
   }
 }
+
+/* Ссылки на приложения после оплаты: в строку, с переносом на узком экране. */
+.buy-apps {
+  display: grid;
+  gap: 8px;
+}
+
+.buy-app-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

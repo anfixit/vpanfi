@@ -125,12 +125,26 @@ class CabinetService:
                 install_url="https://play.google.com/store/apps/details?id=com.happproxy",
             ),
             ConnectionClientResponse(
+                id="incy-ios",
+                name="INCY",
+                platform="iPhone / iPad",
+                recommended=True,
+                description=(
+                    "Есть в российском App Store — страну учётной записи "
+                    "менять не нужно."
+                ),
+                install_url="https://apps.apple.com/ru/app/incy/id6756943388",
+            ),
+            ConnectionClientResponse(
                 id="happ-ios",
                 name="HAPP",
                 platform="iPhone / iPad",
-                recommended=True,
-                description="Основное приложение для iPhone и iPad.",
-                install_url="https://apps.apple.com/",
+                recommended=False,
+                description=(
+                    "Подойдёт, если App Store у вас не российский: из "
+                    "российского приложение убрали."
+                ),
+                install_url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
             ),
             ConnectionClientResponse(
                 id="happ-windows",
@@ -146,7 +160,7 @@ class CabinetService:
                 platform="macOS",
                 recommended=True,
                 description="Основное приложение для компьютеров Mac.",
-                install_url="https://apps.apple.com/",
+                install_url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
             ),
             ConnectionClientResponse(
                 id="nekobox-linux",

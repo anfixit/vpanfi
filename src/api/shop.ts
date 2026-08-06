@@ -156,7 +156,10 @@ export const shop = {
    * следующем заходе, и не более того. Аккаунт заводит бот сам.
    */
   async createPurchase(payload: GuestPurchasePayload): Promise<GuestPurchase> {
-    const raw = await shopRequest<{ token: string; payment_url?: string | null }>(
+    const raw = await shopRequest<{
+      purchase_token: string;
+      payment_url?: string | null;
+    }>(
       `/${SHOP_SLUG}/purchase`,
       {
         method: "POST",
@@ -170,7 +173,7 @@ export const shop = {
       },
     );
 
-    return { token: raw.token, paymentUrl: raw.payment_url ?? null };
+    return { token: raw.purchase_token, paymentUrl: raw.payment_url ?? null };
   },
 
   /*

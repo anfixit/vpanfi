@@ -34,7 +34,13 @@ function formatDays(days: number): string {
   return `${days} дней`;
 }
 
-function PurchaseResult({ token }: { token: string }) {
+function PurchaseResult({
+  token,
+  onOpenAuth,
+}: {
+  token: string;
+  onOpenAuth: () => void;
+}) {
   const [status, setStatus] = useState<GuestPurchaseStatus | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
@@ -84,21 +90,47 @@ function PurchaseResult({ token }: { token: string }) {
 
         <p className="muted">
           Ссылку нужно вставить в приложение — сама по себе она ничего не
-          включает. На iPhone и Android подойдёт Happ, а если он не
-          устанавливается — INCY.
-        </p>
-
-        <p className="muted">
-          Сохраните ссылку: она понадобится, чтобы подключить другое
+          включает. Сохраните её: понадобится, чтобы подключить другое
           устройство.
         </p>
 
+        <div className="buy-apps">
+          <span className="muted">Приложение для вашего устройства:</span>
+          <div className="buy-app-links">
+            <a
+              className="button button-ghost"
+              href="https://apps.apple.com/ru/app/incy/id6756943388"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              iPhone — INCY
+            </a>
+            <a
+              className="button button-ghost"
+              href="https://play.google.com/store/apps/details?id=com.happproxy"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Android — HAPP
+            </a>
+          </div>
+        </div>
+
+        {/*
+          * Кабинет здесь не предлагается: аккаунта у покупателя ещё нет, а
+          * в браузере мог остаться чужой сеанс с прошлого входа — человек
+          * попадал бы в чужую подписку вместо своей.
+          */}
+        <p className="muted">
+          Чтобы следить за сроком и подключать устройства из кабинета,
+          заведите аккаунт на ту же почту.
+        </p>
         <button
           className="button button-primary button-large"
           type="button"
-          onClick={() => navigate(routes.connect)}
+          onClick={onOpenAuth}
         >
-          Как подключить
+          Создать аккаунт
         </button>
       </section>
     );
@@ -140,9 +172,11 @@ function PurchaseResult({ token }: { token: string }) {
 export function BuyPage({
   theme,
   onToggleTheme,
+  onOpenAuth,
 }: {
   theme: Theme;
   onToggleTheme: () => void;
+  onOpenAuth: () => void;
 }) {
   const config = useAsyncResource(shop.getConfig);
 
@@ -226,7 +260,7 @@ export function BuyPage({
 
       <main className="buy-page shell">
         {token ? (
-          <PurchaseResult token={token} />
+          <PurchaseResult token={token} onOpenAuth={onOpenAuth} />
         ) : (
           <section className="cabinet-card">
             <span className="section-kicker">Без регистрации</span>

@@ -159,7 +159,9 @@ export function App() {
     page = <AuthCallbackPage />;
   } else if (pathname === routes.buy) {
     // Покупка открыта без входа: у покупателя ещё нет аккаунта.
-    page = <BuyPage theme={theme} onToggleTheme={toggleTheme} />;
+    page = (
+      <BuyPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={openAuth} />
+    );
   } else if (pathname === routes.legal) {
     // Документы открыты всем: их читают до регистрации и до оплаты.
     page = <LegalPage theme={theme} onToggleTheme={toggleTheme} />;
