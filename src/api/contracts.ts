@@ -178,6 +178,9 @@ export type GuestPurchase = {
  */
 export type GuestPurchaseStatus = {
   status: string;
-  paid: boolean;
+  /** Подписка выдана — можно показывать ссылку. */
+  done: boolean;
+  /** Оплата не состоится: платёж отклонён или счёт протух. */
+  failed: boolean;
   subscriptionUrl: string | null;
 };

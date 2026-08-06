@@ -184,9 +184,16 @@ export const shop = {
       subscription_url?: string | null;
     }>(`/purchase/${encodeURIComponent(token)}`);
 
+    /*
+     * Бот различает шесть состояний. Готово — только delivered: на paid
+     * деньги уже получены, но подписка ещё оформляется, и ссылки нет.
+     * Раньше здесь проверялся несуществующий "activated", поэтому
+     * страница ждала подтверждения вечно, хотя всё давно прошло.
+     */
     return {
       status: raw.status,
-      paid: raw.status === "paid" || raw.status === "activated",
+      done: raw.status === "delivered",
+      failed: raw.status === "failed" || raw.status === "expired",
       subscriptionUrl: raw.subscription_url ?? null,
     };
   },

@@ -49,7 +49,8 @@ function PurchaseResult({ token }: { token: string }) {
         const next = await shop.getPurchaseStatus(token);
         if (cancelled) return;
         setStatus(next);
-        if (next.paid) return;
+        /* Дальше спрашивать нечего: подписка выдана либо платёж не состоялся. */
+        if (next.done || next.failed) return;
       } catch {
         /* Разрыв связи не повод сдаваться: следующая попытка через паузу. */
       }
@@ -68,7 +69,7 @@ function PurchaseResult({ token }: { token: string }) {
     };
   }, [token]);
 
-  if (status?.paid && status.subscriptionUrl) {
+  if (status?.done && status.subscriptionUrl) {
     return (
       <section className="cabinet-card buy-result">
         <Mascot variant="greeting" className="card-mascot" decorative />
@@ -98,6 +99,26 @@ function PurchaseResult({ token }: { token: string }) {
           onClick={() => navigate(routes.connect)}
         >
           Как подключить
+        </button>
+      </section>
+    );
+  }
+
+  if (status?.failed) {
+    return (
+      <section className="cabinet-card buy-result">
+        <Mascot variant="qr" className="card-mascot" decorative />
+        <h1>Оплата не прошла</h1>
+        <p className="muted">
+          Деньги не списаны. Попробуйте оформить заново, а если списание всё
+          же произошло — напишите в поддержку, разберёмся.
+        </p>
+        <button
+          className="button button-primary button-large"
+          type="button"
+          onClick={() => navigate(routes.buy)}
+        >
+          Оформить заново
         </button>
       </section>
     );
