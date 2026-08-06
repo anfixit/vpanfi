@@ -6,7 +6,7 @@ import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { legalPath } from "../legal";
+import { legalDocuments, legalPath } from "../legal";
 
 /*
  * Покупка без регистрации.
@@ -128,13 +128,15 @@ export function BuyPage({
   const [tariffId, setTariffId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [option, setOption] = useState<string | null>(null);
-  const [accepted, setAccepted] = useState(false);
+  /* Отметка напротив каждого документа отдельно — как при регистрации. */
+  const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* Возврат из платёжки: токен в адресе означает, что покупка уже создана. */
   const token = new URLSearchParams(window.location.search).get("token");
 
+  const allAccepted = legalDocuments.every((item) => accepted[item.slug]);
   const tariffs = config.data?.tariffs ?? [];
   const method = config.data?.paymentMethods[0] ?? null;
   const selected: ShopTariff | null =
@@ -278,19 +280,35 @@ export function BuyPage({
                   </fieldset>
                 )}
 
-                <label className="buy-consent">
-                  <input
-                    type="checkbox"
-                    checked={accepted}
-                    onChange={(event) => setAccepted(event.target.checked)}
-                    required
-                  />
-                  <span>
-                    Я принимаю{" "}
-                    <a href={legalPath("offer")}>публичную оферту</a> и{" "}
-                    <a href={legalPath("privacy")}>политику конфиденциальности</a>
-                  </span>
-                </label>
+                <fieldset className="auth-consent-group">
+                  <legend>Перед оплатой подтвердите согласие</legend>
+                  {legalDocuments.map((item) => (
+                    <label className="auth-consent" key={item.slug}>
+                      <input
+                        type="checkbox"
+                        checked={accepted[item.slug] ?? false}
+                        onChange={(event) =>
+                          setAccepted((current) => ({
+                            ...current,
+                            [item.slug]: event.target.checked,
+                          }))
+                        }
+                        required
+                        aria-label={`Я принимаю ${item.titleAccusative}`}
+                      />
+                      <span>
+                        Я принимаю{" "}
+                        <a
+                          href={legalPath(item.slug)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                        >
+                          {item.titleAccusative}
+                        </a>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
 
                 {error && (
                   <div className="auth-error" role="alert">
@@ -301,7 +319,7 @@ export function BuyPage({
                 <button
                   className="button button-primary button-large full-button"
                   type="submit"
-                  disabled={busy || !selected || !accepted}
+                  disabled={busy || !selected || !allAccepted}
                 >
                   {busy
                     ? "Готовим оплату…"

@@ -1002,7 +1002,16 @@ h3,
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.auth-modal label.auth-consent {
+/*
+ * Блок согласия появляется и при регистрации, и при оплате. Правило было
+ * привязано к модальному окну, и на странице покупки три отметки
+ * слипались в одну строку — выглядеть они обязаны одинаково везде.
+ *
+ * Отсчёт идёт от группы, а не от окна: так правило весит больше, чем
+ * общее «.auth-modal label», и не зависит от того, какое из них окажется
+ * ниже в файле.
+ */
+.auth-consent-group label.auth-consent {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;

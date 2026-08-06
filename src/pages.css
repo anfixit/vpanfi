@@ -1279,7 +1279,7 @@
   margin-top: 20px;
 }
 
-.buy-form > label:not(.buy-consent) {
+.buy-form > label {
   display: grid;
   gap: 8px;
   font-weight: 800;
@@ -1310,28 +1310,6 @@
 .buy-method input {
   width: auto;
   accent-color: var(--primary);
-}
-
-/* Согласие набрано в строку с флажком: разрывать их переносом нельзя. */
-.buy-consent {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.5;
-  cursor: pointer;
-}
-
-.buy-consent input {
-  width: auto;
-  margin-top: 2px;
-  accent-color: var(--primary);
-}
-
-.buy-consent a {
-  color: var(--primary-strong);
-  text-decoration: underline;
 }
 
 .buy-result {
