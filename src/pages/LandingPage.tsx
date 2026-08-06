@@ -8,7 +8,9 @@ import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
 import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
-import { platforms, tariffs } from "../data";
+import type { ShopConfig } from "../api/contracts";
+import { shop } from "../api/shop";
+import { platforms, tariffs, type Tariff } from "../data";
 
 const advantages = ["Надёжное подключение", "Без лимита трафика", "Помощь рядом"];
 
@@ -38,6 +40,42 @@ const steps = [
   text: string;
 }>;
 
+/*
+ * Цены на витрине берутся у бота: он же считает их для покупки, и
+ * зашитый в код прайс разошёлся бы с ним при первой правке тарифа.
+ * Список из data.ts остаётся запасным — если бот недоступен, витрина
+ * покажет прошлые цены вместо пустого места.
+ *
+ * Скидка считается от стоимости того же срока помесячно: она нигде не
+ * хранится, а витрине нужна.
+ */
+function toLandingTariffs(config: ShopConfig | null): Tariff[] {
+  const periods = (config?.tariffs ?? [])
+    .map((tariff) => tariff.periods[0])
+    .filter((period): period is NonNullable<typeof period> => Boolean(period))
+    .sort((left, right) => left.days - right.days);
+
+  if (periods.length === 0) return tariffs;
+
+  const monthly = periods[0].priceKopeks / periods[0].days;
+
+  return periods.map((period, index) => {
+    const full = monthly * period.days;
+    const saved = full > 0 ? Math.round((1 - period.priceKopeks / full) * 100) : 0;
+    const months = Math.round(period.days / 30);
+
+    return {
+      period:
+        months === 1 ? "1 месяц" : months < 5 ? `${months} месяца` : `${months} месяцев`,
+      price: period.priceLabel,
+      priceRub: Math.round(period.priceKopeks / 100),
+      saving: saved > 0 ? `экономия ${saved}%` : undefined,
+      // Отметка «выгодно» — приём витрины, а не свойство тарифа.
+      popular: periods.length > 2 && index === 1,
+    };
+  });
+}
+
 export function LandingPage({
   theme,
   onToggleTheme,
@@ -51,6 +89,8 @@ export function LandingPage({
   // Список стран приходит с сервера: та же ручка кормит кабинет, так
   // что витрина не может пообещать страну, которой нет.
   const countries = useAsyncResource(api.getCountries);
+  const shopConfig = useAsyncResource(shop.getConfig);
+  const priceList = toLandingTariffs(shopConfig.data);
   const canOpenCabinet = api.isDemoMode || status === "authenticated";
 
   // Форма обращения живёт в кабинете, а кабинет закрыт. Отправлять туда
@@ -177,7 +217,7 @@ export function LandingPage({
               </span>
             </div>
             <div className="tariff-grid">
-              {tariffs.map((tariff) => (
+              {priceList.map((tariff) => (
                 <button
                   className={`tariff ${tariff.popular ? "is-popular" : ""}`}
                   type="button"
