@@ -10,6 +10,7 @@ import { type Theme } from "./components/ThemeToggle";
 import { useTheme } from "./hooks/useTheme";
 import { AdminPage } from "./pages/AdminPage";
 import { AuthCallbackPage } from "./pages/AuthCallbackPage";
+import { BuyPage } from "./pages/BuyPage";
 import { ConnectPage } from "./pages/ConnectPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
@@ -156,6 +157,9 @@ export function App() {
     );
   } else if (pathname === routes.authCallback) {
     page = <AuthCallbackPage />;
+  } else if (pathname === routes.buy) {
+    // Покупка открыта без входа: у покупателя ещё нет аккаунта.
+    page = <BuyPage theme={theme} onToggleTheme={toggleTheme} />;
   } else if (pathname === routes.legal) {
     // Документы открыты всем: их читают до регистрации и до оплаты.
     page = <LegalPage theme={theme} onToggleTheme={toggleTheme} />;

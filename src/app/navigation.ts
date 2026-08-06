@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 
 export const routes = {
   landing: "/",
+  /*
+   * Покупка живёт отдельной страницей, а не окном: платёжная система
+   * возвращает человека по адресу, и возвращать его нужно туда, где
+   * видно результат, а не на главную с потерянным состоянием.
+   */
+  buy: "/buy",
   dashboard: "/app",
   connect: "/app/connect",
   devices: "/app/devices",

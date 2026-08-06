@@ -441,6 +441,7 @@
 .support-form textarea,
 .support-form select,
 .profile-details input,
+.buy-form input,
 .subscription-link-form input {
   width: 100%;
   padding: 13px 15px;
@@ -1255,5 +1256,109 @@
   .legal-requisites dl > div {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+}
+
+/*
+ * Страница покупки.
+ *
+ * Оформление собрано из тех же кирпичей, что и кабинет: карточка,
+ * сетка тарифов и поля ввода уже описаны выше и переиспользуются.
+ * Здесь только то, чего раньше не было.
+ */
+.buy-page {
+  display: grid;
+  gap: 20px;
+  padding: 32px 0 64px;
+  max-width: 680px;
+}
+
+.buy-form {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.buy-form > label:not(.buy-consent) {
+  display: grid;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.buy-methods {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.buy-methods legend {
+  padding: 0 6px;
+  font-weight: 800;
+}
+
+.buy-method {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.buy-method input {
+  width: auto;
+  accent-color: var(--primary);
+}
+
+/* Согласие набрано в строку с флажком: разрывать их переносом нельзя. */
+.buy-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.buy-consent input {
+  width: auto;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.buy-consent a {
+  color: var(--primary-strong);
+  text-decoration: underline;
+}
+
+.buy-result {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+}
+
+/*
+ * Ссылка подписки — то, ради чего человек сюда шёл. Она набрана
+ * моноширинным по нажатию копируется, поэтому переносится по символам:
+ * обрезать её многоточием нельзя, из обрезанной ничего не скопируешь.
+ */
+.buy-subscription-link code {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+@media (max-width: 640px) {
+  .buy-page {
+    padding: 20px 0 48px;
   }
 }

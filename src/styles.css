@@ -602,6 +602,21 @@ h3,
   transform: translateY(-3px);
 }
 
+/*
+ * Выбранный тариф и выгодный тариф — разные вещи. Пока они выглядели
+ * одинаково, средняя карточка казалась уже выбранной, и человек не
+ * понимал, что вообще можно выбрать другую.
+ */
+.tariff.is-selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.tariff.is-selected strong {
+  color: var(--primary-strong);
+}
+
 .tariff > span {
   color: var(--muted);
   font-size: 11px;

@@ -182,7 +182,7 @@ export function LandingPage({
                   className={`tariff ${tariff.popular ? "is-popular" : ""}`}
                   type="button"
                   key={tariff.period}
-                  onClick={onOpenAuth}
+                  onClick={() => navigate(routes.buy)}
                 >
                   {tariff.popular && <span className="popular-label">выгодно</span>}
                   <span>{tariff.period}</span>

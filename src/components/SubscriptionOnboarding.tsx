@@ -1,6 +1,6 @@
 import type { SubscriptionLink } from "../api/contracts";
 import { api } from "../api/client";
-import { telegramBotUrl } from "../config";
+import { navigate, routes } from "../app/navigation";
 import { tariffs } from "../data";
 import { Icon } from "./Icon";
 import { Mascot } from "./Mascot";
@@ -53,15 +53,17 @@ export function SubscriptionOnboarding({
 
         <div className="tariff-grid">
           {tariffs.map((tariff) => (
-            <article
+            <button
               className={`tariff ${tariff.popular ? "is-popular" : ""}`.trim()}
+              type="button"
               key={tariff.period}
+              onClick={() => navigate(routes.buy)}
             >
               {tariff.popular && <span className="popular-label">выгодно</span>}
               <span>{tariff.period}</span>
               <strong>{tariff.price}</strong>
               {tariff.saving && <small>{tariff.saving}</small>}
-            </article>
+            </button>
           ))}
         </div>
 
@@ -85,17 +87,16 @@ export function SubscriptionOnboarding({
           </div>
         </div>
 
-        <a
+        <button
           className="button button-primary button-large full-button"
-          href={telegramBotUrl}
-          target="_blank"
-          rel="noreferrer"
+          type="button"
+          onClick={() => navigate(routes.buy)}
         >
-          Оформить подписку в боте
-        </a>
+          Оформить подписку
+        </button>
         <p className="muted offer-note">
-          Оплата и оформление пока проходят в боте — он же пришлёт ссылку,
-          которую нужно вставить ниже.
+          Оплата проходит здесь же — Telegram не нужен. Ссылку на подписку
+          покажем сразу после оплаты.
         </p>
       </section>
 
