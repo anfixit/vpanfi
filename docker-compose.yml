@@ -24,6 +24,11 @@ services:
       start_period: 10s
     networks:
       - vpanfi
+      # Снаружи сайт открывает Caddy, который живёт в стеке панели и
+      # ходит по имени контейнера. Без этой сети он его не видит, и сайт
+      # отвечает 502 — ровно это и случалось после каждой пересборки,
+      # пока сеть подключали руками.
+      - remnawave-network
 
   api:
     build:
@@ -101,3 +106,5 @@ volumes:
 networks:
   vpanfi:
     driver: bridge
+  remnawave-network:
+    external: true

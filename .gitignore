@@ -26,3 +26,4 @@ tsconfig.tsbuildinfo
 
 # Копии чужих конфигов, которые снимает publish-domain.sh на сервере.
 backups/
+.prerender
