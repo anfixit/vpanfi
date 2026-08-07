@@ -13,7 +13,7 @@ import { privacy } from "./privacy";
 import { rules } from "./rules";
 import type { LegalDocument } from "./types";
 
-export { requisites } from "./requisites";
+export { contacts } from "./contacts";
 export type { LegalDocument, LegalSection } from "./types";
 
 /** Порядок важен: он же используется в футере и при регистрации. */

@@ -3,7 +3,7 @@ import { Brand } from "../components/Brand";
 import { Mascot } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
 import { telegramSupportUrl } from "../config";
-import { legalDocuments, legalPath, requisites } from "../legal";
+import { contacts, legalDocuments, legalPath } from "../legal";
 
 /*
  * Страница открыта без входа: её читают до регистрации и до оплаты, а
@@ -66,34 +66,22 @@ export function LegalPage({
           ))}
         </section>
 
+        {/*
+          * Реквизиты предпринимателя с сайта убраны по решению владельца
+          * сервиса. Остались контакты — по ним и обращаются.
+          */}
         <section className="legal-requisites">
-          <h2>Сведения об исполнителе</h2>
+          <h2>Контакты</h2>
           <dl>
-            <div>
-              <dt>Исполнитель</dt>
-              <dd>{requisites.legalName}</dd>
-            </div>
-            <div>
-              <dt>ОГРНИП</dt>
-              <dd>{requisites.ogrnip}</dd>
-            </div>
-            <div>
-              <dt>ИНН</dt>
-              <dd>{requisites.inn}</dd>
-            </div>
-            <div>
-              <dt>Дата регистрации</dt>
-              <dd>{requisites.registeredAt}</dd>
-            </div>
-            <div>
-              <dt>Регистрирующий орган</dt>
-              <dd>{requisites.registrar}</dd>
-            </div>
             <div>
               <dt>Электронная почта</dt>
               <dd>
-                <a href={`mailto:${requisites.email}`}>{requisites.email}</a>
+                <a href={`mailto:${contacts.email}`}>{contacts.email}</a>
               </dd>
+            </div>
+            <div>
+              <dt>Сайт</dt>
+              <dd>{contacts.site}</dd>
             </div>
           </dl>
           <p className="muted legal-support-note">

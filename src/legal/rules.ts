@@ -1,4 +1,4 @@
-import { requisites } from "./requisites";
+import { contacts } from "./contacts";
 import type { LegalDocument } from "./types";
 
 /*
@@ -65,7 +65,7 @@ export const rules: LegalDocument = {
       title: "Поддержка",
       items: [
         `По всем вопросам — техническая поддержка: ` +
-          `${requisites.supportTelegram}.`,
+          `${contacts.supportTelegram}.`,
       ],
     },
   ],

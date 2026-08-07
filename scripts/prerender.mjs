@@ -40,7 +40,7 @@ await build({
   },
 });
 
-const { legalDocuments, legalPath, requisites } = await import(
+const { legalDocuments, legalPath, contacts } = await import(
   path.join(ssrDir, "legal.mjs")
 );
 
@@ -102,8 +102,8 @@ function renderIndex() {
     `<p>Здесь собрано всё, что определяет отношения между Вами и сервисом. ` +
     `Оплата подписки означает согласие с этими документами.</p>` +
     `<ul>${items}</ul>` +
-    `<p>${escapeHtml(requisites.legalName)}, ОГРНИП ${escapeHtml(requisites.ogrnip)}, ` +
-    `ИНН ${escapeHtml(requisites.inn)}.</p>` +
+    `<p>Связаться: ${escapeHtml(contacts.email)}, ` +
+    `поддержка ${escapeHtml(contacts.supportTelegram)}.</p>` +
     `</article></main>`
   );
 }

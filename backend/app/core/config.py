@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     remnawave_api_token: SecretStr | None = None
     remnawave_timeout_seconds: float = 10.0
 
-    telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/VPaNfi_bot")
+    # Поддержка — живой человек, а не бот оформления: с вопросом
+    # в меню покупки идти некуда.
+    telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/Anfikus")
 
     # Способы входа в кабинет. Каждый включается независимо: провайдер
     # без учётных данных просто не предлагается на экране входа, а не

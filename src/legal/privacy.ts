@@ -1,4 +1,4 @@
-import { requisites } from "./requisites";
+import { contacts } from "./contacts";
 import type { LegalDocument } from "./types";
 
 /*
@@ -16,10 +16,9 @@ export const privacy: LegalDocument = {
     "и как их удалить по Вашему требованию.",
   updatedAt: "5 августа 2026 года",
   preamble: [
-    `Оператором персональных данных является ${requisites.legalName} ` +
-      `(ОГРНИП ${requisites.ogrnip}, ИНН ${requisites.inn}).`,
+    "Оператором персональных данных является сервис VPaNfi.",
     "Политика разъясняет, какие данные обрабатывает сервис VPaNfi на " +
-      `сайте ${requisites.site} и в Telegram-боте, и составлена в ` +
+      `сайте ${contacts.site} и в Telegram-боте, и составлена в ` +
       "соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ " +
       "«О персональных данных».",
   ],
@@ -147,8 +146,8 @@ export const privacy: LegalDocument = {
           "личного кабинета.",
         "Обжаловать действия Оператора в Роскомнадзоре или в суде.",
         "Обращения направляются на адрес электронной почты " +
-          `${requisites.email} или в службу поддержки ` +
-          `${requisites.supportTelegram}. Срок ответа — 30 календарных ` +
+          `${contacts.email} или в службу поддержки ` +
+          `${contacts.supportTelegram}. Срок ответа — 30 календарных ` +
           "дней с момента получения обращения.",
       ],
     },
@@ -156,18 +155,15 @@ export const privacy: LegalDocument = {
       title: "Изменение политики",
       items: [
         "Оператор вправе изменять настоящую Политику, публикуя новую " +
-          `редакцию по адресу ${requisites.site}/legal/privacy.`,
+          `редакцию по адресу ${contacts.site}/legal/privacy.`,
         "Дата последнего изменения указана в начале документа.",
       ],
     },
     {
-      title: "Реквизиты Оператора",
+      title: "Контакты Оператора",
       items: [
-        requisites.legalName,
-        `ОГРНИП: ${requisites.ogrnip}`,
-        `ИНН: ${requisites.inn}`,
-        `Адрес электронной почты: ${requisites.email}`,
-        `Служба поддержки: ${requisites.supportTelegram}`,
+        `Адрес электронной почты: ${contacts.email}`,
+        `Служба поддержки: ${contacts.supportTelegram}`,
       ],
     },
   ],
