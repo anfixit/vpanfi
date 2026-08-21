@@ -66,16 +66,16 @@ class SubscriptionService:
 
     async def describe(self, user: User) -> SubscriptionLinkResponse:
         """Показать текущее состояние привязки."""
-        if user.remnawave_user_uuid is None:
+        if user.remnawave_user_id is None:
             return SubscriptionLinkResponse(linked=False)
 
         async with self._gateway() as gateway:
             try:
-                payload = await gateway.get_user_by_uuid(
-                    user.remnawave_user_uuid
+                payload = await gateway.get_user_by_id(
+                    user.remnawave_user_id
                 )
                 devices = await gateway.list_devices(
-                    user.remnawave_user_uuid
+                    user.remnawave_user_id
                 )
             except RemnawaveUserNotFoundError:
                 # Пользователя удалили из панели: привязка больше не
@@ -119,14 +119,14 @@ class SubscriptionService:
             except UnreadablePanelUserError as error:
                 raise PanelUnavailableError(str(error)) from error
 
-            await self._ensure_not_claimed(user, panel_user.uuid)
+            await self._ensure_not_claimed(user, panel_user.id)
 
-            user.remnawave_user_uuid = panel_user.uuid
+            user.remnawave_user_id = panel_user.id
             user.remnawave_username = panel_user.username or None
             await self._session.commit()
 
             try:
-                devices = await gateway.list_devices(panel_user.uuid)
+                devices = await gateway.list_devices(panel_user.id)
             except RemnawaveUnavailableError:
                 devices = []
 
@@ -138,13 +138,13 @@ class SubscriptionService:
         Пока подписка не привязана, показывать нечего — это не ошибка,
         а пустой список.
         """
-        if user.remnawave_user_uuid is None:
+        if user.remnawave_user_id is None:
             return []
 
         async with self._gateway() as gateway:
             try:
                 devices = await gateway.list_devices(
-                    user.remnawave_user_uuid
+                    user.remnawave_user_id
                 )
             except RemnawaveUserNotFoundError:
                 return []
@@ -160,13 +160,13 @@ class SubscriptionService:
             SubscriptionNotFoundError: К аккаунту не привязана подписка.
             PanelUnavailableError: Панель недоступна.
         """
-        if user.remnawave_user_uuid is None:
+        if user.remnawave_user_id is None:
             raise SubscriptionNotFoundError("no linked subscription")
 
         async with self._gateway() as gateway:
             try:
                 await gateway.delete_device(
-                    user.remnawave_user_uuid, device_id
+                    user.remnawave_user_id, device_id
                 )
             except RemnawaveUserNotFoundError as error:
                 raise SubscriptionNotFoundError(device_id) from error
@@ -175,17 +175,21 @@ class SubscriptionService:
 
     async def unlink(self, user: User) -> None:
         """Отвязать подписку от аккаунта, ничего не трогая в панели."""
-        user.remnawave_user_uuid = None
+        user.remnawave_user_id = None
         user.remnawave_username = None
         await self._session.commit()
 
-    async def _ensure_not_claimed(self, user: User, panel_uuid) -> None:
+    async def _ensure_not_claimed(
+        self,
+        user: User,
+        panel_user_id: int,
+    ) -> None:
         statement = select(User).where(
-            User.remnawave_user_uuid == panel_uuid,
+            User.remnawave_user_id == panel_user_id,
             User.id != user.id,
         )
         if await self._session.scalar(statement) is not None:
-            raise SubscriptionAlreadyClaimedError(str(panel_uuid))
+            raise SubscriptionAlreadyClaimedError(str(panel_user_id))
 
     @staticmethod
     def _describe_payload(payload, *, devices_used: int):

@@ -159,7 +159,7 @@ class AuthService:
         user.password_digest = None
         user.is_active = False
         user.is_admin = False
-        user.remnawave_user_uuid = None
+        user.remnawave_user_id = None
         user.remnawave_username = None
 
         await self._session.commit()

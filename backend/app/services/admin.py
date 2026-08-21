@@ -58,7 +58,7 @@ class AdminService:
         linked = await self._count(
             select(func.count())
             .select_from(User)
-            .where(User.remnawave_user_uuid.is_not(None))
+            .where(User.remnawave_user_id.is_not(None))
         )
         admins = await self._count(
             select(func.count()).select_from(User).where(User.is_admin)
@@ -112,13 +112,13 @@ class AdminService:
             PanelUnavailableError: Панель недоступна.
         """
         user = await self._require_user(user_id)
-        if user.remnawave_user_uuid is None:
+        if user.remnawave_user_id is None:
             raise SubscriptionNotFoundError("no linked subscription")
 
         async with self._gateway() as gateway:
             try:
-                payload = await gateway.get_user_by_uuid(
-                    user.remnawave_user_uuid
+                payload = await gateway.get_user_by_id(
+                    user.remnawave_user_id
                 )
                 panel_user = read_panel_user(payload)
 
@@ -133,7 +133,7 @@ class AdminService:
                 )
 
                 updated = await gateway.set_expiry(
-                    user.remnawave_user_uuid, expires_at
+                    user.remnawave_user_id, expires_at
                 )
             except RemnawaveUserNotFoundError as error:
                 raise SubscriptionNotFoundError(str(user_id)) from error
@@ -178,7 +178,7 @@ class AdminService:
                 raise PanelUnavailableError(str(error)) from error
 
         panel_user = read_panel_user(created)
-        user.remnawave_user_uuid = panel_user.uuid
+        user.remnawave_user_id = panel_user.id
         user.remnawave_username = panel_user.username or username
         await self._session.commit()
 
@@ -220,7 +220,7 @@ class AdminService:
             is_active=user.is_active,
             is_admin=user.is_admin,
             panel_username=user.remnawave_username,
-            subscription_linked=user.remnawave_user_uuid is not None,
+            subscription_linked=user.remnawave_user_id is not None,
             expires_at=expires_at,
             days_left=days_left,
         )

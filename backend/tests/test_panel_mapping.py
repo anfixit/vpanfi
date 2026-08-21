@@ -12,13 +12,14 @@ from app.services.panel import (
     to_subscription,
 )
 
-PANEL_UUID = "9f1d6d4e-1111-2222-3333-444455556666"
+# Панель 3.x отдаёт числовой id и больше не отдаёт uuid.
+PANEL_USER_ID = 131
 
 
 def panel_payload(**overrides: object) -> dict[str, object]:
     """Ответ панели с теми полями, которые она отдаёт на самом деле."""
     payload: dict[str, object] = {
-        "uuid": PANEL_UUID,
+        "id": PANEL_USER_ID,
         "shortUuid": "abcd1234efgh",
         "username": "anfisa",
         "status": "ACTIVE",
@@ -101,9 +102,35 @@ def test_plain_number_traffic_counter_is_accepted() -> None:
     assert user.used_traffic_bytes == 2048
 
 
-def test_user_without_uuid_is_rejected() -> None:
+def test_user_without_id_is_rejected() -> None:
     with pytest.raises(UnreadablePanelUserError):
-        read_panel_user(panel_payload(uuid=None))
+        read_panel_user(panel_payload(id=None))
+
+
+def test_old_panel_payload_with_only_uuid_is_rejected() -> None:
+    """Ответ панели 2.x кабинету больше не годится.
+
+    До 3.0.0 пользователь адресовался полем ``uuid``. Принять такой
+    ответ молча значило бы ходить в панель по идентификатору, на который
+    она отвечает 400, — и показывать человеку «Панель недоступна».
+    """
+    payload = panel_payload()
+    del payload["id"]
+    payload["uuid"] = "9f1d6d4e-1111-2222-3333-444455556666"
+
+    with pytest.raises(UnreadablePanelUserError):
+        read_panel_user(payload)
+
+
+def test_boolean_is_not_a_user_id() -> None:
+    # bool — подкласс int, и True тихо стало бы пользователем номер 1.
+    with pytest.raises(UnreadablePanelUserError):
+        read_panel_user(panel_payload(id=True))
+
+
+def test_numeric_id_is_read_as_int() -> None:
+    assert read_panel_user(panel_payload()).id == PANEL_USER_ID
+    assert read_panel_user(panel_payload(id="131")).id == 131
 
 
 def test_platform_name_is_not_repeated_in_the_version() -> None:

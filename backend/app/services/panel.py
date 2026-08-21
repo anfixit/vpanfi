@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from typing import Any
-from uuid import UUID
 
 from app.schemas.cabinet import (
     DeviceResponse,
@@ -42,7 +41,7 @@ class PanelUser:
 
     def __init__(self, payload: Mapping[str, Any]) -> None:
         self.raw = payload
-        self.uuid = _read_uuid(payload)
+        self.id = _read_id(payload)
         self.username = str(payload.get("username") or "")
         self.short_uuid = _optional_str(payload.get("shortUuid"))
         self.subscription_url = _optional_str(payload.get("subscriptionUrl"))
@@ -62,7 +61,7 @@ def read_panel_user(payload: Mapping[str, Any]) -> PanelUser:
     """Разобрать ответ панели.
 
     Raises:
-        UnreadablePanelUserError: Если нет UUID пользователя.
+        UnreadablePanelUserError: Если нет числового идентификатора.
     """
     return PanelUser(payload)
 
@@ -111,13 +110,21 @@ def _traffic_label(limit_bytes: int) -> str:
     return f"{limit_bytes / (1024 ** 2):.0f} МБ"
 
 
-def _read_uuid(payload: Mapping[str, Any]) -> UUID:
-    raw = payload.get("uuid")
+def _read_id(payload: Mapping[str, Any]) -> int:
+    """Прочитать идентификатор пользователя панели.
+
+    С версии 3.0.0 панель адресует пользователя числовым ``id``; поля
+    ``uuid`` в ответе больше нет, и запрос по нему отвергается с 400.
+    """
+    raw = payload.get("id")
+    # bool — подкласс int, и True прошло бы как идентификатор 1.
+    if isinstance(raw, bool):
+        raise UnreadablePanelUserError("Remnawave user has no usable id")
     try:
-        return UUID(str(raw))
+        return int(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError) as error:
         raise UnreadablePanelUserError(
-            "Remnawave user has no usable uuid"
+            "Remnawave user has no usable id"
         ) from error
 
 

@@ -110,7 +110,7 @@ async def unlink_device(
     user: CurrentUser,
     subscriptions: SubscriptionServiceDep,
 ) -> Response:
-    if user.remnawave_user_uuid is None:
+    if user.remnawave_user_id is None:
         # Без привязанной подписки отвязывать нечего, и это не ошибка
         # пользователя: экран устройств в этом случае просто пуст.
         return Response(status_code=status.HTTP_204_NO_CONTENT)

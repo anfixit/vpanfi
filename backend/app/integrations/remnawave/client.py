@@ -17,7 +17,6 @@ from datetime import datetime
 from types import TracebackType
 from typing import Any, Self
 from urllib.parse import urlparse
-from uuid import UUID
 
 import httpx
 
@@ -134,9 +133,9 @@ class RemnawaveGateway:
         """Закрыть HTTP-соединения с панелью."""
         await self._client.aclose()
 
-    async def get_user_by_uuid(self, user_uuid: UUID) -> Mapping[str, Any]:
-        """Вернуть пользователя панели по его UUID."""
-        return _as_user(await self._get(f"{USERS_PATH}/{user_uuid}"))
+    async def get_user_by_id(self, user_id: int) -> Mapping[str, Any]:
+        """Вернуть пользователя панели по его числовому идентификатору."""
+        return _as_user(await self._get(f"{USERS_PATH}/{user_id}"))
 
     async def get_user_by_short_uuid(
         self,
@@ -185,19 +184,19 @@ class RemnawaveGateway:
 
     async def set_expiry(
         self,
-        user_uuid: UUID,
+        user_id: int,
         expire_at: datetime,
     ) -> Mapping[str, Any]:
         """Передвинуть дату окончания подписки."""
         body = {
-            "uuid": str(user_uuid),
+            "id": user_id,
             "expireAt": _to_panel_time(expire_at),
         }
         return _as_user(await self._request("PATCH", USERS_PATH, json=body))
 
-    async def list_devices(self, user_uuid: UUID) -> list[Mapping[str, Any]]:
+    async def list_devices(self, user_id: int) -> list[Mapping[str, Any]]:
         """Вернуть устройства, привязанные к пользователю панели."""
-        payload = await self._get(f"{HWID_DEVICES_PATH}/{user_uuid}")
+        payload = await self._get(f"{HWID_DEVICES_PATH}/{user_id}")
         body = _unwrap(payload)
         if isinstance(body, Mapping):
             body = body.get("devices", body)
@@ -207,12 +206,12 @@ class RemnawaveGateway:
             )
         return [device for device in body if isinstance(device, Mapping)]
 
-    async def delete_device(self, user_uuid: UUID, hwid: str) -> None:
+    async def delete_device(self, user_id: int, hwid: str) -> None:
         """Отвязать устройство от пользователя панели."""
         await self._request(
             "POST",
             f"{HWID_DEVICES_PATH}/delete",
-            json={"userUuid": str(user_uuid), "hwid": hwid},
+            json={"userId": user_id, "hwid": hwid},
         )
 
     async def _get(self, path: str) -> Any:

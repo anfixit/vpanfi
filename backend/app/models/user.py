@@ -1,7 +1,14 @@
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Enum,
+    ForeignKey,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,8 +41,10 @@ class User(TimestampMixin, Base):
         Boolean, nullable=False, default=False
     )
 
-    remnawave_user_uuid: Mapped[UUID | None] = mapped_column(
-        PGUUID(as_uuid=True),
+    # Панель Remnawave с версии 3.0.0 адресует пользователя числовым id,
+    # а прежний uuid у неё исчез: на запрос по нему она отвечает 400.
+    remnawave_user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
         unique=True,
         index=True,
     )
