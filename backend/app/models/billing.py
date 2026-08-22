@@ -61,12 +61,16 @@ class Payment(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    user_id: Mapped[UUID] = mapped_column(
+    # Гость покупает по почте, и аккаунта у него может не быть. Заводить
+    # его молча нельзя: почта в users уникальна, а восстановления пароля
+    # на сайте нет — человек навсегда потерял бы возможность
+    # зарегистрироваться сам.
+    user_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
         index=True,
     )
+    contact_email: Mapped[str | None] = mapped_column(String(320), index=True)
     amount_kopecks: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status"),
@@ -84,5 +88,10 @@ class Payment(TimestampMixin, Base):
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     period_months: Mapped[int | None] = mapped_column(Integer)
     extra_devices: Mapped[int | None] = mapped_column(Integer)
+    tariff_id: Mapped[int | None] = mapped_column(Integer)
+    period_days: Mapped[int | None] = mapped_column(Integer)
+    # Панель отдаёт ссылку на подписку один раз — в момент выдачи. Без неё
+    # странице результата нечего показать человеку после оплаты.
+    subscription_url: Mapped[str | None] = mapped_column(String(500))
 
-    user: Mapped[User] = relationship()
+    user: Mapped[User | None] = relationship()
