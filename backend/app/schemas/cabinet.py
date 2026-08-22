@@ -111,3 +111,37 @@ class SubscriptionLinkResponse(BaseModel):
         description="Ссылка подписки из панели: её вставляют в приложение",
     )
     subscription: SubscriptionResponse | None = None
+
+
+class CheckoutRequest(BaseModel):
+    """Заявка на покупку.
+
+    Суммы здесь намеренно нет: цену выясняет сервер, иначе покупатель
+    назначил бы её себе сам. ``extra="forbid"`` превращает присланную
+    сумму в отказ, а не в молча проигнорированное поле.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    email: EmailStr
+    tariff_id: int = Field(gt=0, alias="tariffId")
+    period_days: int = Field(gt=0, le=730, alias="periodDays")
+
+
+class CheckoutResponse(BaseModel):
+    payment_id: UUID = Field(serialization_alias="paymentId")
+    redirect_url: str = Field(serialization_alias="redirectUrl")
+
+
+class PaymentStatusResponse(BaseModel):
+    """Состояние платежа для страницы результата.
+
+    Вернуться с оплаты можно и не заплатив, поэтому страница спрашивает
+    сервер, а не верит самому факту возврата.
+    """
+
+    status: str
+    paid: bool
+    subscription_url: str | None = Field(
+        default=None, serialization_alias="subscriptionUrl"
+    )

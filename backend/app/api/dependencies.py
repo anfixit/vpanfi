@@ -14,6 +14,7 @@ from app.repositories.users import UserRepository
 from app.services.admin import AdminService
 from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
+from app.services.checkout import CheckoutService
 from app.services.oauth import OAuthService
 from app.services.subscription import SubscriptionService
 
@@ -116,6 +117,13 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 CurrentAdmin = Annotated[User, Depends(require_admin)]
+
+
+def get_checkout_service(
+    session: DatabaseSession,
+    settings: SettingsDep,
+) -> CheckoutService:
+    return CheckoutService(session, settings)
 
 
 def get_subscription_service(
