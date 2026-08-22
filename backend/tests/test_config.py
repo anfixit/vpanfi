@@ -1,5 +1,5 @@
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from app.core.config import DEFAULT_JWT_SECRET, Settings
 
@@ -68,3 +68,35 @@ def test_allowed_origins_splits_a_comma_separated_list() -> None:
         "https://vpanfi.ru",
         "https://www.vpanfi.ru",
     ]
+
+
+def test_platega_is_not_configured_without_both_values() -> None:
+    """Одного мерчанта без секрета мало: касса настроена целиком или нет."""
+    only_merchant = Settings(_env_file=None, platega_merchant_id="cf9fe88f")
+
+    assert only_merchant.is_platega_configured is False
+
+
+def test_platega_is_configured_when_both_values_are_present() -> None:
+    settings = Settings(
+        _env_file=None,
+        platega_merchant_id="cf9fe88f",
+        platega_secret=SecretStr("secret"),
+    )
+
+    assert settings.is_platega_configured is True
+    assert str(settings.platega_base_url).rstrip("/") == "https://app.platega.io"
+    assert settings.platega_payment_method == 2
+
+
+def test_empty_platega_values_are_treated_as_unset() -> None:
+    """Пустая переменная — это «не настроено», а не «настроено пустым»."""
+    settings = Settings(
+        _env_file=None,
+        platega_merchant_id="",
+        platega_secret="",
+    )
+
+    assert settings.platega_merchant_id is None
+    assert settings.platega_secret is None
+    assert settings.is_platega_configured is False

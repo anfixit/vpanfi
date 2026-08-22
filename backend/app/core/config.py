@@ -38,6 +38,22 @@ class Settings(BaseSettings):
     remnawave_api_token: SecretStr | None = None
     remnawave_timeout_seconds: float = 10.0
 
+    # Касса сайта. Мерчант отдельный от кассы бота: у бота свой, и
+    # перепутать их значит увести деньги на чужой счёт.
+    platega_merchant_id: str | None = None
+    platega_secret: SecretStr | None = None
+    platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
+    platega_timeout_seconds: float = 15.0
+    # 2 — СБП, тот же способ оплаты, который бот показывает на витрине.
+    platega_payment_method: int = 2
+
+    # Витрина бота: сайт читает оттуда тарифы и цены, чтобы они не
+    # разъехались с ботом.
+    shop_base_url: AnyHttpUrl = AnyHttpUrl(
+        "https://vpanfibot.ru/cabinet/landing"
+    )
+    shop_slug: str = "vpanfi"
+
     # Поддержка — живой человек, а не бот оформления: с вопросом
     # в меню покупки идти некуда.
     telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/Anfikus")
@@ -61,6 +77,8 @@ class Settings(BaseSettings):
     @field_validator(
         "remnawave_base_url",
         "remnawave_api_token",
+        "platega_merchant_id",
+        "platega_secret",
         "telegram_login_bot_token",
         "telegram_login_bot_username",
         "vk_client_id",
@@ -134,6 +152,15 @@ class Settings(BaseSettings):
 
         origin = self.allowed_origins[0] if self.allowed_origins else ""
         return f"{origin.rstrip('/')}/auth/callback"
+
+    @property
+    def is_platega_configured(self) -> bool:
+        """Касса готова, только когда есть и мерчант, и секрет.
+
+        Половина реквизитов хуже, чем ничего: платёж создастся и упрётся
+        в отказ авторизации уже после того, как человек нажал «оплатить».
+        """
+        return bool(self.platega_merchant_id and self.platega_secret)
 
     @property
     def allowed_origins(self) -> list[str]:
