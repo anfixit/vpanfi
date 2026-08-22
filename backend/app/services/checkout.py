@@ -126,8 +126,12 @@ class CheckoutService:
                     amount_rubles=amount_kopecks / KOPECKS_IN_RUBLE,
                     description=payment.description,
                     payload=str(payment.id),
-                    return_url=f"{origin}/pay/{payment.id}",
-                    failed_url=f"{origin}/pay/{payment.id}?failed=1",
+                    # Возврат ведёт на страницу покупки с токеном: она
+                    # умеет показывать состояние оплаты. Отдельной
+                    # страницы /pay на сайте нет, и человек упирался бы
+                    # в 404 сразу после того, как заплатил.
+                    return_url=f"{origin}/buy?token={payment.id}",
+                    failed_url=f"{origin}/buy?token={payment.id}&failed=1",
                 )
         except PlategaNotConfiguredError as error:
             raise CheckoutNotConfiguredError(str(error)) from error

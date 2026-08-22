@@ -21,3 +21,19 @@ def test_different_domains_do_not_collide() -> None:
     assert panel_username("anfisa@one.example") != panel_username(
         "anfisa@two.example"
     )
+
+
+def test_return_url_points_at_an_existing_page() -> None:
+    """Возврат ведёт на /buy: страницы /pay на сайте нет.
+
+    Проверка глазами тут не работает — 404 виден только тому, кто уже
+    заплатил, а это худший момент для сюрприза.
+    """
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.start)
+
+    assert "/buy?token=" in source
+    assert "/pay/" not in source

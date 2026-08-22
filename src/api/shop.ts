@@ -153,51 +153,66 @@ export const shop = {
 
   /*
    * Покупка без регистрации: почта нужна, чтобы узнать человека при
-   * следующем заходе, и не более того. Аккаунт заводит бот сам.
+   * следующем заходе, и не более того.
+   *
+   * Деньги принимает сайт своей кассой. Раньше покупку создавал бот, и
+   * платёж уходил на его мерчант; теперь тарифы мы по-прежнему читаем у
+   * бота, чтобы цены не разъехались, а касса своя. Сумму сюда не
+   * передаём намеренно: её выясняет сервер, иначе цену можно было бы
+   * назначить себе самому.
    */
   async createPurchase(payload: GuestPurchasePayload): Promise<GuestPurchase> {
-    const raw = await shopRequest<{
-      purchase_token: string;
-      payment_url?: string | null;
-    }>(
-      `/${SHOP_SLUG}/purchase`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          tariff_id: payload.tariffId,
-          period_days: payload.periodDays,
-          contact_type: "email",
-          contact_value: payload.email,
-          payment_method: payload.paymentMethod,
-        }),
-      },
-    );
+    const response = await fetch("/api/v1/payments/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: payload.email,
+        tariffId: payload.tariffId,
+        periodDays: payload.periodDays,
+      }),
+    });
 
-    return { token: raw.purchase_token, paymentUrl: raw.payment_url ?? null };
+    if (!response.ok) {
+      throw new ShopRequestError(FALLBACK_ERROR);
+    }
+
+    const raw = (await response.json()) as {
+      paymentId: string;
+      redirectUrl: string;
+    };
+
+    return { token: raw.paymentId, paymentUrl: raw.redirectUrl };
   },
 
   /*
    * Состояние оплаты. Платёж подтверждает вебхук от платёжной системы,
    * поэтому страница результата спрашивает сервер, а не доверяет тому,
    * что человек вернулся: вернуться можно и не заплатив.
+   *
+   * Токен здесь — идентификатор нашего платежа. У бота его нет, и
+   * прежний запрос к нему ответил бы «не найдено», а страница ждала бы
+   * подтверждения вечно.
    */
   async getPurchaseStatus(token: string): Promise<GuestPurchaseStatus> {
-    const raw = await shopRequest<{
-      status: string;
-      subscription_url?: string | null;
-    }>(`/purchase/${encodeURIComponent(token)}`);
+    const response = await fetch(
+      `/api/v1/payments/${encodeURIComponent(token)}`,
+    );
 
-    /*
-     * Бот различает шесть состояний. Готово — только delivered: на paid
-     * деньги уже получены, но подписка ещё оформляется, и ссылки нет.
-     * Раньше здесь проверялся несуществующий "activated", поэтому
-     * страница ждала подтверждения вечно, хотя всё давно прошло.
-     */
+    if (!response.ok) {
+      throw new ShopRequestError(FALLBACK_ERROR);
+    }
+
+    const raw = (await response.json()) as {
+      status: string;
+      paid: boolean;
+      subscriptionUrl?: string | null;
+    };
+
     return {
       status: raw.status,
-      done: raw.status === "delivered",
-      failed: raw.status === "failed" || raw.status === "expired",
-      subscriptionUrl: raw.subscription_url ?? null,
-    };
+      done: raw.paid,
+      failed: raw.status === "failed" || raw.status === "cancelled",
+      subscriptionUrl: raw.subscriptionUrl ?? null,
+};
   },
 };
