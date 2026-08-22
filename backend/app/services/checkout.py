@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 KOPECKS_IN_RUBLE = 100
 PROVIDER = "platega"
+# Успех в терминах Platega. Остальные состояния оплатой не считаются.
+SUCCESS_STATUS = "CONFIRMED"
 
 
 class CheckoutNotConfiguredError(RuntimeError):
@@ -118,6 +120,37 @@ class CheckoutService:
             payment_id=payment.id,
             redirect_url=created.redirect_url,
         )
+
+    async def confirm(
+        self,
+        *,
+        provider_payment_id: str,
+        status_name: str,
+    ) -> bool:
+        """Отметить платёж оплаченным. True — только первому, кто это сделал.
+
+        Platega повторяет вебхук, пока не получит 200, поэтому один и тот же
+        платёж приходит несколько раз. Подписку продлевает только переход
+        pending → succeeded, иначе человек получил бы лишние дни за одни и
+        те же деньги.
+        """
+        payment = await self._by_provider_id(provider_payment_id)
+        if payment is None:
+            logger.warning("Вебхук про неизвестный платёж")
+            return False
+
+        if status_name.upper() != SUCCESS_STATUS:
+            if payment.status is PaymentStatus.PENDING:
+                payment.status = PaymentStatus.FAILED
+                await self._session.commit()
+            return False
+
+        if payment.status is not PaymentStatus.PENDING:
+            return False
+
+        payment.status = PaymentStatus.SUCCEEDED
+        await self._session.commit()
+        return True
 
     async def state(self, payment_id: UUID) -> PaymentStatusResponse | None:
         """Состояние платежа для страницы результата."""
