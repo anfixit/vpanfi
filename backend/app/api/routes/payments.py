@@ -145,8 +145,12 @@ async def platega_webhook(
     if not identifier:
         return Response(status_code=status.HTTP_200_OK)
 
-    await checkout.confirm(
+    paid = await checkout.confirm(
         provider_payment_id=identifier, status_name=state
     )
+    # Подписку выдаём только тому вызову, который сам перевёл платёж в
+    # succeeded: Platega присылает уведомление несколько раз.
+    if paid:
+        await checkout.deliver(provider_payment_id=identifier)
 
     return Response(status_code=status.HTTP_200_OK)
