@@ -93,6 +93,13 @@ Optional secrets, applied to `/opt/vpanfi/.env` on every deploy. Leave them unse
 
 - `VPANFI_REMNAWAVE_BASE_URL` — panel base URL, no trailing slash
 - `VPANFI_REMNAWAVE_API_TOKEN` — panel API token
+- `VPANFI_PLATEGA_MERCHANT_ID` — the site's own Platega merchant, separate from the bot's
+- `VPANFI_PLATEGA_SECRET` — its API key
+
+The site sells through its own cash desk: the bot has a different merchant,
+and mixing them would send the money to the wrong account. Platega delivers
+its notifications to `https://<domain>/api/v1/payments/platega/webhook`, and
+the address is registered in the Platega dashboard, not in this repository.
 
 Optional repository **variable**:
 

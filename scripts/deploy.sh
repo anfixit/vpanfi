@@ -69,6 +69,8 @@ apply_panel_credentials() {
   # already in .env untouched, so a hand-edited file still works.
   set_env_value VPANFI_REMNAWAVE_BASE_URL "${VPANFI_REMNAWAVE_BASE_URL:-}"
   set_env_value VPANFI_REMNAWAVE_API_TOKEN "${VPANFI_REMNAWAVE_API_TOKEN:-}"
+  set_env_value VPANFI_PLATEGA_MERCHANT_ID "${VPANFI_PLATEGA_MERCHANT_ID:-}"
+  set_env_value VPANFI_PLATEGA_SECRET "${VPANFI_PLATEGA_SECRET:-}"
   set_env_value VITE_DEMO_MODE "${VITE_DEMO_MODE:-}"
   set_env_value VPANFI_TELEGRAM_LOGIN_BOT_TOKEN "${VPANFI_TELEGRAM_LOGIN_BOT_TOKEN:-}"
   set_env_value VPANFI_TELEGRAM_LOGIN_BOT_USERNAME "${VPANFI_TELEGRAM_LOGIN_BOT_USERNAME:-}"
