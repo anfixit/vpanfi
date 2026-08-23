@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Не отпускает коммит, пока не пройдут те же проверки, что и в CI.
+#
+# Смысл не в строгости, а в том, чтобы узнавать об ошибке за секунду до
+# коммита, а не через две минуты из упавшего прогона: 23.08.2026 CI дважды
+# падал подряд на длине строки и лишнем импорте, и оба раза деплой
+# останавливался вместе с ним.
+#
+# Проверяем только то, что затронуто: коммит в документацию не должен
+# ждать тестов бэкенда.
+#
+# Включается один раз:  git config core.hooksPath scripts/hooks
+# Обойти осознанно:     git commit --no-verify
+set -Eeuo pipefail
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -n "$staged" ] || exit 0
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+python="python3"
+[ -x .venv/bin/python ] && python=".venv/bin/python"
+
+fail() {
+  echo ""
+  echo "  Коммит остановлен: $1"
+  echo "  Почини и повтори, либо: git commit --no-verify"
+  exit 1
+}
+
+if grep -qE '^backend/.*\.py$' <<<"$staged"; then
+  if ! "$python" -c "import ruff" 2>/dev/null &&
+     ! "$python" -m ruff --version >/dev/null 2>&1; then
+    echo "  ruff не установлен — проверка бэкенда пропущена"
+  else
+    echo "  ruff…"
+    "$python" -m ruff check backend >/dev/null || fail "ruff нашёл замечания (запусти: $python -m ruff check backend)"
+
+    echo "  тесты…"
+    "$python" -m pytest -q backend/tests >/dev/null 2>&1 || fail "тесты бэкенда не проходят (запусти: $python -m pytest backend/tests)"
+  fi
+fi
+
+if grep -qE '^(src/|index\.html$|tsconfig|package\.json$|vite\.config)' <<<"$staged"; then
+  if [ -d node_modules ]; then
+    echo "  типы фронта…"
+    npm run typecheck --silent >/dev/null 2>&1 || fail "typecheck фронта не проходит (запусти: npm run typecheck)"
+  else
+    echo "  node_modules нет — проверка фронта пропущена"
+  fi
+fi
+
+echo "  проверки пройдены"

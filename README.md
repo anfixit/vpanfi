@@ -59,6 +59,17 @@ python3.12 -m venv .venv
 .venv/bin/python -m pytest -q backend/tests
 ```
 
+A hook runs those same checks before every commit, so a failing lint never
+reaches CI. Enable it once per clone:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+It checks only what the commit touches — a documentation change waits for
+nothing — and `git commit --no-verify` still lets a deliberate exception
+through.
+
 Checks that must pass before pushing:
 
 ```bash
