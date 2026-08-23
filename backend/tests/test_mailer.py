@@ -66,8 +66,10 @@ class FakeSession:
         self.commits += 1
 
 
-async def test_letter_is_sent_once_even_if_delivery_repeats(monkeypatch) -> None:
-    """Platega уведомляет повторно — письмо от этого не должно дублироваться."""
+async def test_letter_is_sent_once_even_if_delivery_repeats(
+    monkeypatch,
+) -> None:
+    """Platega уведомляет повторно — письмо дублироваться не должно."""
     from datetime import UTC, datetime
 
     from app.models.billing import Payment, PaymentPurpose, PaymentStatus
