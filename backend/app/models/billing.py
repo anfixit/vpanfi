@@ -1,8 +1,10 @@
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     Enum,
     ForeignKey,
     Integer,
@@ -93,5 +95,11 @@ class Payment(TimestampMixin, Base):
     # Панель отдаёт ссылку на подписку один раз — в момент выдачи. Без неё
     # странице результата нечего показать человеку после оплаты.
     subscription_url: Mapped[str | None] = mapped_column(String(500))
+    # Отметка, что письмо со ссылкой уже ушло. Platega повторяет
+    # уведомление, и без неё покупатель получал бы одно и то же письмо
+    # столько раз, сколько она его прислала.
+    notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
 
     user: Mapped[User | None] = relationship()

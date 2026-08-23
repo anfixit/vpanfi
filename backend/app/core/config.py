@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     # 2 — СБП, тот же способ оплаты, который бот показывает на витрине.
     platega_payment_method: int = 2
 
+    # Почта. Единственный канал, который переживает оплату по СБП:
+    # она заканчивается в приложении банка, и вкладку с результатом
+    # человек чаще всего теряет.
+    smtp_host: str | None = None
+    smtp_port: int = 2525
+    smtp_user: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "VPaNfi"
+    smtp_use_tls: bool = True
+    smtp_timeout_seconds: float = 20.0
+
     # Витрина бота: сайт читает оттуда тарифы и цены, чтобы они не
     # разъехались с ботом.
     shop_base_url: AnyHttpUrl = AnyHttpUrl(
@@ -79,6 +91,10 @@ class Settings(BaseSettings):
         "remnawave_api_token",
         "platega_merchant_id",
         "platega_secret",
+        "smtp_host",
+        "smtp_user",
+        "smtp_password",
+        "smtp_from_email",
         "telegram_login_bot_token",
         "telegram_login_bot_username",
         "vk_client_id",
@@ -152,6 +168,11 @@ class Settings(BaseSettings):
 
         origin = self.allowed_origins[0] if self.allowed_origins else ""
         return f"{origin.rstrip('/')}/auth/callback"
+
+    @property
+    def is_mail_configured(self) -> bool:
+        """Письма можно слать, только когда описан узел и отправитель."""
+        return bool(self.smtp_host and self.smtp_from_email)
 
     @property
     def is_platega_configured(self) -> bool:

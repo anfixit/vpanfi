@@ -9,7 +9,7 @@ import hashlib
 import logging
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -28,6 +28,8 @@ from app.integrations.remnawave.client import (
 )
 from app.models.billing import Payment, PaymentPurpose, PaymentStatus
 from app.schemas.cabinet import PaymentStatusResponse
+from app.services.letters import subscription_ready_letter
+from app.services.mail import Mailer
 from app.services.panel import read_panel_user
 from app.services.shop import (
     ShopCatalogue,
@@ -201,15 +203,17 @@ class CheckoutService:
                 try:
                     existing = await panel.get_user_by_username(username)
                 except RemnawaveUserNotFoundError:
+                    expires_at = datetime.now(UTC) + timedelta(days=days)
                     created = await panel.create_user(
                         username=username,
-                        expire_at=datetime.now(UTC) + timedelta(days=days),
+                        expire_at=expires_at,
                         email=payment.contact_email,
                     )
                     payment.subscription_url = (
                         str(created.get("subscriptionUrl") or "") or None
                     )
                     await self._session.commit()
+                    await self._notify(payment, expires_at.date())
                     return
 
                 panel_user = read_panel_user(existing)
@@ -217,21 +221,55 @@ class CheckoutService:
                 # иначе покупка съедала бы остаток оплаченного срока.
                 today = datetime.now(UTC).date()
                 base = max(panel_user.expires_at, today)
+                expires_at = base + timedelta(days=days)
                 await panel.set_expiry(
                     panel_user.id,
                     datetime.combine(
-                        base + timedelta(days=days),
+                        expires_at,
                         datetime.min.time(),
                         tzinfo=UTC,
                     ),
                 )
                 payment.subscription_url = panel_user.subscription_url
                 await self._session.commit()
+                await self._notify(payment, expires_at)
         except RemnawaveUnavailableError:
             logger.exception(
                 "Оплата получена, но подписка не выдана: платёж %s",
                 payment.id,
             )
+
+    async def _notify(self, payment: Payment, expires_at: date) -> None:
+        """Отправить покупателю письмо со ссылкой — один раз.
+
+        Письмо здесь не роскошь, а основной канал: оплата по СБП
+        заканчивается в приложении банка, и вкладку с результатом человек
+        чаще всего теряет. Уведомление от Platega приходит несколько раз,
+        поэтому отметка о письме ставится сразу и повторов не будет.
+        """
+        if payment.notified_at is not None:
+            return
+        if not payment.contact_email or not payment.subscription_url:
+            return
+        if not self._settings.is_mail_configured:
+            logger.warning(
+                "Почта не настроена: покупатель останется без ссылки, "
+                "если потеряет страницу"
+            )
+            return
+
+        letter = subscription_ready_letter(
+            subscription_url=payment.subscription_url,
+            expires_at=expires_at,
+            support_url=str(self._settings.telegram_support_url),
+        )
+        sent = await Mailer(self._settings).send(
+            to_email=payment.contact_email,
+            letter=letter,
+        )
+        if sent:
+            payment.notified_at = datetime.now(UTC)
+            await self._session.commit()
 
     async def state(self, payment_id: UUID) -> PaymentStatusResponse | None:
         """Состояние платежа для страницы результата."""

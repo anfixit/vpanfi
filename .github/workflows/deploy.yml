@@ -70,6 +70,12 @@ jobs:
           VPANFI_REMNAWAVE_API_TOKEN: ${{ secrets.VPANFI_REMNAWAVE_API_TOKEN }}
           VPANFI_PLATEGA_MERCHANT_ID: ${{ secrets.VPANFI_PLATEGA_MERCHANT_ID }}
           VPANFI_PLATEGA_SECRET: ${{ secrets.VPANFI_PLATEGA_SECRET }}
+          VPANFI_SMTP_HOST: ${{ secrets.VPANFI_SMTP_HOST }}
+          VPANFI_SMTP_PORT: ${{ vars.VPANFI_SMTP_PORT }}
+          VPANFI_SMTP_USER: ${{ secrets.VPANFI_SMTP_USER }}
+          VPANFI_SMTP_PASSWORD: ${{ secrets.VPANFI_SMTP_PASSWORD }}
+          VPANFI_SMTP_FROM_EMAIL: ${{ vars.VPANFI_SMTP_FROM_EMAIL }}
+          VPANFI_SMTP_FROM_NAME: ${{ vars.VPANFI_SMTP_FROM_NAME }}
           VITE_DEMO_MODE: ${{ vars.VITE_DEMO_MODE }}
           VPANFI_TELEGRAM_LOGIN_BOT_TOKEN: ${{ secrets.VPANFI_TELEGRAM_LOGIN_BOT_TOKEN }}
           VPANFI_TELEGRAM_LOGIN_BOT_USERNAME: ${{ vars.VPANFI_TELEGRAM_LOGIN_BOT_USERNAME }}
@@ -95,6 +101,15 @@ jobs:
               "${VPANFI_PLATEGA_MERCHANT_ID:-}"
             printf 'export VPANFI_PLATEGA_SECRET=%q\n' \
               "${VPANFI_PLATEGA_SECRET:-}"
+            printf 'export VPANFI_SMTP_HOST=%q\n' "${VPANFI_SMTP_HOST:-}"
+            printf 'export VPANFI_SMTP_PORT=%q\n' "${VPANFI_SMTP_PORT:-}"
+            printf 'export VPANFI_SMTP_USER=%q\n' "${VPANFI_SMTP_USER:-}"
+            printf 'export VPANFI_SMTP_PASSWORD=%q\n' \
+              "${VPANFI_SMTP_PASSWORD:-}"
+            printf 'export VPANFI_SMTP_FROM_EMAIL=%q\n' \
+              "${VPANFI_SMTP_FROM_EMAIL:-}"
+            printf 'export VPANFI_SMTP_FROM_NAME=%q\n' \
+              "${VPANFI_SMTP_FROM_NAME:-}"
             printf 'export VITE_DEMO_MODE=%q\n' "${VITE_DEMO_MODE:-}"
             printf 'export VPANFI_TELEGRAM_LOGIN_BOT_TOKEN=%q\n' \
               "${VPANFI_TELEGRAM_LOGIN_BOT_TOKEN:-}"
