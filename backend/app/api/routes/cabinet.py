@@ -6,6 +6,7 @@ from app.api.dependencies import (
     CurrentUser,
     get_cabinet_service,
     get_subscription_service,
+    get_support_service,
 )
 from app.schemas.cabinet import (
     ConnectionClientResponse,
@@ -16,6 +17,10 @@ from app.schemas.cabinet import (
     SubscriptionLinkRequest,
     SubscriptionLinkResponse,
 )
+from app.schemas.support import (
+    TicketCreatedResponse,
+    TicketCreateRequest,
+)
 from app.services.cabinet import CabinetService
 from app.services.subscription import (
     PanelUnavailableError,
@@ -24,6 +29,7 @@ from app.services.subscription import (
     SubscriptionNotFoundError,
     SubscriptionService,
 )
+from app.services.support import SupportService
 
 router = APIRouter(prefix="/cabinet", tags=["cabinet"])
 CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
@@ -31,6 +37,8 @@ CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
 SubscriptionServiceDep = Annotated[
     SubscriptionService, Depends(get_subscription_service)
 ]
+
+SupportServiceDep = Annotated[SupportService, Depends(get_support_service)]
 
 UNAUTHORIZED_RESPONSE = {401: {"description": "Требуется вход в кабинет"}}
 
@@ -260,3 +268,23 @@ async def get_countries(
     service: CabinetServiceDep,
 ) -> list[CountryResponse]:
     return service.get_countries()
+
+
+@router.post(
+    "/support",
+    response_model=TicketCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Написать в поддержку",
+    description=(
+        "Обращение сохраняется в кабинете и уходит письмом владельцу "
+        "сервиса. Требует входа: без учётной записи отвечать некуда, "
+        "и на этот случай на странице есть почта и MAX."
+    ),
+    responses=UNAUTHORIZED_RESPONSE,
+)
+async def create_support_ticket(
+    request: TicketCreateRequest,
+    user: CurrentUser,
+    service: SupportServiceDep,
+) -> TicketCreatedResponse:
+    return await service.create(user, request)

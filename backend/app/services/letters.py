@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from html import escape
 
-__all__ = ["Letter", "subscription_ready_letter"]
+__all__ = ["Letter", "subscription_ready_letter", "support_alert_letter"]
 
 APP_IPHONE = "https://apps.apple.com/ru/app/incy/id6756943388"
 APP_ANDROID = "https://play.google.com/store/apps/details?id=com.happproxy"
@@ -118,6 +118,74 @@ def subscription_ready_letter(
 
     return Letter(
         subject="Ваша подписка VPaNfi готова",
+        text=text,
+        html=html,
+    )
+
+
+def support_alert_letter(
+    *,
+    ticket_id: str,
+    subject: str,
+    category: str,
+    message: str,
+    author_name: str,
+    author_email: str,
+) -> Letter:
+    """Письмо владельцу сервиса о новом обращении.
+
+    Обращение целиком лежит в теле письма, а не за ссылкой в кабинет:
+    отвечать чаще приходится с телефона, и лишний вход ради двух строк
+    означает, что письмо отложат «на потом».
+
+    Обратный адрес человека вынесен наверх — ответить надо ему, а не
+    в пустоту.
+    """
+    text = f"""Новое обращение в поддержку.
+
+От кого: {author_name} <{author_email}>
+Тема: {subject}
+Раздел: {category}
+
+{message}
+
+--
+Обращение {ticket_id}
+"""
+
+    safe_mail = escape(author_email, quote=True)
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#f6f5f2;
+             font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+             color:#1c1c1c;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;
+              border-radius:16px;padding:28px;">
+    <h1 style="font-size:20px;margin:0 0 16px;">Новое обращение</h1>
+
+    <p style="margin:0 0 4px;font-size:14px;color:#6b6b6b;">От кого</p>
+    <p style="margin:0 0 16px;">
+      {escape(author_name)} —
+      <a href="mailto:{safe_mail}"
+         style="color:#5b53d6;">{escape(author_email)}</a>
+    </p>
+
+    <p style="margin:0 0 4px;font-size:14px;color:#6b6b6b;">Раздел</p>
+    <p style="margin:0 0 16px;">{escape(category)}</p>
+
+    <p style="margin:0 0 8px;font-size:14px;color:#6b6b6b;">Сообщение</p>
+    <p style="margin:0 0 20px;padding:14px;background:#f2f1ee;
+              border-radius:12px;white-space:pre-wrap;">{escape(message)}</p>
+
+    <p style="margin:0;color:#9a9a9a;font-size:12px;">
+      Обращение {escape(ticket_id)}</p>
+  </div>
+</body>
+</html>"""
+
+    return Letter(
+        subject=f"Поддержка VPaNfi: {subject}",
         text=text,
         html=html,
     )

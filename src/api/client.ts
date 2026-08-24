@@ -15,6 +15,8 @@ import type {
   Country,
   RegisterPayload,
   SubscriptionLink,
+  SupportTicket,
+  SupportTicketPayload,
   UpdateProfilePayload,
   UserProfile,
 } from "./contracts";
@@ -303,6 +305,22 @@ export const api = {
     return request<SubscriptionLink>("/v1/cabinet/subscription/link", {
       method: "POST",
       body: JSON.stringify({ subscriptionLink }),
+    });
+  },
+
+  async createSupportTicket(
+    payload: SupportTicketPayload,
+  ): Promise<SupportTicket> {
+    if (DEMO_MODE) {
+      return demoDelay({
+        id: "demo",
+        subject: payload.message.split("\n")[0],
+        status: "waiting_for_support",
+      });
+    }
+    return request<SupportTicket>("/v1/cabinet/support", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
 

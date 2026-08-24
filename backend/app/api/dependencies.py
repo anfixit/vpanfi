@@ -17,6 +17,7 @@ from app.services.cabinet import CabinetService
 from app.services.checkout import CheckoutService
 from app.services.oauth import OAuthService
 from app.services.subscription import SubscriptionService
+from app.services.support import SupportService
 
 __all__ = [
     "CurrentAdmin",
@@ -28,6 +29,7 @@ __all__ = [
     "get_current_user",
     "get_oauth_service",
     "get_subscription_service",
+    "get_support_service",
     "require_admin",
 ]
 
@@ -145,3 +147,10 @@ def get_oauth_service(
     settings: SettingsDep,
 ) -> OAuthService:
     return OAuthService(session, settings)
+
+
+def get_support_service(
+    session: DatabaseSession,
+    settings: SettingsDep,
+) -> SupportService:
+    return SupportService(session, settings)

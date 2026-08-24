@@ -184,3 +184,20 @@ export type GuestPurchaseStatus = {
   failed: boolean;
   subscriptionUrl: string | null;
 };
+
+/*
+ * Обращение в поддержку. Темы совпадают с перечнем на сервере: свободная
+ * строка превратила бы разбор обращений в кашу из «оплата» и «Оплата».
+ */
+export type SupportCategory = "connection" | "payment" | "devices" | "other";
+
+export type SupportTicketPayload = {
+  category: SupportCategory;
+  message: string;
+};
+
+export type SupportTicket = {
+  id: string;
+  subject: string;
+  status: string;
+};

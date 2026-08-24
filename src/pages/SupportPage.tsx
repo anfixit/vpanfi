@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
+import { api, ApiRequestError } from "../api/client";
+import type { SupportCategory } from "../api/contracts";
 import { maxSupportUrl, supportEmail, telegramSupportUrl } from "../config";
-import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
 
@@ -23,23 +24,42 @@ const faq = [
   },
 ];
 
+const MESSAGE_MIN = 10;
+
 export function SupportPage() {
-  const { isDemoMode, explain } = useDemoNotice();
   const [message, setMessage] = useState("");
+  const [category, setCategory] = useState<SupportCategory>("connection");
   const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [openQuestion, setOpenQuestion] = useState<string | null>(null);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const tooShort = message.trim().length < MESSAGE_MIN;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!message.trim()) return;
+    if (tooShort || sending) return;
 
-    if (!isDemoMode) {
-      explain("Отправка обращений включится вместе с почтовым сервисом на сервере.");
-      return;
+    setSending(true);
+    setError(null);
+
+    try {
+      await api.createSupportTicket({ category, message: message.trim() });
+      setSent(true);
+      setMessage("");
+    } catch (cause) {
+      /*
+       * Человек уже потратил силы на описание проблемы — текст остаётся
+       * в поле, а рядом появляется адрес, по которому точно ответят.
+       */
+      setError(
+        cause instanceof ApiRequestError
+          ? cause.message
+          : "Не удалось отправить обращение. Попробуйте ещё раз или напишите на почту.",
+      );
+    } finally {
+      setSending(false);
     }
-
-    setSent(true);
-    setMessage("");
   };
 
   return (
@@ -151,8 +171,8 @@ export function SupportPage() {
           <div className="support-success" role="status">
             <h3>Обращение принято</h3>
             <p>
-              В демонстрационном режиме оно не уходит на сервер, но интерфейс уже готов к
-              подключению backend.
+              Анфиса получила письмо и ответит на {supportEmail}. Поддержка — один человек,
+              поэтому ответ может занять несколько часов.
             </p>
             <button
               className="button button-secondary"
@@ -166,7 +186,12 @@ export function SupportPage() {
           <form className="support-form" onSubmit={submit}>
             <label>
               Тема
-              <select defaultValue="connection">
+              <select
+                value={category}
+                onChange={(event) =>
+                  setCategory(event.target.value as SupportCategory)
+                }
+              >
                 <option value="connection">Не получается подключиться</option>
                 <option value="payment">Вопрос по оплате</option>
                 <option value="devices">Устройства</option>
@@ -182,12 +207,18 @@ export function SupportPage() {
                 rows={MESSAGE_ROWS}
               />
             </label>
+            {error && (
+              <div className="auth-error" role="alert">
+                {error} Если не выходит — напишите на{" "}
+                <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
+              </div>
+            )}
             <button
               className="button button-primary button-large"
               type="submit"
-              disabled={!message.trim()}
+              disabled={tooShort || sending}
             >
-              Отправить обращение
+              {sending ? "Отправляем…" : "Отправить обращение"}
             </button>
           </form>
         )}

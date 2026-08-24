@@ -1352,3 +1352,24 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/*
+ * Сообщение об ошибке. Класс стоял в разметке пяти форм и не был описан
+ * ни разу: текст про неудачную отправку выводился наравне с подписями
+ * полей, и его пропускали.
+ */
+.auth-error {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-error a {
+  color: inherit;
+  font-weight: 600;
+}
