@@ -20,6 +20,8 @@ export type IconName =
   | "refresh"
   | "plus"
   | "telegram"
+  | "mail"
+  | "message"
   | "sparkle"
   | "question"
   | "sun"
@@ -96,6 +98,17 @@ const shapes: Record<IconName, ReactNode> = {
   ),
   plus: <path d="M12 5v14M5 12h14" />,
   telegram: <path d="M21 4 3 11l6 2.2L11 20l3-4.4 5 1.6z" />,
+  mail: (
+    <>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="m3.8 7 8.2 6 8.2-6" />
+    </>
+  ),
+  message: (
+    <>
+      <path d="M20.5 12.5c0 3.9-3.8 7-8.5 7-1 0-2-.15-2.9-.4L4 20.5l1.5-3.6A6.6 6.6 0 0 1 3.5 12.5c0-3.9 3.8-7 8.5-7s8.5 3.1 8.5 7z" />
+    </>
+  ),
   sparkle: <path d="M12 3.5 14 10l6.5 2-6.5 2-2 6.5-2-6.5L3.5 12 10 10z" />,
   question: (
     <>

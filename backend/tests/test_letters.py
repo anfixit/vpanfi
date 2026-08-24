@@ -10,6 +10,8 @@ def _letter():
         subscription_url=LINK,
         expires_at=date(2026, 9, 21),
         support_url="https://t.me/Anfikus",
+        support_email="anfisa@example.test",
+        max_url="https://max.ru/u/abc",
     )
 
 
@@ -58,6 +60,22 @@ def test_html_escapes_the_support_address() -> None:
         subscription_url=LINK,
         expires_at=date(2026, 9, 21),
         support_url="https://t.me/Anfikus?a=1&b=2",
+        support_email="anfisa@example.test",
+        max_url="https://max.ru/u/abc",
     )
 
     assert "&amp;b=2" in letter.html
+
+
+def test_letter_offers_a_contact_that_works_without_vpn() -> None:
+    """Письмо получает и тот, у кого подписка не заработала.
+
+    Один телеграм в таком письме бесполезен: без VPN он не откроется,
+    и человек остаётся без связи ровно тогда, когда она нужнее всего.
+    """
+    letter = _letter()
+
+    for part in (letter.text, letter.html):
+        assert "anfisa@example.test" in part
+        assert "max.ru" in part
+        assert "t.me/Anfikus" in part

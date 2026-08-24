@@ -33,6 +33,8 @@ def subscription_ready_letter(
     subscription_url: str,
     expires_at: date,
     support_url: str,
+    support_email: str,
+    max_url: str,
 ) -> Letter:
     """Письмо о готовой подписке."""
     until = expires_at.strftime("%d.%m.%Y")
@@ -54,11 +56,17 @@ def subscription_ready_letter(
 Сохраните это письмо: та же ссылка понадобится, чтобы подключить
 другое устройство.
 
-Если что-то не получается, напишите нам: {support_url}
+Если что-то не получается, напишите нам:
+
+  Почта: {support_email} — работает без VPN
+  MAX: {max_url}
+  Telegram: {support_url} — нужен включённый VPN
 """
 
     safe_url = escape(subscription_url, quote=True)
     safe_support = escape(support_url, quote=True)
+    safe_mail = escape(support_email, quote=True)
+    safe_max = escape(max_url, quote=True)
     html = f"""<!DOCTYPE html>
 <html lang="ru">
 <head><meta charset="utf-8"></head>
@@ -92,9 +100,17 @@ def subscription_ready_letter(
       письмо: та же ссылка понадобится, чтобы подключить другое
       устройство.</p>
 
-    <p style="margin:0;color:#6b6b6b;font-size:14px;">Если что-то не
-      получается, напишите нам:
-      <a href="{safe_support}" style="color:#5b53d6;">{escape(support_url)}</a>
+    <p style="margin:0 0 8px;color:#6b6b6b;font-size:14px;">Если что-то не
+      получается, напишите нам:</p>
+    <p style="margin:0;color:#6b6b6b;font-size:14px;line-height:1.8;">
+      <a href="mailto:{safe_mail}"
+         style="color:#5b53d6;">{escape(support_email)}</a>
+      — почта, работает без VPN<br>
+      <a href="{safe_max}" style="color:#5b53d6;">MAX</a>
+      — мессенджер, тоже без VPN<br>
+      <a href="{safe_support}"
+         style="color:#5b53d6;">{escape(support_url)}</a>
+      — telegram, нужен включённый VPN
     </p>
   </div>
 </body>

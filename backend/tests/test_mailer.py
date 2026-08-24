@@ -11,6 +11,8 @@ LETTER = subscription_ready_letter(
     subscription_url="https://panel.example/sub/abc",
     expires_at=date(2026, 9, 21),
     support_url="https://t.me/Anfikus",
+    support_email="anfisa@example.test",
+    max_url="https://max.ru/u/abc",
 )
 
 

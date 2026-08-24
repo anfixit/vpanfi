@@ -291,6 +291,8 @@ class CheckoutService:
             subscription_url=payment.subscription_url,
             expires_at=expires_at,
             support_url=str(self._settings.telegram_support_url),
+            support_email=self._settings.support_email,
+            max_url=self._settings.max_support_url,
         )
         sent = await Mailer(self._settings).send(
             to_email=payment.contact_email,

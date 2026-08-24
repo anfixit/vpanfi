@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { telegramSupportUrl } from "../config";
+import { maxSupportUrl, supportEmail, telegramSupportUrl } from "../config";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
@@ -59,6 +59,42 @@ export function SupportPage() {
       <section className="support-channel-grid">
         <a
           className="cabinet-card support-channel is-primary"
+          href={`mailto:${supportEmail}?subject=${encodeURIComponent(
+            "VPaNfi — вопрос по подписке",
+          )}`}
+        >
+          <span className="support-channel-icon">
+            <Icon name="mail" />
+          </span>
+          <div>
+            <h3>Почта</h3>
+            <p>Работает, даже когда VPN не подключается.</p>
+          </div>
+          <strong>
+            {supportEmail}
+            <Icon name="arrow-right" />
+          </strong>
+        </a>
+        <a
+          className="cabinet-card support-channel"
+          href={maxSupportUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <span className="support-channel-icon">
+            <Icon name="message" />
+          </span>
+          <div>
+            <h3>MAX</h3>
+            <p>Мессенджер, который открывается без VPN.</p>
+          </div>
+          <strong>
+            Написать
+            <Icon name="arrow-right" />
+          </strong>
+        </a>
+        <a
+          className="cabinet-card support-channel"
           href={telegramSupportUrl}
           target="_blank"
           rel="noreferrer"
@@ -68,7 +104,7 @@ export function SupportPage() {
           </span>
           <div>
             <h3>Telegram</h3>
-            <p>Самый быстрый способ связаться с поддержкой.</p>
+            <p>Быстрее всего, но нужен включённый VPN.</p>
           </div>
           <strong>
             Открыть
