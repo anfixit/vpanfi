@@ -36,7 +36,9 @@ VPANFI_JWT_SECRET=${jwt_secret}
 VPANFI_REMNAWAVE_BASE_URL=
 VPANFI_REMNAWAVE_API_TOKEN=
 VPANFI_REMNAWAVE_SQUAD_UUID=
-VITE_TELEGRAM_SUPPORT_URL=https://t.me/VPaNfi_bot
+# Поддержка — живой человек. Бот продаж на вопрос не ответит:
+# человек попадёт в меню покупки и решит, что писать некуда.
+VITE_TELEGRAM_SUPPORT_URL=https://t.me/Anfikus
 VITE_DEMO_MODE=true
 VITE_API_BASE_URL=/api
 EOF
