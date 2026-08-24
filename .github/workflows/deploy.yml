@@ -68,6 +68,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           VPANFI_REMNAWAVE_BASE_URL: ${{ secrets.VPANFI_REMNAWAVE_BASE_URL }}
           VPANFI_REMNAWAVE_API_TOKEN: ${{ secrets.VPANFI_REMNAWAVE_API_TOKEN }}
+          VPANFI_REMNAWAVE_SQUAD_UUID: ${{ secrets.VPANFI_REMNAWAVE_SQUAD_UUID }}
           VPANFI_PLATEGA_MERCHANT_ID: ${{ secrets.VPANFI_PLATEGA_MERCHANT_ID }}
           VPANFI_PLATEGA_SECRET: ${{ secrets.VPANFI_PLATEGA_SECRET }}
           VPANFI_SMTP_HOST: ${{ secrets.VPANFI_SMTP_HOST }}
@@ -97,6 +98,8 @@ jobs:
               "${VPANFI_REMNAWAVE_BASE_URL:-}"
             printf 'export VPANFI_REMNAWAVE_API_TOKEN=%q\n' \
               "${VPANFI_REMNAWAVE_API_TOKEN:-}"
+            printf 'export VPANFI_REMNAWAVE_SQUAD_UUID=%q\n' \
+              "${VPANFI_REMNAWAVE_SQUAD_UUID:-}"
             printf 'export VPANFI_PLATEGA_MERCHANT_ID=%q\n' \
               "${VPANFI_PLATEGA_MERCHANT_ID:-}"
             printf 'export VPANFI_PLATEGA_SECRET=%q\n' \
