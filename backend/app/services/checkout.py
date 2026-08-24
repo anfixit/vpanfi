@@ -204,10 +204,21 @@ class CheckoutService:
                     existing = await panel.get_user_by_username(username)
                 except RemnawaveUserNotFoundError:
                     expires_at = datetime.now(UTC) + timedelta(days=days)
+                    squad = self._settings.remnawave_squad_uuid
+                    if not squad:
+                        # Молча выдать учётку без сквада хуже, чем не
+                        # выдать вовсе: деньги приняты, человек ждёт, а
+                        # подключиться не может и не понимает почему.
+                        raise CheckoutNotConfiguredError(
+                            "REMNAWAVE_SQUAD_UUID is required to create users"
+                        ) from None
                     created = await panel.create_user(
                         username=username,
                         expire_at=expires_at,
                         email=payment.contact_email,
+                        hwid_device_limit=await self._device_limit(payment),
+                        active_internal_squads=[squad],
+                        tag="PAID",
                     )
                     payment.subscription_url = (
                         str(created.get("subscriptionUrl") or "") or None
@@ -238,6 +249,24 @@ class CheckoutService:
                 "Оплата получена, но подписка не выдана: платёж %s",
                 payment.id,
             )
+
+    async def _device_limit(self, payment: Payment) -> int | None:
+        """Сколько устройств положено по оплаченному тарифу.
+
+        Витрина недоступна — отдаём None и заводим пользователя без
+        лимита: панель подставит свой запасной. Это лучше, чем ронять
+        выдачу из-за необязательного поля.
+        """
+        if payment.tariff_id is None:
+            return None
+        try:
+            async with ShopCatalogue(self._settings) as shop:
+                return await shop.device_limit(payment.tariff_id)
+        except (ShopUnavailableError, UnknownTariffError):
+            logger.warning(
+                "Лимит устройств не выяснен, платёж %s", payment.id
+            )
+            return None
 
     async def _notify(self, payment: Payment, expires_at: date) -> None:
         """Отправить покупателю письмо со ссылкой — один раз.

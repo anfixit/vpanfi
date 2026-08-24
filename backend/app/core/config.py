@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     remnawave_api_token: SecretStr | None = None
     remnawave_timeout_seconds: float = 10.0
 
+    # Сквад, в который попадает купивший через сайт. Без него ноды не
+    # видят пользователя: подписка отдаётся, серверов в ней нет,
+    # подключиться нельзя. 24.08.2026 так прошла первая живая продажа.
+    remnawave_squad_uuid: str | None = None
+
     # Касса сайта. Мерчант отдельный от кассы бота: у бота свой, и
     # перепутать их значит увести деньги на чужой счёт.
     platega_merchant_id: str | None = None
@@ -89,6 +94,7 @@ class Settings(BaseSettings):
     @field_validator(
         "remnawave_base_url",
         "remnawave_api_token",
+        "remnawave_squad_uuid",
         "platega_merchant_id",
         "platega_secret",
         "smtp_host",

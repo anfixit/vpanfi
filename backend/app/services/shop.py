@@ -75,6 +75,17 @@ class ShopCatalogue:
         tariff = await self._tariff(tariff_id)
         return str(tariff.get("name") or "Подписка")
 
+    async def device_limit(self, tariff_id: int) -> int | None:
+        """Сколько устройств входит в тариф.
+
+        Берём из витрины, а не из константы: тариф меняют в боте, и
+        зашитое здесь число разошлось бы с тем, что человек видел при
+        покупке. None означает, что витрина лимита не назвала.
+        """
+        tariff = await self._tariff(tariff_id)
+        value = tariff.get("device_limit")
+        return int(value) if value is not None else None
+
     async def _tariff(self, tariff_id: int) -> dict[str, Any]:
         for tariff in await self._catalogue():
             if int(tariff.get("id", -1)) == tariff_id:

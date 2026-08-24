@@ -78,3 +78,38 @@ async def test_broken_shop_becomes_domain_error() -> None:
     async with ShopCatalogue(_settings()) as shop:
         with pytest.raises(ShopUnavailableError):
             await shop.price_kopecks(2, 30)
+
+
+@respx.mock
+async def test_device_limit_comes_from_the_shop() -> None:
+    """Лимит устройств берём из витрины, а не из константы в коде.
+
+    Тариф меняют в боте; зашитое число разошлось бы с тем, что человек
+    видел при покупке.
+    """
+    respx.get(f"{SHOP_URL}/vpanfi").mock(
+        return_value=httpx.Response(200, json=CATALOGUE)
+    )
+
+    async with ShopCatalogue(_settings()) as shop:
+        assert await shop.device_limit(2) == 3
+
+
+@respx.mock
+async def test_device_limit_is_none_when_the_shop_keeps_quiet() -> None:
+    """Нет поля — нет лимита. Панель подставит свой запасной."""
+    catalogue = {
+        "tariffs": [
+            {
+                "id": 2,
+                "name": "30 дней",
+                "periods": [{"days": 30, "price_kopeks": 30000}],
+            }
+        ]
+    }
+    respx.get(f"{SHOP_URL}/vpanfi").mock(
+        return_value=httpx.Response(200, json=catalogue)
+    )
+
+    async with ShopCatalogue(_settings()) as shop:
+        assert await shop.device_limit(2) is None

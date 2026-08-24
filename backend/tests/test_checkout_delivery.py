@@ -37,3 +37,33 @@ def test_return_url_points_at_an_existing_page() -> None:
 
     assert "/buy?token=" in source
     assert "/pay/" not in source
+
+
+def test_new_user_gets_a_squad_a_tag_and_a_device_limit() -> None:
+    """Без сквада ноды не видят пользователя, и подписка пуста.
+
+    24.08.2026 так прошла первая живая продажа: деньги списались,
+    учётка завелась, а подключиться человек не мог. Проверка держит
+    все три поля вместе — порознь они бесполезны.
+    """
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.deliver)
+
+    assert "active_internal_squads=[squad]" in source
+    assert 'tag="PAID"' in source
+    assert "hwid_device_limit=" in source
+
+
+def test_delivery_refuses_to_create_a_user_without_a_squad() -> None:
+    """Тихая выдача битой учётки хуже отказа: деньги уже приняты."""
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.deliver)
+
+    assert "CheckoutNotConfiguredError" in source
+    assert "remnawave_squad_uuid" in source

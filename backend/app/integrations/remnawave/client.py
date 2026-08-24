@@ -12,7 +12,7 @@
 
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from types import TracebackType
 from typing import Any, Self
@@ -163,11 +163,18 @@ class RemnawaveGateway:
         email: str | None = None,
         traffic_limit_bytes: int = 0,
         hwid_device_limit: int | None = None,
+        active_internal_squads: Sequence[str] | None = None,
+        tag: str | None = None,
     ) -> Mapping[str, Any]:
         """Завести пользователя в панели.
 
         Вызывается только для аккаунта, к которому ещё ничего не
         привязано, иначе в панели появится дубль.
+
+        Сквад обязателен по смыслу, хотя и необязателен по сигнатуре:
+        без него ноды не получают пользователя в свой конфиг, подписка
+        отдаёт пустой список серверов, и человек не может подключиться.
+        Проверять это должен вызывающий — здесь мы только передаём.
         """
         body: dict[str, Any] = {
             "username": username,
@@ -179,6 +186,10 @@ class RemnawaveGateway:
             body["email"] = email
         if hwid_device_limit is not None:
             body["hwidDeviceLimit"] = hwid_device_limit
+        if active_internal_squads:
+            body["activeInternalSquads"] = list(active_internal_squads)
+        if tag is not None:
+            body["tag"] = tag
 
         return _as_user(await self._request("POST", USERS_PATH, json=body))
 
