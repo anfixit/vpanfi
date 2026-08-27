@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     # молчал: покупку можно было заметить, только заглянув в панель.
     telegram_alert_bot_token: SecretStr | None = None
     telegram_alert_chat_id: str | None = None
+    # О чём сообщать. Входы отделены от прочего намеренно: их сильно
+    # больше, чем регистраций и покупок, и когда поток вырастет, поток
+    # сообщений придётся убавить, не теряя главного.
+    telegram_alert_events: str = "registration,login,payment"
 
     telegram_login_bot_token: SecretStr | None = None
     telegram_login_bot_username: str | None = None
@@ -224,6 +228,15 @@ class Settings(BaseSettings):
         в отказ авторизации уже после того, как человек нажал «оплатить».
         """
         return bool(self.platega_merchant_id and self.platega_secret)
+
+    @property
+    def alert_events(self) -> set[str]:
+        """О каких событиях сайта сообщать в бота."""
+        return {
+            chunk.strip().lower()
+            for chunk in str(self.telegram_alert_events or "").split(",")
+            if chunk.strip()
+        }
 
     @property
     def payment_method_codes(self) -> list[int]:

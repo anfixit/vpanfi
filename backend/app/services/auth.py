@@ -24,6 +24,11 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenPairResponse,
 )
+from app.services.notify import (
+    TelegramNotifier,
+    registraciya_soobshchenie,
+    vhod_soobshchenie,
+)
 from app.services.trial import TrialService
 
 
@@ -103,7 +108,15 @@ class AuthService:
         # Пробный доступ выдаём после того, как аккаунт закреплён:
         # панель может не ответить, и терять из-за этого регистрацию
         # нельзя. Ошибку grant глотает сам и пишет в журнал.
-        await TrialService(self._session, self._settings).grant(user)
+        granted = await TrialService(self._session, self._settings).grant(user)
+        self._soobshchit(
+            "registration",
+            registraciya_soobshchenie(
+                email=user.email,
+                display_name=user.display_name,
+                trial_granted=granted,
+            ),
+        )
         return tokens
 
     async def login(self, request: LoginRequest) -> TokenPairResponse:
@@ -130,7 +143,24 @@ class AuthService:
 
         tokens = await self._issue_token_pair(user)
         await self._session.commit()
+        self._soobshchit(
+            "login",
+            vhod_soobshchenie(
+                email=user.email, display_name=user.display_name
+            ),
+        )
         return tokens
+
+    def _soobshchit(self, sobytie: str, text: str) -> None:
+        """Рассказать владельцу о движении на сайте.
+
+        Ни регистрация, ни вход не должны зависеть от телеграма:
+        отправка уходит в фон и молчит, если событие выключено или
+        уведомления не настроены.
+        """
+        if sobytie not in self._settings.alert_events:
+            return
+        TelegramNotifier(self._settings).send_later(text)
 
     async def start_password_reset(self, email: str) -> tuple[User, str]:
         """Выдать ссылку восстановления. Письмо шлёт вызывающий.

@@ -30,6 +30,11 @@ from app.models.billing import Payment, PaymentPurpose, PaymentStatus
 from app.schemas.cabinet import PaymentStatusResponse
 from app.services.letters import subscription_ready_letter
 from app.services.mail import Mailer
+from app.services.notify import (
+    TelegramNotifier,
+    pokupka_soobshchenie,
+    sboj_vydachi_soobshchenie,
+)
 from app.services.panel import read_panel_user
 from app.services.shop import (
     ShopCatalogue,
@@ -241,6 +246,9 @@ class CheckoutService:
                     )
                     await self._session.commit()
                     await self._notify(payment, expires_at.date())
+                    self._soobshchit_o_pokupke(
+                        payment, expires_at.date(), is_new=True
+                    )
                     return
 
                 panel_user = read_panel_user(existing)
@@ -260,11 +268,17 @@ class CheckoutService:
                 payment.subscription_url = panel_user.subscription_url
                 await self._session.commit()
                 await self._notify(payment, expires_at)
+                self._soobshchit_o_pokupke(payment, expires_at, is_new=False)
+        except CheckoutNotConfiguredError:
+            # Сквад не задан: деньги приняты, а выдать нечего.
+            self._soobshchit_o_sboe(payment, "не задан сквад в настройках")
+            raise
         except RemnawaveUnavailableError:
             logger.exception(
                 "Оплата получена, но подписка не выдана: платёж %s",
                 payment.id,
             )
+            self._soobshchit_o_sboe(payment, "панель не отвечает")
 
     async def _device_limit(self, payment: Payment) -> int | None:
         """Сколько устройств положено по оплаченному тарифу.
@@ -283,6 +297,37 @@ class CheckoutService:
                 "Лимит устройств не выяснен, платёж %s", payment.id
             )
             return None
+
+    def _soobshchit_o_pokupke(
+        self, payment: Payment, expires_at: date, *, is_new: bool
+    ) -> None:
+        """Рассказать владельцу об оплате."""
+        if "payment" not in self._settings.alert_events:
+            return
+        TelegramNotifier(self._settings).send_later(
+            pokupka_soobshchenie(
+                email=payment.contact_email or "",
+                amount_kopecks=payment.amount_kopecks,
+                description=payment.description,
+                expires_at=expires_at,
+                is_new=is_new,
+                subscription_url=payment.subscription_url,
+            )
+        )
+
+    def _soobshchit_o_sboe(self, payment: Payment, prichina: str) -> None:
+        """Рассказать о том, что деньги взяли, а доступ не выдали.
+
+        Такое сообщение уходит независимо от настройки событий:
+        выключать его нельзя, человек остался без того, за что заплатил.
+        """
+        TelegramNotifier(self._settings).send_later(
+            sboj_vydachi_soobshchenie(
+                email=payment.contact_email or "",
+                amount_kopecks=payment.amount_kopecks,
+                prichina=prichina,
+            )
+        )
 
     async def _notify(self, payment: Payment, expires_at: date) -> None:
         """Отправить покупателю письмо со ссылкой — один раз.
