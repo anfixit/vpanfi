@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -30,7 +31,39 @@ class EmailAlreadyRegisteredError(ValueError):
 
 
 class InvalidCredentialsError(ValueError):
-    pass
+    """Общий отказ. Оставлен ради совместимости с прежними вызовами."""
+
+
+class EmailNotRegisteredError(InvalidCredentialsError):
+    """Такой почты в кабинете нет."""
+
+
+class WrongLoginPasswordError(InvalidCredentialsError):
+    """Почта есть, пароль не подходит."""
+
+
+class PasswordLoginUnavailableError(InvalidCredentialsError):
+    """Аккаунт заведён через внешний вход, пароля у него нет.
+
+    Отдельный случай, потому что «неверный пароль» здесь неправда:
+    человек его никогда не задавал и будет вводить варианты
+    до бесконечности.
+    """
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(provider)
+        self.provider = provider
+
+
+class AccountDisabledError(InvalidCredentialsError):
+    """Аккаунт отключён."""
+
+
+class InvalidResetTokenError(ValueError):
+    """Ссылка восстановления не годится.
+
+    Подделана, просрочена или уже использована.
+    """
 
 
 class InvalidRefreshSessionError(ValueError):
@@ -73,18 +106,109 @@ class AuthService:
         return tokens
 
     async def login(self, request: LoginRequest) -> TokenPairResponse:
+        """Впустить в кабинет или объяснить, что именно не так.
+
+        Раньше на все четыре случая отвечали «Неверный email или пароль».
+        Человеку, который завёл вход через Телеграм, это сообщение
+        предлагает вечно подбирать пароль, которого он не задавал, а
+        тому, кто ошибся в адресе, ничего не подсказывает.
+
+        Развёрнутый ответ позволяет постороннему проверить, заведена ли
+        почта. Для сервиса такого размера это приемлемая цена за то,
+        чтобы человек не терялся на входе.
+        """
         user = await self._users.get_by_email(request.email)
-        if (
-            user is None
-            or not user.is_active
-            or user.password_digest is None
-            or not verify_password(request.password, user.password_digest)
-        ):
-            raise InvalidCredentialsError
+        if user is None:
+            raise EmailNotRegisteredError(request.email)
+        if not user.is_active:
+            raise AccountDisabledError(request.email)
+        if user.password_digest is None:
+            raise PasswordLoginUnavailableError(self._external_provider(user))
+        if not verify_password(request.password, user.password_digest):
+            raise WrongLoginPasswordError(request.email)
 
         tokens = await self._issue_token_pair(user)
         await self._session.commit()
         return tokens
+
+    async def start_password_reset(self, email: str) -> tuple[User, str]:
+        """Выдать ссылку восстановления. Письмо шлёт вызывающий.
+
+        Ссылка это подписанный токен, а не запись в базе: лишняя
+        таблица здесь ничего не даёт, а вот протухание нужно, и его
+        даёт срок жизни токена.
+
+        В токен кладём отпечаток нынешнего пароля. Как только пароль
+        сменится, отпечаток перестанет совпадать, и ссылка умрёт: одну
+        и ту же ссылку нельзя использовать дважды, а старое письмо
+        в чужом ящике перестаёт быть ключом от аккаунта.
+        """
+        user = await self._users.get_by_email(email.lower())
+        if user is None:
+            raise EmailNotRegisteredError(email)
+        if not user.is_active:
+            raise AccountDisabledError(email)
+
+        token = create_token(
+            subject=str(user.id),
+            token_type="password_reset",
+            expires_delta=timedelta(
+                minutes=self._settings.password_reset_ttl_minutes
+            ),
+            settings=self._settings,
+            extra_claims={"pwd": self._password_fingerprint(user)},
+        )
+        return user, token
+
+    async def finish_password_reset(self, token: str, password: str) -> User:
+        """Поставить новый пароль по ссылке из письма.
+
+        Все сеансы после смены закрываем: если пароль восстанавливают,
+        доступ мог быть у кого-то ещё, и оставлять ему живой вход
+        значит сделать восстановление бессмысленным.
+        """
+        try:
+            payload = decode_token(
+                token,
+                expected_type="password_reset",
+                settings=self._settings,
+            )
+        except InvalidTokenError as error:
+            raise InvalidResetTokenError(str(error)) from error
+
+        try:
+            user_id = UUID(str(payload.get("sub")))
+        except ValueError as error:
+            raise InvalidResetTokenError("subject is not a user id") from error
+
+        user = await self._session.get(User, user_id)
+        if user is None or not user.is_active:
+            raise InvalidResetTokenError("user is gone or disabled")
+
+        if payload.get("pwd") != self._password_fingerprint(user):
+            # Пароль уже меняли после того, как выдали эту ссылку.
+            raise InvalidResetTokenError("link has already been used")
+
+        user.password_digest = hash_password(password)
+        await self._revoke_all_sessions(user)
+        await self._session.commit()
+        return user
+
+    @staticmethod
+    def _password_fingerprint(user: User) -> str:
+        """Короткий отпечаток пароля. Сам пароль по нему не восстановить."""
+        digest = user.password_digest or ""
+        return hashlib.sha256(digest.encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _external_provider(user: User) -> str:
+        """Каким входом человек пользовался, чтобы назвать его в ответе."""
+        identities = getattr(user, "identities", None) or []
+        for identity in identities:
+            provider = getattr(identity, "provider", None)
+            if provider:
+                return str(getattr(provider, "value", provider))
+        return ""
 
     async def update_profile(
         self,

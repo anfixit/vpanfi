@@ -24,7 +24,13 @@ export function AuthModal({
   // Показываем только настроенные способы: кнопка, которая заведомо не
   // работает, хуже её отсутствия.
   const providers = useAsyncResource(api.getAuthProviders);
-  const [mode, setMode] = useState<"login" | "register">("register");
+  /*
+   * Третий режим, а не отдельная страница: человек упирается в отказ
+   * здесь же, и уводить его со страницы ради одного поля значит терять
+   * половину тех, кто и так уже не смог войти.
+   */
+  const [mode, setMode] = useState<"login" | "register" | "recover">("register");
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,6 +44,11 @@ export function AuthModal({
     setBusy(true);
 
     try {
+      if (mode === "recover") {
+        const sent = await api.requestPasswordReset(email.trim());
+        setSentTo(sent.email);
+        return;
+      }
       if (mode === "register") {
         await register({ displayName: displayName.trim(), email, password });
       } else {
@@ -45,15 +56,22 @@ export function AuthModal({
       }
       onAuthenticated();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Не удалось войти");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : mode === "recover"
+            ? "Не получилось отправить письмо"
+            : "Не удалось войти",
+      );
     } finally {
       setBusy(false);
     }
   };
 
-  const switchMode = (nextMode: "login" | "register") => {
+  const switchMode = (nextMode: "login" | "register" | "recover") => {
     setMode(nextMode);
     setError(null);
+    setSentTo(null);
   };
 
   const signInWithProvider = (url: string) => {
@@ -96,8 +114,8 @@ export function AuthModal({
           decorative
         />
         <span className="section-kicker">Анфиса уже приготовила всё нужное</span>
-        <h2 id="auth-title">{mode === "register" ? "Начнём знакомство" : "С возвращением"}</h2>
-        <p>{mode === "register" ? "Создайте аккаунт и получите семь дней бесплатно." : "Введите данные своего аккаунта."}</p>
+        <h2 id="auth-title">{mode === "register" ? "Начнём знакомство" : mode === "recover" ? "Восстановим доступ" : "С возвращением"}</h2>
+        <p>{mode === "register" ? "Создайте аккаунт и получите семь дней бесплатно." : mode === "recover" ? "Оставьте почту, и мы пришлём ссылку для смены пароля." : "Введите данные своего аккаунта."}</p>
         <div className="modal-tabs">
           <button className={mode === "register" ? "is-active" : ""} type="button" onClick={() => switchMode("register")}>Регистрация</button>
           <button className={mode === "login" ? "is-active" : ""} type="button" onClick={() => switchMode("login")}>Вход</button>
@@ -113,10 +131,22 @@ export function AuthModal({
             Email
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required autoComplete="email" />
           </label>
-          <label>
-            Пароль
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Не короче 8 символов" required minLength={mode === "register" ? 8 : 1} maxLength={128} autoComplete={mode === "login" ? "current-password" : "new-password"} />
-          </label>
+          {mode !== "recover" && (
+            <label>
+              Пароль
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Не короче 8 символов" required minLength={mode === "register" ? 8 : 1} maxLength={128} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+            </label>
+          )}
+          {mode === "login" && (
+            <button className="auth-link" type="button" onClick={() => switchMode("recover")}>
+              Забыли пароль?
+            </button>
+          )}
+          {mode === "recover" && (
+            <button className="auth-link" type="button" onClick={() => switchMode("login")}>
+              Вспомнили пароль? Войти
+            </button>
+          )}
           {mode === "register" && (
             /*
              * Отметка ставится напротив каждого документа отдельно.
@@ -159,12 +189,26 @@ export function AuthModal({
             </fieldset>
           )}
           {error && <div className="auth-error" role="alert">{error}</div>}
+          {sentTo && (
+            <div className="auth-sent" role="status">
+              Письмо ушло на <strong>{sentTo}</strong>. Откройте ссылку из него
+              и придумайте новый пароль. Если письма нет, посмотрите в спаме.
+            </div>
+          )}
           <button
             className="button button-primary full-button"
             type="submit"
             disabled={busy || (mode === "register" && !allAccepted)}
           >
-            {busy ? "Подождите…" : mode === "register" ? "Получить 7 дней бесплатно" : "Войти"}
+            {busy
+              ? "Подождите…"
+              : mode === "register"
+                ? "Получить 7 дней бесплатно"
+                : mode === "recover"
+                  ? sentTo
+                    ? "Прислать ещё раз"
+                    : "Прислать ссылку"
+                  : "Войти"}
           </button>
         </form>
         {available.length > 0 && (

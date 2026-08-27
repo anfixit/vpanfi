@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     platega_secret: SecretStr | None = None
     platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
     platega_timeout_seconds: float = 15.0
+    # Сколько живёт ссылка восстановления пароля. Час это разумный
+    # запас: человек успевает дойти до почты, а забытое в чужом ящике
+    # письмо перестаёт быть ключом от аккаунта к концу дня.
+    password_reset_ttl_minutes: int = 60
+
     # Коды способов у Platega: 2 СБП, 11 карты РФ, 12 зарубежные карты,
     # 13 криптовалюта. Запасной способ на случай, если покупатель ничего
     # не выбрал: раньше он был единственным, и человек без СБП не мог

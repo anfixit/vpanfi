@@ -8,7 +8,7 @@ from pwdlib import PasswordHash
 from app.core.config import Settings
 
 ALGORITHM = "HS256"
-TokenType = Literal["access", "refresh"]
+TokenType = Literal["access", "refresh", "password_reset"]
 password_hash = PasswordHash.recommended()
 
 

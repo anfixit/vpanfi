@@ -24,6 +24,8 @@
   --brown: #8b4a26;
   --orange: #e9a549;
   --danger: #a4483a;
+  /* Пара к --danger: тем же приглушённым тоном, что и остальная палитра. */
+  --success: #4a7a58;
   --focus-ring: rgba(76, 78, 170, 0.55);
   --shadow: 0 16px 50px rgba(76, 60, 45, 0.09);
   --shadow-soft: 0 8px 24px rgba(76, 60, 45, 0.07);
@@ -52,6 +54,7 @@
   --brown: #d79464;
   --orange: #f0b563;
   --danger: #db8a7c;
+  --success: #8bbd9a;
   --focus-ring: rgba(190, 192, 255, 0.7);
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
   --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.2);

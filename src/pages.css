@@ -1389,3 +1389,53 @@
   color: inherit;
   font-weight: 600;
 }
+
+/*
+ * Подтверждение отправки письма. Зелёное и рядом с кнопкой: человек
+ * только что нажал «прислать ссылку» и должен увидеть ответ там же,
+ * где нажимал, а не гадать, ушло ли что-нибудь.
+ */
+.auth-sent {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--success) 32%, transparent);
+  color: var(--success);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-sent strong {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+/*
+ * «Забыли пароль?» — кнопка, а не ссылка: она ничего не открывает,
+ * а переключает форму. Выглядеть должна как ссылка, иначе спорит
+ * за внимание с кнопкой входа.
+ */
+.auth-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+.password-reset-form {
+  width: min(100%, 380px);
+  margin: 8px auto 0;
+  text-align: left;
+}

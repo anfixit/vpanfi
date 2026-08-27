@@ -17,6 +17,9 @@ from app.schemas.auth import (
     DeleteAccountRequest,
     LoginRequest,
     OAuthCallbackRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    PasswordResetSent,
     RefreshRequest,
     RegisterRequest,
     TelegramLoginRequest,
@@ -25,14 +28,21 @@ from app.schemas.auth import (
 )
 from app.schemas.cabinet import UserProfileResponse
 from app.services.auth import (
+    AccountDisabledError,
     AuthService,
     EmailAlreadyRegisteredError,
+    EmailNotRegisteredError,
     EmailTakenError,
     InvalidCredentialsError,
     InvalidRefreshSessionError,
+    InvalidResetTokenError,
+    PasswordLoginUnavailableError,
+    WrongLoginPasswordError,
     WrongPasswordError,
 )
 from app.services.cabinet import CabinetService
+from app.services.letters import password_reset_letter
+from app.services.mail import Mailer, MailNotConfiguredError
 from app.services.oauth import (
     IdentityAlreadyLinkedError,
     OAuthService,
@@ -108,6 +118,46 @@ async def login(
 ) -> AccessTokenResponse:
     try:
         tokens = await service.login(request)
+    except EmailNotRegisteredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "email_not_registered",
+                "message": (
+                    "Такой почты у нас нет. Проверьте адрес "
+                    "или заведите аккаунт."
+                ),
+            },
+        ) from error
+    except PasswordLoginUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "password_login_unavailable",
+                "message": (
+                    "Этот аккаунт заведён без пароля, через внешний вход. "
+                    "Войдите так же, как заводили, или задайте пароль "
+                    "через восстановление."
+                ),
+                "provider": error.provider or None,
+            },
+        ) from error
+    except AccountDisabledError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "account_disabled",
+                "message": "Аккаунт отключён. Напишите нам, разберёмся.",
+            },
+        ) from error
+    except WrongLoginPasswordError as error:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "wrong_password",
+                "message": "Пароль не подходит. Можно восстановить доступ.",
+            },
+        ) from error
     except InvalidCredentialsError as error:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -119,6 +169,114 @@ async def login(
 
     set_refresh_cookie(response, tokens)
     return public_token_response(tokens)
+
+
+@router.post(
+    "/password/reset-request",
+    response_model=PasswordResetSent,
+    summary="Прислать ссылку для смены пароля",
+)
+async def request_password_reset(
+    request: PasswordResetRequest,
+    service: AuthServiceDep,
+) -> PasswordResetSent:
+    """Выдать ссылку и отправить её письмом.
+
+    Отвечаем честно, если почты нет: тот же выбор, что и на входе,
+    и обратное было бы издевательством. Человек, ошибшийся в адресе,
+    иначе ждал бы письма, которое никогда не придёт.
+    """
+    settings = get_settings()
+    try:
+        user, token = await service.start_password_reset(request.email)
+    except EmailNotRegisteredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "email_not_registered",
+                "message": (
+                    "Такой почты у нас нет. Проверьте адрес "
+                    "или заведите аккаунт."
+                ),
+            },
+        ) from error
+    except AccountDisabledError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "account_disabled",
+                "message": "Аккаунт отключён. Напишите нам, разберёмся.",
+            },
+        ) from error
+
+    origin = (
+        settings.allowed_origins[0] if settings.allowed_origins else ""
+    ).rstrip("/")
+    letter = password_reset_letter(
+        reset_url=f"{origin}/password/reset?token={token}",
+        ttl_minutes=settings.password_reset_ttl_minutes,
+        support_url=str(settings.telegram_support_url),
+        support_email=settings.support_email,
+    )
+
+    try:
+        sent = await Mailer(settings).send(to_email=user.email, letter=letter)
+    except MailNotConfiguredError:
+        sent = False
+
+    if not sent:
+        # Промолчать нельзя: человек будет ждать письмо, которого нет,
+        # и решит, что восстановление не работает вовсе.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "reset_mail_failed",
+                "message": (
+                    "Не получилось отправить письмо. Напишите нам, "
+                    "и мы восстановим доступ руками."
+                ),
+            },
+        )
+
+    return PasswordResetSent(
+        email=user.email,
+        expiresInMinutes=settings.password_reset_ttl_minutes,
+    )
+
+
+@router.post(
+    "/password/reset",
+    response_model=UserProfileResponse,
+    summary="Задать новый пароль по ссылке из письма",
+)
+async def confirm_password_reset(
+    request: PasswordResetConfirm,
+    service: AuthServiceDep,
+    cabinet: CabinetServiceDep,
+) -> UserProfileResponse:
+    """Сменить пароль и закрыть все прежние сеансы.
+
+    Токенов не выдаём намеренно: после смены пароля человек входит
+    заново и убеждается, что новый пароль работает. Молчаливый вход
+    оставил бы его в неведении, запомнился ли пароль вообще.
+    """
+    try:
+        user = await service.finish_password_reset(
+            request.token, request.password
+        )
+    except InvalidResetTokenError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "reset_link_invalid",
+                "message": (
+                    "Ссылка не годится: она просрочена или ей уже "
+                    "воспользовались. Запросите новую."
+                ),
+            },
+        ) from error
+
+    return cabinet.build_profile(user)
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)

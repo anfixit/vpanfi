@@ -16,6 +16,11 @@ export const routes = {
   profile: "/app/profile",
   admin: "/admin",
   authCallback: "/auth/callback",
+  /*
+   * Смена пароля по ссылке из письма. Отдельный адрес, потому что
+   * человек приходит сюда из почтового ящика, а не из кабинета.
+   */
+  passwordReset: "/password/reset",
   legal: "/legal",
 } as const;
 

@@ -182,6 +182,28 @@ export const api = {
     });
   },
 
+  /*
+   * Восстановление пароля. Отвечаем честно, если почты нет: тот же
+   * выбор, что и на входе. Иначе ошибшийся в адресе ждал бы письма,
+   * которое никогда не придёт.
+   */
+  async requestPasswordReset(
+    email: string,
+  ): Promise<{ email: string; expiresInMinutes: number }> {
+    if (DEMO_MODE) return demoDelay({ email, expiresInMinutes: 60 });
+    return request("/v1/auth/password/reset-request", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async confirmPasswordReset(token: string, password: string): Promise<void> {
+    await request("/v1/auth/password/reset", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    });
+  },
+
   async getAuthProviders(): Promise<AuthProvider[]> {
     // В демо-режиме внешнего входа нет: там нечего подтверждать.
     if (DEMO_MODE) return demoDelay([]);

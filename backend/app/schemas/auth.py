@@ -16,6 +16,31 @@ class LoginRequest(AuthSchema):
     password: str = Field(min_length=1, max_length=128)
 
 
+class PasswordResetRequest(AuthSchema):
+    """Заявка на смену пароля: человек оставляет почту."""
+
+    email: EmailStr
+
+
+class PasswordResetConfirm(AuthSchema):
+    """Новый пароль по ссылке из письма.
+
+    Требования к длине те же, что при регистрации: восстановление не
+    должно быть щелью, через которую в кабинет попадает пароль слабее
+    того, что мы просим на входе.
+    """
+
+    token: str = Field(min_length=20, max_length=2048)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class PasswordResetSent(AuthSchema):
+    """Ответ на заявку: куда ушло письмо и насколько живёт ссылка."""
+
+    email: EmailStr
+    expires_in_minutes: int = Field(gt=0, alias="expiresInMinutes")
+
+
 class AccessTokenResponse(AuthSchema):
     access_token: str = Field(alias="accessToken")
     token_type: str = Field(default="bearer", alias="tokenType")

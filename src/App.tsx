@@ -18,6 +18,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { LegalDocumentPage } from "./pages/LegalDocumentPage";
 import { LegalPage } from "./pages/LegalPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { PasswordResetPage } from "./pages/PasswordResetPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SignInRequiredPage } from "./pages/SignInRequiredPage";
@@ -157,6 +158,9 @@ export function App() {
     );
   } else if (pathname === routes.authCallback) {
     page = <AuthCallbackPage />;
+  } else if (pathname === routes.passwordReset) {
+    // Открыта без входа: сюда приходит тот, кто как раз войти и не может.
+    page = <PasswordResetPage />;
   } else if (pathname === routes.buy) {
     // Покупка открыта без входа: у покупателя ещё нет аккаунта.
     page = (

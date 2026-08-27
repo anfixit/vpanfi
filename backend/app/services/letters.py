@@ -13,7 +13,12 @@ from dataclasses import dataclass
 from datetime import date
 from html import escape
 
-__all__ = ["Letter", "subscription_ready_letter", "support_alert_letter"]
+__all__ = [
+    "Letter",
+    "password_reset_letter",
+    "subscription_ready_letter",
+    "support_alert_letter",
+]
 
 APP_IPHONE = "https://apps.apple.com/ru/app/incy/id6756943388"
 APP_ANDROID = "https://play.google.com/store/apps/details?id=com.happproxy"
@@ -186,6 +191,94 @@ def support_alert_letter(
 
     return Letter(
         subject=f"Поддержка VPaNfi: {subject}",
+        text=text,
+        html=html,
+    )
+
+
+def password_reset_letter(
+    *,
+    reset_url: str,
+    ttl_minutes: int,
+    support_url: str,
+    support_email: str,
+) -> Letter:
+    """Письмо со ссылкой на смену пароля.
+
+    Срок жизни ссылки назван прямо в письме: человек, открывший его
+    назавтра, должен понимать, почему ссылка не сработала, а не
+    решить, что сломался сайт.
+
+    Строка про «если это были не Вы» здесь не формальность: письмо
+    может прийти тому, кого никто не просил ничего восстанавливать,
+    и ему надо сказать, что делать. Делать не надо ничего.
+    """
+    safe_url = escape(reset_url, quote=True)
+    hours = ttl_minutes // 60
+    if hours >= 1:
+        srok = "час" if hours == 1 else f"{hours} ч."
+    else:
+        srok = f"{ttl_minutes} мин."
+
+    text = f"""Здравствуйте!
+
+Вы попросили сменить пароль в кабинете VPaNfi.
+
+Откройте ссылку и придумайте новый пароль:
+{reset_url}
+
+Ссылка действует {srok}. После смены пароля она перестанет работать,
+а все входы в кабинет придётся выполнить заново.
+
+Если Вы ничего не просили, просто удалите это письмо: пароль
+останется прежним, делать ничего не нужно.
+
+Не получается? Напишите нам:
+   {support_url}
+   {support_email}
+
+Анфиса, VPaNfi
+"""
+
+    html = f"""<!doctype html>
+<html lang="ru">
+<body style="margin:0;padding:24px;background:#f7f6f3;
+             font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+             color:#22201d;line-height:1.6;">
+  <div style="max-width:520px;margin:0 auto;padding:28px;
+              background:#ffffff;border-radius:16px;">
+    <h1 style="margin:0 0 16px;font-size:22px;">Смена пароля</h1>
+
+    <p style="margin:0 0 20px;">
+      Вы попросили сменить пароль в кабинете VPaNfi.</p>
+
+    <p style="margin:0 0 24px;">
+      <a href="{safe_url}"
+         style="display:inline-block;padding:12px 22px;background:#5b53d6;
+                color:#ffffff;text-decoration:none;border-radius:12px;
+                font-weight:600;">Придумать новый пароль</a></p>
+
+    <p style="margin:0 0 20px;font-size:14px;color:#6b6b6b;">
+      Ссылка действует {escape(srok)}. После смены пароля она перестанет
+      работать, а все входы в кабинет придётся выполнить заново.</p>
+
+    <p style="margin:0 0 20px;padding:14px;background:#f2f1ee;
+              border-radius:12px;font-size:14px;">
+      Если Вы ничего не просили, просто удалите это письмо: пароль
+      останется прежним, делать ничего не нужно.</p>
+
+    <p style="margin:0;font-size:14px;color:#6b6b6b;">
+      Не получается? Напишите нам:
+      <a href="{escape(support_url, quote=True)}"
+         style="color:#5b53d6;">в Телеграм</a> или на
+      <a href="mailto:{escape(support_email, quote=True)}"
+         style="color:#5b53d6;">{escape(support_email)}</a>.</p>
+  </div>
+</body>
+</html>"""
+
+    return Letter(
+        subject="Смена пароля в кабинете VPaNfi",
         text=text,
         html=html,
     )
