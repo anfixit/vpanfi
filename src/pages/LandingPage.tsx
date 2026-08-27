@@ -2,7 +2,7 @@ import { api } from "../api/client";
 import { navigate, routes } from "../app/navigation";
 import { useAuth } from "../auth/AuthContext";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { telegramSupportUrl } from "../config";
+import { maxSupportUrl, telegramSupportUrl } from "../config";
 import { legalDocuments, legalPath } from "../legal";
 import { Brand } from "../components/Brand";
 import { Icon } from "../components/Icon";
@@ -298,8 +298,8 @@ export function LandingPage({
                 <span className="section-kicker">Отвечаем по-человечески</span>
                 <h2>Поддержка, которая помогает</h2>
                 <p>
-                Telegram работает без регистрации — если войти не получается,
-                пишите туда.
+                Телеграм работает без регистрации. Если он не открывается,
+                напишите в MAX: этот мессенджер работает и без VPN.
               </p>
               </div>
               <Mascot variant="support" className="support-mascot-image" decorative />
@@ -317,6 +317,21 @@ export function LandingPage({
                   <span className="support-option-copy">
                     <strong>Написать в Telegram</strong>
                     <small>Живой человек ответит в мессенджере</small>
+                  </span>
+                  <Icon name="arrow-right" />
+                </a>
+                <a
+                  className="support-option"
+                  href={maxSupportUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span className="support-option-icon">
+                    <Icon name="message" />
+                  </span>
+                  <span className="support-option-copy">
+                    <strong>Написать в MAX</strong>
+                    <small>Открывается без VPN, если телеграм недоступен</small>
                   </span>
                   <Icon name="arrow-right" />
                 </a>
