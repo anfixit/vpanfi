@@ -1434,8 +1434,34 @@
   text-decoration-thickness: 2px;
 }
 
+/*
+ * Раскладку полей в окне входа задаёт .auth-modal, а эта форма живёт
+ * отдельной страницей, куда человек приходит из письма. Без своих
+ * правил подписи и поля вставали в одну строку.
+ */
 .password-reset-form {
   width: min(100%, 380px);
   margin: 8px auto 0;
   text-align: left;
+  display: grid;
+  gap: 14px;
+}
+
+.password-reset-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.password-reset-form input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
 }
