@@ -126,6 +126,19 @@ class CheckoutRequest(BaseModel):
     email: EmailStr
     tariff_id: int = Field(gt=0, alias="tariffId")
     period_days: int = Field(gt=0, le=730, alias="periodDays")
+    # Необязателен: старый фронтенд его не шлёт, и такой запрос должен
+    # по-прежнему работать. Сервер подставит запасной способ.
+    payment_method: int | None = Field(
+        default=None, gt=0, alias="paymentMethod"
+    )
+
+
+class PaymentMethodResponse(BaseModel):
+    """Способ оплаты для витрины."""
+
+    code: int
+    name: str
+    description: str
 
 
 class CheckoutResponse(BaseModel):

@@ -57,8 +57,15 @@ class Settings(BaseSettings):
     platega_secret: SecretStr | None = None
     platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
     platega_timeout_seconds: float = 15.0
-    # 2 — СБП, тот же способ оплаты, который бот показывает на витрине.
+    # Коды способов у Platega: 2 СБП, 11 карты РФ, 12 зарубежные карты,
+    # 13 криптовалюта. Запасной способ на случай, если покупатель ничего
+    # не выбрал: раньше он был единственным, и человек без СБП не мог
+    # заплатить вообще ничем, хотя у мерчанта включены и карты, и крипта.
     platega_payment_method: int = 2
+    # Что показываем на выбор. Список сверяют с включённым у мерчанта:
+    # показать выключенный способ значит завести человека в тупик уже
+    # после того, как он решился платить.
+    platega_payment_methods: str = "2,11,13"
 
     # Почта. Единственный канал, который переживает оплату по СБП:
     # она заканчивается в приложении банка, и вкладку с результатом
@@ -212,6 +219,25 @@ class Settings(BaseSettings):
         в отказ авторизации уже после того, как человек нажал «оплатить».
         """
         return bool(self.platega_merchant_id and self.platega_secret)
+
+    @property
+    def payment_method_codes(self) -> list[int]:
+        """Способы оплаты для витрины, в порядке показа.
+
+        Мусор в списке молча отбрасываем, а не роняем приложение:
+        опечатка в настройке не должна оставлять сайт без кассы.
+        Пустой список означал бы «платить нечем», поэтому в крайнем
+        случае возвращаем запасной способ.
+        """
+        codes: list[int] = []
+        for chunk in str(self.platega_payment_methods or "").split(","):
+            chunk = chunk.strip()
+            if not chunk.isdigit():
+                continue
+            code = int(chunk)
+            if code not in codes:
+                codes.append(code)
+        return codes or [self.platega_payment_method]
 
     @property
     def allowed_origins(self) -> list[str]:

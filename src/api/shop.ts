@@ -12,6 +12,7 @@
  */
 
 import type {
+  CheckoutPaymentMethod,
   GuestPurchase,
   GuestPurchasePayload,
   GuestPurchaseStatus,
@@ -152,6 +153,17 @@ export const shop = {
   },
 
   /*
+   * Способы оплаты спрашиваем у своей кассы, а не у витрины бота:
+   * та описывает мерчант бота, где включены СБП и криптовалюта, а
+   * карты нет. Наш мерчант принимает и карту.
+   */
+  async getPaymentMethods(): Promise<CheckoutPaymentMethod[]> {
+    const response = await fetch("/api/v1/payments/methods");
+    if (!response.ok) return [];
+    return (await response.json()) as CheckoutPaymentMethod[];
+  },
+
+  /*
    * Покупка без регистрации: почта нужна, чтобы узнать человека при
    * следующем заходе, и не более того.
    *
@@ -169,6 +181,14 @@ export const shop = {
         email: payload.email,
         tariffId: payload.tariffId,
         periodDays: payload.periodDays,
+        /*
+         * Выбранный способ раньше собирался на странице и терялся
+         * здесь: в теле уходили только почта, тариф и срок. Человек
+         * отмечал криптовалюту и всё равно уезжал в СБП.
+         */
+        ...(payload.paymentMethod === null
+          ? {}
+          : { paymentMethod: payload.paymentMethod }),
       }),
     });
 

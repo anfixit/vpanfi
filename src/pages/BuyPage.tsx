@@ -179,10 +179,12 @@ export function BuyPage({
   onOpenAuth: () => void;
 }) {
   const config = useAsyncResource(shop.getConfig);
+  const payMethods = useAsyncResource(shop.getPaymentMethods);
 
   const [tariffId, setTariffId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
-  const [option, setOption] = useState<string | null>(null);
+  /* Код способа у Platega: 2 СБП, 11 карта, 13 криптовалюта. */
+  const [option, setOption] = useState<number | null>(null);
   /* Отметка напротив каждого документа отдельно — как при регистрации. */
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
@@ -193,7 +195,7 @@ export function BuyPage({
 
   const allAccepted = legalDocuments.every((item) => accepted[item.slug]);
   const tariffs = config.data?.tariffs ?? [];
-  const method = config.data?.paymentMethods[0] ?? null;
+  const methods = payMethods.data ?? [];
   const selected: ShopTariff | null =
     tariffs.find((item) => item.id === tariffId) ?? null;
 
@@ -202,12 +204,12 @@ export function BuyPage({
   }, [tariffId, tariffs]);
 
   useEffect(() => {
-    if (option === null && method?.options.length) setOption(method.options[0].id);
-  }, [option, method]);
+    if (option === null && methods.length > 0) setOption(methods[0].code);
+  }, [option, methods]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (busy || !selected || !method) return;
+    if (busy || !selected) return;
 
     const period = selected.periods[0];
     if (!period) return;
@@ -220,8 +222,7 @@ export function BuyPage({
         tariffId: selected.id,
         periodDays: period.days,
         email: email.trim(),
-        // Вариант оплаты уточняет способ: у Platega это СБП или криптовалюта.
-        paymentMethod: option ? `${method.methodId}_${option}` : method.methodId,
+        paymentMethod: option,
       });
 
       if (purchase.paymentUrl) {
@@ -317,19 +318,22 @@ export function BuyPage({
                   придумывать не надо.
                 </p>
 
-                {method && method.options.length > 1 && (
+                {methods.length > 1 && (
                   <fieldset className="buy-methods">
                     <legend>Способ оплаты</legend>
-                    {method.options.map((item) => (
-                      <label key={item.id} className="buy-method">
+                    {methods.map((item) => (
+                      <label key={item.code} className="buy-method">
                         <input
                           type="radio"
                           name="payment-option"
-                          value={item.id}
-                          checked={option === item.id}
-                          onChange={() => setOption(item.id)}
+                          value={item.code}
+                          checked={option === item.code}
+                          onChange={() => setOption(item.code)}
                         />
-                        {item.name}
+                        <span className="buy-method-copy">
+                          <strong>{item.name}</strong>
+                          <small>{item.description}</small>
+                        </span>
                       </label>
                     ))}
                   </fieldset>

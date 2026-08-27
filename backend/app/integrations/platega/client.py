@@ -95,10 +95,16 @@ class PlategaGateway:
         payload: str,
         return_url: str,
         failed_url: str,
+        payment_method: int | None = None,
     ) -> PlategaPayment:
-        """Создать платёж и получить ссылку, по которой человек заплатит."""
+        """Создать платёж и получить ссылку, по которой человек заплатит.
+
+        Способ выбирает покупатель. Если он не пришёл, берём запасной
+        из настроек: остаться совсем без способа хуже, чем увести
+        человека в СБП, который он, возможно, и хотел.
+        """
         body: dict[str, Any] = {
-            "paymentMethod": self._payment_method,
+            "paymentMethod": payment_method or self._payment_method,
             "paymentDetails": {
                 "amount": round(amount_rubles, 2),
                 "currency": "RUB",

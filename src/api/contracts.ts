@@ -159,11 +159,22 @@ export type ShopConfig = {
   paymentMethods: ShopPaymentMethod[];
 };
 
+/*
+ * Способ оплаты нашей кассы. Витрина бота отдаёт свой список, но он
+ * описывает мерчант бота: там включены не те способы, что у нас, и
+ * карты в нём нет вовсе.
+ */
+export type CheckoutPaymentMethod = {
+  code: number;
+  name: string;
+  description: string;
+};
+
 export type GuestPurchasePayload = {
   tariffId: number;
   periodDays: number;
   email: string;
-  paymentMethod: string;
+  paymentMethod: number | null;
 };
 
 export type GuestPurchase = {

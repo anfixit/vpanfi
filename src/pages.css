@@ -1301,7 +1301,7 @@
 
 .buy-method {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -1309,7 +1309,23 @@
 
 .buy-method input {
   width: auto;
+  margin-top: 3px;
   accent-color: var(--primary);
+}
+
+/*
+ * Подпись под названием: «СБП» и «Российская карта» человеку понятны
+ * не одинаково, и строка про QR-код в приложении банка снимает
+ * половину вопросов ещё до оплаты.
+ */
+.buy-method-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.buy-method-copy small {
+  color: var(--muted);
+  font-weight: 500;
 }
 
 .buy-result {

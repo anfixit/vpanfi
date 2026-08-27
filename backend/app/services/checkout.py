@@ -69,6 +69,10 @@ class CheckoutUnavailableError(RuntimeError):
     """Платёжная система или витрина недоступны."""
 
 
+class UnknownPaymentMethodError(ValueError):
+    """Способ оплаты не входит в число включённых."""
+
+
 @dataclass(frozen=True)
 class StartedCheckout:
     """Начатая покупка: наш платёж и ссылка, куда идти платить."""
@@ -88,10 +92,21 @@ class CheckoutService:
         email: str,
         tariff_id: int,
         period_days: int,
+        payment_method: int | None = None,
     ) -> StartedCheckout:
-        """Создать платёж и вернуть ссылку на оплату."""
+        """Создать платёж и вернуть ссылку на оплату.
+
+        Способ оплаты сверяем со списком включённых. Присланный кем
+        угодно код ушёл бы в Platega как есть, и покупатель уехал бы
+        платить способом, которого у мерчанта нет: отказ он увидел бы
+        уже на чужой странице и решил бы, что сломались мы.
+        """
         if not self._settings.is_platega_configured:
             raise CheckoutNotConfiguredError("Platega is not configured")
+
+        allowed = self._settings.payment_method_codes
+        if payment_method is not None and payment_method not in allowed:
+            raise UnknownPaymentMethodError(str(payment_method))
 
         async with ShopCatalogue(self._settings) as shop:
             try:
@@ -134,6 +149,7 @@ class CheckoutService:
                     # в 404 сразу после того, как заплатил.
                     return_url=f"{origin}/buy?token={payment.id}",
                     failed_url=f"{origin}/buy?token={payment.id}&failed=1",
+                    payment_method=payment_method,
                 )
         except PlategaNotConfiguredError as error:
             raise CheckoutNotConfiguredError(str(error)) from error
