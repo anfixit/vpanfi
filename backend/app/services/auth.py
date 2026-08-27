@@ -22,6 +22,7 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenPairResponse,
 )
+from app.services.trial import TrialService
 
 
 class EmailAlreadyRegisteredError(ValueError):
@@ -65,6 +66,10 @@ class AuthService:
 
         tokens = await self._issue_token_pair(user)
         await self._session.commit()
+        # Пробный доступ выдаём после того, как аккаунт закреплён:
+        # панель может не ответить, и терять из-за этого регистрацию
+        # нельзя. Ошибку grant глотает сам и пишет в журнал.
+        await TrialService(self._session, self._settings).grant(user)
         return tokens
 
     async def login(self, request: LoginRequest) -> TokenPairResponse:

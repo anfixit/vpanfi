@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # подключиться нельзя. 24.08.2026 так прошла первая живая продажа.
     remnawave_squad_uuid: str | None = None
 
+    # Пробный доступ, который обещает главная страница. С 13.08 по
+    # 25.08.2026 кнопка «получить 7 дней бесплатно» вела на форму
+    # регистрации, аккаунт заводился, а доступа не появлялось: выдачи
+    # триала в коде не было вовсе. Шесть живых людей ушли ни с чем.
+    # Ноль в trial_days выключает выдачу, не трогая витрину.
+    trial_days: int = 7
+    trial_device_limit: int = 3
+
     # Касса сайта. Мерчант отдельный от кассы бота: у бота свой, и
     # перепутать их значит увести деньги на чужой счёт.
     platega_merchant_id: str | None = None
@@ -92,6 +100,11 @@ class Settings(BaseSettings):
     # Telegram здесь только подтверждает личность и ничего не говорит о
     # том, какая подписка принадлежит человеку: её находит собственная
     # ссылка подписки.
+    # Уведомления о покупках на сайте. Бот продаж такие шлёт давно, а сайт
+    # молчал: покупку можно было заметить, только заглянув в панель.
+    telegram_alert_bot_token: SecretStr | None = None
+    telegram_alert_chat_id: str | None = None
+
     telegram_login_bot_token: SecretStr | None = None
     telegram_login_bot_username: str | None = None
     vk_client_id: str | None = None
@@ -110,6 +123,8 @@ class Settings(BaseSettings):
         "smtp_user",
         "smtp_password",
         "smtp_from_email",
+        "telegram_alert_bot_token",
+        "telegram_alert_chat_id",
         "telegram_login_bot_token",
         "telegram_login_bot_username",
         "vk_client_id",
