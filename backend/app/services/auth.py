@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings
 from app.core.security import (
@@ -181,7 +182,15 @@ class AuthService:
         except ValueError as error:
             raise InvalidResetTokenError("subject is not a user id") from error
 
-        user = await self._session.get(User, user_id)
+        # Забираем сразу со связями: ответ показывает способы входа,
+        # а дотягивать их лениво асинхронная сессия не умеет. Пароль
+        # к этому моменту уже сменён, поэтому падение здесь выглядит
+        # как «пароль не сменился», хотя сменился.
+        user = await self._session.scalar(
+            select(User)
+            .options(selectinload(User.identities))
+            .where(User.id == user_id)
+        )
         if user is None or not user.is_active:
             raise InvalidResetTokenError("user is gone or disabled")
 

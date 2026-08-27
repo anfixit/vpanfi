@@ -38,7 +38,7 @@ class FakeSession:
         self.commits = 0
         self.statements: list[Any] = []
 
-    async def get(self, _model: Any, _key: Any) -> Any:
+    async def scalar(self, _statement: Any) -> Any:
         return self.user
 
     async def execute(self, statement: Any) -> None:
@@ -184,6 +184,24 @@ async def test_reset_closes_every_open_session() -> None:
     )
 
     assert session.statements, "сеансы не закрывали"
+
+
+def test_reset_loads_identities_before_answering() -> None:
+    """Ответ показывает способы входа, а связи тянутся лениво.
+
+    Асинхронная сессия ленивую подгрузку не умеет и падает. Пароль
+    к этому моменту уже сменён, поэтому такая ошибка выглядит как
+    «пароль не сменился», хотя он сменился: 27.08.2026 так и вышло
+    на живом сайте.
+    """
+    import inspect
+
+    from app.services import auth
+
+    source = inspect.getsource(auth.AuthService.finish_password_reset)
+
+    assert "selectinload(User.identities)" in source
+    assert "self._session.get(" not in source
 
 
 def test_login_names_the_actual_cause() -> None:
