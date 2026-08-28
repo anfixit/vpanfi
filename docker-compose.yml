@@ -117,5 +117,13 @@ volumes:
 networks:
   vpanfi:
     driver: bridge
+    # IPv6 нужен ради телеграма: из России к api.telegram.org проходит
+    # только он, IPv4 не пускают. Хост ходит туда без труда, а контейнер
+    # без этой настройки не имеет IPv6 вовсе и молча теряет уведомления.
+    # Адреса частные (ULA), наружу Docker выпускает их через NAT.
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd4a:1f2b:3c5d::/64
   remnawave-network:
     external: true
