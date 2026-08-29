@@ -162,11 +162,28 @@ export function LandingPage({
                   Посмотреть кабинет
                 </button>
               ) : (
-                <a className="button button-secondary button-large" href="#how">
-                  Как это работает
-                </a>
+                /*
+                 * Короткий путь виден с первого экрана. Раньше здесь
+                 * стоял якорь на «Как это работает», то есть на секцию
+                 * экраном ниже, до которой человек и так долистает, а та
+                 * же ссылка есть в шапке: кнопка не делала работы.
+                 *
+                 * При этом покупали именно короткий путь. Найти его
+                 * можно было, только догадавшись, что карточка тарифа
+                 * в середине страницы нажимается.
+                 */
+                <button
+                  className="button button-secondary button-large"
+                  type="button"
+                  onClick={() => navigate(routes.buy)}
+                >
+                  Купить сразу
+                </button>
               )}
             </div>
+            <p className="hero-hint">
+              От 300 ₽. Без пароля и без Telegram: почта, оплата, готово.
+            </p>
             <ul className="trust-row" aria-label="Преимущества">
               {advantages.map((advantage) => (
                 <li key={advantage}>
