@@ -354,6 +354,7 @@ h3,
   color: var(--muted);
   font-size: 14px;
   max-width: 42ch;
+  text-wrap: balance;
 }
 
 .trust-row {

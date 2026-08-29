@@ -182,7 +182,7 @@ export function LandingPage({
               )}
             </div>
             <p className="hero-hint">
-              От 300 ₽. Без пароля и без Telegram: почта, оплата, готово.
+              От 300 ₽, без пароля и без Telegram.
             </p>
             <ul className="trust-row" aria-label="Преимущества">
               {advantages.map((advantage) => (
