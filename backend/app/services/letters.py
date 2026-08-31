@@ -16,6 +16,7 @@ from html import escape
 __all__ = [
     "Letter",
     "password_reset_letter",
+    "subscription_expiring_letter",
     "subscription_ready_letter",
     "support_alert_letter",
 ]
@@ -279,6 +280,105 @@ def password_reset_letter(
 
     return Letter(
         subject="Смена пароля в кабинете VPaNfi",
+        text=text,
+        html=html,
+    )
+
+
+def subscription_expiring_letter(
+    *,
+    days_left: int,
+    expires_at: date,
+    buy_url: str,
+    support_url: str,
+    support_email: str,
+) -> Letter:
+    """Письмо о том, что подписка скоро кончится.
+
+    Раньше сайт продавал и замолкал навсегда: человек узнавал об
+    окончании, когда переставал работать интернет. Бот такое умел, но
+    покупателя сайта в боте нет, и напомнить ему было некому.
+
+    Пишем «осталось столько-то дней», а не только дату: считать дни от
+    сегодняшнего числа человек не обязан.
+    """
+    until = expires_at.strftime("%d.%m.%Y")
+    if days_left <= 0:
+        skolko = "сегодня"
+    elif days_left == 1:
+        skolko = "завтра"
+    else:
+        hvost = days_left % 10
+        sotni = days_left % 100
+        if hvost == 1 and sotni != 11:
+            slovo = "день"
+        elif hvost in (2, 3, 4) and sotni not in (12, 13, 14):
+            slovo = "дня"
+        else:
+            slovo = "дней"
+        skolko = f"через {days_left} {slovo}"
+
+    text = f"""Здравствуйте!
+
+Ваша подписка VPaNfi заканчивается {skolko}, {until}.
+
+Продлить можно на сайте, это займёт минуту и не требует входа
+в кабинет:
+{buy_url}
+
+Если продлить до окончания срока, оставшиеся дни не сгорят,
+они прибавятся к новому сроку.
+
+Если продлевать не планируете, ничего делать не нужно: доступ
+просто перестанет работать, и никаких списаний не будет.
+
+Вопросы можно задать здесь:
+   {support_url}
+   {support_email}
+
+Анфиса, VPaNfi
+"""
+
+    html = f"""<!doctype html>
+<html lang="ru">
+<body style="margin:0;padding:24px;background:#f7f6f3;
+             font-family:-apple-system,Segoe UI,Roboto,sans-serif;
+             color:#22201d;line-height:1.6;">
+  <div style="max-width:520px;margin:0 auto;padding:28px;
+              background:#ffffff;border-radius:16px;">
+    <h1 style="margin:0 0 16px;font-size:22px;">
+      Подписка заканчивается {escape(skolko)}</h1>
+
+    <p style="margin:0 0 20px;">
+      Срок действует до {escape(until)}.</p>
+
+    <p style="margin:0 0 24px;">
+      <a href="{escape(buy_url, quote=True)}"
+         style="display:inline-block;padding:12px 22px;background:#5b53d6;
+                color:#ffffff;text-decoration:none;border-radius:12px;
+                font-weight:600;">Продлить подписку</a></p>
+
+    <p style="margin:0 0 20px;font-size:14px;color:#6b6b6b;">
+      Продление занимает минуту и не требует входа в кабинет.
+      Оставшиеся дни не сгорают: они прибавятся к новому сроку.</p>
+
+    <p style="margin:0 0 20px;padding:14px;background:#f2f1ee;
+              border-radius:12px;font-size:14px;">
+      Если продлевать не планируете, делать ничего не нужно. Доступ
+      просто перестанет работать, никаких списаний не будет.</p>
+
+    <p style="margin:0;font-size:14px;color:#6b6b6b;">
+      Вопросы:
+      <a href="{escape(support_url, quote=True)}"
+         style="color:#5b53d6;">Телеграм</a> или
+      <a href="mailto:{escape(support_email, quote=True)}"
+         style="color:#5b53d6;">{escape(support_email)}</a>.</p>
+  </div>
+</body>
+</html>"""
+
+    return Letter(
+        subject=f"Подписка VPaNfi заканчивается {skolko}",
         text=text,
         html=html,
     )

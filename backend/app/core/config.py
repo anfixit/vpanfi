@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     platega_secret: SecretStr | None = None
     platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
     platega_timeout_seconds: float = 15.0
+    # За сколько дней предупреждать об окончании подписки. Бот шлёт
+    # такие письма только тем, кто в нём есть, а покупателя сайта там
+    # нет: он платит почтой, без телеграма. Пустой список выключает
+    # напоминания целиком.
+    reminder_days: str = "7,3,1"
+    # Как часто обходить людей. Чаще раза в сутки не нужно, но и реже
+    # нельзя: при суточном шаге пропущенный обход съедает целый порог.
+    reminder_interval_hours: int = 6
+
     # Сколько живёт ссылка восстановления пароля. Час это разумный
     # запас: человек успевает дойти до почты, а забытое в чужом ящике
     # письмо перестаёт быть ключом от аккаунта к концу дня.
@@ -228,6 +237,20 @@ class Settings(BaseSettings):
         в отказ авторизации уже после того, как человек нажал «оплатить».
         """
         return bool(self.platega_merchant_id and self.platega_secret)
+
+    @property
+    def reminder_days_list(self) -> list[int]:
+        """Пороги предупреждений, по возрастанию.
+
+        Мусор молча отбрасываем: опечатка в настройке не должна
+        оставлять людей без предупреждений вовсе.
+        """
+        dni: list[int] = []
+        for chunk in str(self.reminder_days or "").split(","):
+            chunk = chunk.strip()
+            if chunk.isdigit() and int(chunk) > 0 and int(chunk) not in dni:
+                dni.append(int(chunk))
+        return sorted(dni)
 
     @property
     def alert_events(self) -> set[str]:

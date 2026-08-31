@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TypedDict
@@ -8,6 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
+from app.db.session import async_session_factory
+from app.services.reminders import RemindersService
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["app", "create_app"]
 
@@ -17,11 +23,41 @@ class HealthStatus(TypedDict):
     environment: str
 
 
+async def _napominaniya() -> None:
+    """Обходить людей и предупреждать об окончании подписки.
+
+    Живёт внутри приложения, а не в кроне снаружи: расписание тогда
+    едет вместе с кодом, и его не забудут перенести при переезде.
+    Процесс uvicorn один, поэтому обход не задвоится.
+    """
+    settings = get_settings()
+    chasy = max(1, settings.reminder_interval_hours)
+    # Небольшая задержка на старте: пусть приложение сперва поднимется
+    # и ответит проверке здоровья.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            async with async_session_factory() as session:
+                service = RemindersService(session, settings)
+                otpravleno = await service.run_once()
+            if otpravleno:
+                logger.info("Напоминаний о сроке отправлено: %s", otpravleno)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Обход напоминаний сорвался")
+        await asyncio.sleep(chasy * 3600)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Database, Redis and SDK clients will be initialized here when the
     # persistence layer is connected.
-    yield
+    zadacha = asyncio.create_task(_napominaniya())
+    try:
+        yield
+    finally:
+        zadacha.cancel()
 
 
 def create_app() -> FastAPI:
