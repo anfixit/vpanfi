@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -27,6 +27,7 @@ from app.integrations.remnawave.client import (
     RemnawaveUserNotFoundError,
 )
 from app.models.billing import Payment, PaymentPurpose, PaymentStatus
+from app.models.user import User
 from app.schemas.cabinet import PaymentStatusResponse
 from app.services.letters import subscription_ready_letter
 from app.services.mail import Mailer
@@ -218,11 +219,21 @@ class CheckoutService:
 
         username = panel_username(payment.contact_email)
         days = payment.period_days or 30
+        # Учётка, уже привязанная к кабинету этой почты. Искать только
+        # по имени, выведенному из почты, недостаточно: у перенесённых
+        # и заведённых вручную людей имя другое (Alyona_Tutina,
+        # user_369990765), и покупка завела бы им вторую учётку, а
+        # оплаченный срок остался бы на первой. На 01.09.2026 таких
+        # восемь из шестнадцати.
+        privyazannaya = await self._privyazannaya_uchyotka(payment)
 
         try:
             async with RemnawaveGateway(self._settings) as panel:
                 try:
-                    existing = await panel.get_user_by_username(username)
+                    if privyazannaya is not None:
+                        existing = await panel.get_user_by_id(privyazannaya)
+                    else:
+                        existing = await panel.get_user_by_username(username)
                 except RemnawaveUserNotFoundError:
                     expires_at = datetime.now(UTC) + timedelta(days=days)
                     squad = self._settings.remnawave_squad_uuid
@@ -279,6 +290,27 @@ class CheckoutService:
                 payment.id,
             )
             self._soobshchit_o_sboe(payment, "панель не отвечает")
+
+    async def _privyazannaya_uchyotka(self, payment: Payment) -> int | None:
+        """Учётка панели, уже привязанная к кабинету покупателя.
+
+        Ищем сначала по владельцу платежа, потом по почте: покупка
+        с сайта бывает и без входа в кабинет, и тогда владельца нет,
+        а кабинет с такой почтой существовать может.
+        """
+        user: User | None = None
+        if payment.user_id is not None:
+            user = await self._session.scalar(
+                select(User).where(User.id == payment.user_id)
+            )
+        if user is None and payment.contact_email:
+            user = await self._session.scalar(
+                select(User).where(
+                    func.lower(User.email)
+                    == payment.contact_email.strip().lower()
+                )
+            )
+        return user.remnawave_user_id if user is not None else None
 
     async def _device_limit(self, payment: Payment) -> int | None:
         """Сколько устройств положено по оплаченному тарифу.

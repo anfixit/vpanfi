@@ -67,3 +67,50 @@ def test_delivery_refuses_to_create_a_user_without_a_squad() -> None:
 
     assert "CheckoutNotConfiguredError" in source
     assert "remnawave_squad_uuid" in source
+
+
+def test_purchase_finds_the_already_linked_account() -> None:
+    """Иначе старому клиенту заведут вторую учётку вместо продления.
+
+    Имя в панели у перенесённых и заведённых вручную людей не выводится
+    из почты: Alyona_Tutina, user_369990765, greyppm_62771416. Поиск
+    только по почте их не находит, покупка создаёт дубль, а оплаченный
+    срок остаётся на первой учётке. На 01.09.2026 таких было восемь
+    из шестнадцати связанных кабинетов.
+    """
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.deliver)
+
+    assert "_privyazannaya_uchyotka" in source
+    assert "get_user_by_id(privyazannaya)" in source
+
+
+def test_linked_account_wins_over_the_email_guess() -> None:
+    """Связь из кабинета точнее догадки по почте и должна идти первой."""
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.deliver)
+    po_svyazi = source.index("get_user_by_id(privyazannaya)")
+    po_pochte = source.index("get_user_by_username(username)")
+
+    assert po_svyazi < po_pochte
+
+
+def test_guest_purchase_is_matched_by_email() -> None:
+    """Покупка без входа не имеет владельца, но кабинет может быть."""
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(
+        checkout.CheckoutService._privyazannaya_uchyotka
+    )
+
+    assert "payment.user_id" in source
+    assert "payment.contact_email" in source
+    assert "func.lower(User.email)" in source
