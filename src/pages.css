@@ -1439,6 +1439,21 @@
  * отдельной страницей, куда человек приходит из письма. Без своих
  * правил подписи и поля вставали в одну строку.
  */
+/*
+ * Заметка под тарифами на странице оплаты. Снимает главное сомнение
+ * того, у кого доступ ещё действует: платить сейчас не значит
+ * потерять остаток.
+ */
+.buy-note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .password-reset-form {
   width: min(100%, 380px);
   margin: 8px auto 0;
