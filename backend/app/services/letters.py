@@ -41,9 +41,36 @@ def subscription_ready_letter(
     support_url: str,
     support_email: str,
     max_url: str,
+    cabinet_url: str | None = None,
 ) -> Letter:
-    """Письмо о готовой подписке."""
+    """Письмо о готовой подписке.
+
+    cabinet_url заполняется, если покупателю только что завели кабинет.
+    Об этом надо сказать: иначе человек не знает, что у него есть вход,
+    и при попытке зарегистрироваться получит «почта уже занята».
+    """
     until = expires_at.strftime("%d.%m.%Y")
+    pro_kabinet = ""
+    pro_kabinet_html = ""
+    if cabinet_url:
+        pro_kabinet = f"""
+Заодно мы завели вам личный кабинет на эту почту. В нём видно срок
+подписки, и туда же придёт напоминание, когда он будет подходить
+к концу. Пароль вы ставите сами: откройте {cabinet_url}, нажмите
+«Войти», затем «Забыли пароль», и мы пришлём ссылку на эту почту.
+"""
+        safe_cabinet = escape(cabinet_url, quote=True)
+        pro_kabinet_html = f"""
+    <p style="margin:0 0 16px;">Заодно мы завели вам личный кабинет
+      на эту почту. В нём видно срок подписки, и туда же придёт
+      напоминание, когда он будет подходить к концу.</p>
+
+    <p style="margin:0 0 20px;">Пароль вы ставите сами: откройте
+      <a href="{safe_cabinet}"
+         style="color:#5b53d6;">{escape(cabinet_url)}</a>,
+      нажмите «Войти», затем «Забыли пароль», и мы пришлём ссылку
+      на эту почту.</p>
+"""
 
     text = f"""Подписка VPaNfi готова.
 
@@ -58,7 +85,7 @@ def subscription_ready_letter(
   Android — HAPP: {APP_ANDROID}
 
 Подписка действует до {until}.
-
+{pro_kabinet}
 Сохраните это письмо: та же ссылка понадобится, чтобы подключить
 другое устройство.
 
@@ -101,7 +128,7 @@ def subscription_ready_letter(
 
     <p style="margin:0 0 16px;">Подписка действует до
       <strong>{until}</strong>.</p>
-
+{pro_kabinet_html}
     <p style="margin:0 0 16px;color:#6b6b6b;font-size:14px;">Сохраните это
       письмо: та же ссылка понадобится, чтобы подключить другое
       устройство.</p>

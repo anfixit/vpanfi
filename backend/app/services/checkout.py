@@ -256,7 +256,12 @@ class CheckoutService:
                         str(created.get("subscriptionUrl") or "") or None
                     )
                     await self._session.commit()
-                    await self._notify(payment, expires_at.date())
+                    kabinet = await self._kabinet_bezopasno(
+                        payment, created.get("id"), username
+                    )
+                    await self._notify(
+                        payment, expires_at.date(), kabinet_zavedyon=kabinet
+                    )
                     self._soobshchit_o_pokupke(
                         payment, expires_at.date(), is_new=True
                     )
@@ -278,7 +283,12 @@ class CheckoutService:
                 )
                 payment.subscription_url = panel_user.subscription_url
                 await self._session.commit()
-                await self._notify(payment, expires_at)
+                kabinet = await self._kabinet_bezopasno(
+                    payment, panel_user.id, panel_user.username or username
+                )
+                await self._notify(
+                    payment, expires_at, kabinet_zavedyon=kabinet
+                )
                 self._soobshchit_o_pokupke(payment, expires_at, is_new=False)
         except CheckoutNotConfiguredError:
             # Сквад не задан: деньги приняты, а выдать нечего.
@@ -311,6 +321,101 @@ class CheckoutService:
                 )
             )
         return user.remnawave_user_id if user is not None else None
+
+    async def _zavesti_kabinet(
+        self, payment: Payment, panel_user_id: int, panel_user_name: str
+    ) -> bool:
+        """Завести покупателю кабинет, если он покупал без регистрации.
+
+        Возвращает True, если кабинет создан прямо сейчас.
+
+        Напоминания об окончании срока рассылаются по владельцам
+        кабинетов, и купивший в один шаг не получал их вовсе. 01.09.2026
+        так купила Алёна Тутина на три месяца: предупредить её было
+        нечем до самого конца оплаченного срока.
+
+        Раньше заводить кабинет молча было нельзя, и в модели платежа
+        это записано: почта в users уникальна, а восстановления пароля
+        не существовало — человек навсегда терял возможность
+        зарегистрироваться сам. Восстановление появилось 03.09.2026,
+        и запрет снялся. Пароль не придумываем и не шлём почтой:
+        учётка заводится без пароля, а человек ставит свой через
+        обычное восстановление.
+        """
+        if not payment.contact_email:
+            return False
+
+        pochta = payment.contact_email.strip().lower()
+        user = await self._session.scalar(
+            select(User).where(func.lower(User.email) == pochta)
+        )
+        novyj = user is None
+        if user is None:
+            user = User(
+                email=pochta,
+                display_name=pochta.split("@")[0][:80] or "Покупатель",
+                password_digest=None,
+                is_active=True,
+            )
+            self._session.add(user)
+
+        # Связь с панелью и делает напоминания возможными: обход ищет
+        # только тех, у кого она есть. Чужую связь не трогаем — один
+        # и тот же id панели не может принадлежать двоим, и попытка
+        # разошлась бы об ограничение уникальности.
+        if user.remnawave_user_id is None:
+            zanyato = await self._session.scalar(
+                select(User.id).where(
+                    User.remnawave_user_id == panel_user_id,
+                    User.email != pochta,
+                )
+            )
+            if zanyato is None:
+                user.remnawave_user_id = panel_user_id
+                user.remnawave_username = panel_user_name
+            else:
+                logger.warning(
+                    "Учётка панели %s уже привязана к другому кабинету: "
+                    "напоминания по платежу %s не пойдут",
+                    panel_user_id,
+                    payment.id,
+                )
+
+        await self._session.flush()
+        if payment.user_id is None:
+            payment.user_id = user.id
+        await self._session.commit()
+        return novyj
+
+    def _cabinet_url(self) -> str:
+        origin = (
+            self._settings.allowed_origins[0]
+            if self._settings.allowed_origins
+            else ""
+        ).rstrip("/")
+        return origin or "https://vpanfi.su"
+
+    async def _kabinet_bezopasno(
+        self, payment: Payment, panel_user_id: int | None, panel_user_name: str
+    ) -> bool:
+        """То же, но без права уронить выдачу: деньги уже приняты.
+
+        Кабинет это удобство, а подписка — то, за что заплатили. Если
+        завести кабинет не вышло, человек всё равно получает ссылку,
+        а разбираться идём по журналу.
+        """
+        if panel_user_id is None:
+            return False
+        try:
+            return await self._zavesti_kabinet(
+                payment, panel_user_id, panel_user_name
+            )
+        except Exception:
+            logger.exception(
+                "Кабинет покупателю не заведён, платёж %s", payment.id
+            )
+            await self._session.rollback()
+            return False
 
     async def _device_limit(self, payment: Payment) -> int | None:
         """Сколько устройств положено по оплаченному тарифу.
@@ -361,7 +466,13 @@ class CheckoutService:
             )
         )
 
-    async def _notify(self, payment: Payment, expires_at: date) -> None:
+    async def _notify(
+        self,
+        payment: Payment,
+        expires_at: date,
+        *,
+        kabinet_zavedyon: bool = False,
+    ) -> None:
         """Отправить покупателю письмо со ссылкой — один раз.
 
         Письмо здесь не роскошь, а основной канал: оплата по СБП
@@ -386,6 +497,7 @@ class CheckoutService:
             support_url=str(self._settings.telegram_support_url),
             support_email=self._settings.support_email,
             max_url=self._settings.max_support_url,
+            cabinet_url=self._cabinet_url() if kabinet_zavedyon else None,
         )
         sent = await Mailer(self._settings).send(
             to_email=payment.contact_email,
