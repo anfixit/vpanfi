@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -24,13 +25,16 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenPairResponse,
 )
+from app.services.letters import trial_ready_letter
+from app.services.mail import Mailer, MailNotConfiguredError
 from app.services.notify import (
     TelegramNotifier,
     registraciya_soobshchenie,
     vhod_soobshchenie,
 )
-from app.services.trial import TrialService
+from app.services.trial import TrialGranted, TrialService
 
+logger = logging.getLogger(__name__)
 
 class EmailAlreadyRegisteredError(ValueError):
     pass
@@ -108,16 +112,54 @@ class AuthService:
         # Пробный доступ выдаём после того, как аккаунт закреплён:
         # панель может не ответить, и терять из-за этого регистрацию
         # нельзя. Ошибку grant глотает сам и пишет в журнал.
-        granted = await TrialService(self._session, self._settings).grant(user)
+        trial = await TrialService(self._session, self._settings).grant(user)
+        # Письмо со ссылкой человеку. Молчаливо выданный триал
+        # 13.08 по 03.09.2026 не открыл ни один из четверых: они
+        # получили доступ и не узнали об этом.
+        await self._pismo_o_triale(user, trial)
         self._soobshchit(
             "registration",
             registraciya_soobshchenie(
                 email=user.email,
                 display_name=user.display_name,
-                trial_granted=granted,
+                trial_granted=trial is not None,
             ),
         )
         return tokens
+
+    async def _pismo_o_triale(
+        self, user: User, trial: TrialGranted | None
+    ) -> None:
+        """Отправить новичку ссылку. Регистрацию уронить не может.
+
+        Почта может не ответить, но аккаунт и пробные дни у человека
+        уже есть, и терять их из-за письма нельзя. Несостоявшееся
+        письмо видно в журнале.
+        """
+        if trial is None or not trial.subscription_url:
+            return
+        if not self._settings.is_mail_configured:
+            logger.warning(
+                "Почта не настроена: новичок %s остался без ссылки",
+                user.email,
+            )
+            return
+        letter = trial_ready_letter(
+            subscription_url=trial.subscription_url,
+            expires_at=trial.expires_at,
+            days=self._settings.trial_days,
+            support_url=str(self._settings.telegram_support_url),
+            support_email=self._settings.support_email,
+            max_url=self._settings.max_support_url,
+        )
+        try:
+            await Mailer(self._settings).send(
+                to_email=user.email, letter=letter
+            )
+        except (MailNotConfiguredError, OSError, ValueError):
+            logger.exception(
+                "Письмо о пробном доступе не ушло: %s", user.email
+            )
 
     async def login(self, request: LoginRequest) -> TokenPairResponse:
         """Впустить в кабинет или объяснить, что именно не так.

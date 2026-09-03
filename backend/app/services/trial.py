@@ -12,7 +12,8 @@
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,20 @@ logger = logging.getLogger(__name__)
 TRIAL_TAG = "TRIAL"
 
 
+@dataclass(frozen=True)
+class TrialGranted:
+    """Выданный пробный доступ.
+
+    Ссылка нужна снаружи: без неё письмо получателю писать не о чем,
+    а сам он в кабинет не возвращается. С 13.08 по 03.09.2026 четверо
+    зарегистрировались, получили доступ и ни разу не открыли ссылку,
+    потому что о ней никто не сказал.
+    """
+
+    subscription_url: str | None
+    expires_at: date
+
+
 class TrialService:
     """Заводит пробную подписку сразу после регистрации."""
 
@@ -38,7 +53,7 @@ class TrialService:
         self._session = session
         self._settings = settings
 
-    async def grant(self, user: User) -> bool:
+    async def grant(self, user: User) -> TrialGranted | None:
         """Выдать пробный доступ. Наверх не бросает ничего и никогда.
 
         Регистрация не должна падать из-за панели. Человек уже ввёл
@@ -47,16 +62,16 @@ class TrialService:
         один раз, а триал можно довыдать руками. Невыданный триал
         виден в журнале.
 
-        Возвращает True, если доступ появился.
+        Возвращает выданный доступ вместе со ссылкой, либо None.
         """
         if user.remnawave_user_id is not None:
             # Уже привязан: второй вызов не должен плодить дубли
             # в панели. По этой же причине сначала ищем по имени.
-            return False
+            return None
 
         days = self._settings.trial_days
         if days <= 0:
-            return False
+            return None
 
         squad = self._settings.remnawave_squad_uuid
         if not squad:
@@ -67,7 +82,7 @@ class TrialService:
                 "Пробный доступ не выдан (%s): не задан REMNAWAVE_SQUAD_UUID",
                 user.email,
             )
-            return False
+            return None
 
         username = panel_username(user.email)
         expires_at = datetime.now(UTC) + timedelta(days=days)
@@ -93,10 +108,13 @@ class TrialService:
             logger.exception(
                 "Пробный доступ не выдан (%s): панель недоступна", user.email
             )
-            return False
+            return None
 
         panel_user = read_panel_user(payload)
         user.remnawave_user_id = panel_user.id
         user.remnawave_username = panel_user.username or username
         await self._session.commit()
-        return True
+        return TrialGranted(
+            subscription_url=panel_user.subscription_url,
+            expires_at=panel_user.expires_at or expires_at.date(),
+        )

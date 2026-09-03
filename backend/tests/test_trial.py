@@ -94,7 +94,8 @@ async def test_registration_grants_access(
 
     granted = await TrialService(session, _settings()).grant(user)  # type: ignore[arg-type]
 
-    assert granted is True
+    assert granted is not None
+    assert granted.subscription_url
     assert user.remnawave_user_id == 141
     assert user.remnawave_username == panel_username(user.email)
     assert session.commits == 1
@@ -133,7 +134,7 @@ async def test_without_a_squad_nothing_is_created(
         _settings(remnawave_squad_uuid=None),
     ).grant(build_user())
 
-    assert granted is False
+    assert granted is None
     assert panel.created is None
 
 
@@ -147,7 +148,7 @@ async def test_dead_panel_does_not_break_registration(
 
     granted = await TrialService(FakeSession(), _settings()).grant(user)  # type: ignore[arg-type]
 
-    assert granted is False
+    assert granted is None
     assert user.remnawave_user_id is None
 
 
@@ -172,7 +173,7 @@ async def test_existing_panel_user_is_linked_not_duplicated(
 
     granted = await TrialService(FakeSession(), _settings()).grant(user)  # type: ignore[arg-type]
 
-    assert granted is True
+    assert granted is not None
     assert panel.created is None
     assert user.remnawave_user_id == 137
 
@@ -189,7 +190,7 @@ async def test_already_linked_user_is_left_alone(
 
     granted = await TrialService(FakeSession(), _settings()).grant(user)  # type: ignore[arg-type]
 
-    assert granted is False
+    assert granted is None
     assert user.remnawave_user_id == 99
 
 
@@ -206,7 +207,7 @@ async def test_zero_days_switches_the_trial_off(
         _settings(trial_days=0),
     ).grant(build_user())
 
-    assert granted is False
+    assert granted is None
     assert panel.created is None
 
 
