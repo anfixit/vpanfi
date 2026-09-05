@@ -1,0 +1,12 @@
+{
+  "ios-vpn-list.png": "https://res.cloudinary.com/dbulfrlrz/images/w_400%2Ch_454%2Cc_scale/f_auto%2Cq_auto/v1760517865/wp-vpn/image-6_12620f6b35/image-6_12620f6b35.png?_i=AA",
+  "ios-delete-vpn.png": "https://res.cloudinary.com/dbulfrlrz/images/w_400%2Ch_409%2Cc_scale/f_auto%2Cq_auto/v1760517875/wp-vpn/image-5_12618d1587/image-5_12618d1587.png?_i=AA",
+  "ios-permission.jpg": "https://res.cloudinary.com/dbulfrlrz/images/w_400%2Ch_354%2Cc_scale/f_auto%2Cq_auto/v1760517870/wp-vpn/image-4_12619df5e1/image-4_12619df5e1.png?_i=AA",
+  "windows-proxy.png": "https://res.cloudinary.com/dbulfrlrz/images/w_505,h_454,c_scale/f_auto,q_auto/v1721665110/wp-vpn/windows-troubleshooting-win11-b/windows-troubleshooting-win11-b.png?_i=AA",
+  "windows-delete-vpn.png": {
+    "source": "https://cc.kmutt.ac.th/Files/VPN/VPN_Manual_update202510/Windows%2011/Manual%20setup%20VPN%20Windows%2011.pdf",
+    "page": 9,
+    "image": "Image90",
+    "note": "Original embedded screenshot, extracted without modification."
+  }
+}

@@ -113,13 +113,9 @@ export function LandingPage({
           <a href="#devices">Устройства</a>
           <a href="#tariffs">Тарифы</a>
           <a href="#countries">Страны</a>
-          <a href="#support">Поддержка</a>
+          <a className="nav-help-alert" href="/help#trouble">VPN не работает?</a>
           <a
-            href={routes.help}
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(routes.help);
-            }}
+            href="/help#setup"
           >
             Как подключиться
           </a>
@@ -141,6 +137,10 @@ export function LandingPage({
       </header>
 
       <main>
+        <div className="landing-help-banner shell">
+          <span><strong>Уже пользуетесь VPaNfi, но что-то не работает?</strong></span>
+          <a href="/help#trouble">Проверить подключение →</a>
+        </div>
         <section className="hero shell">
           <div className="hero-copy">
             <div className="eyebrow">
@@ -333,18 +333,14 @@ export function LandingPage({
             <div className="support-choice">
                 <a
                   className="support-option"
-                  href={routes.help}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    navigate(routes.help);
-                  }}
+                  href="/help#trouble"
                 >
                   <span className="support-option-icon">
                     <Icon name="question" />
                   </span>
                   <span className="support-option-copy">
-                    <strong>Как подключиться</strong>
-                    <small>Пошагово с картинками: iPhone, Android, Windows, роутер</small>
+                    <strong>VPN не работает? Поможем</strong>
+                    <small>Проверки и инструкции со скриншотами: iPhone, Android, Windows</small>
                   </span>
                   <Icon name="arrow-right" />
                 </a>
@@ -462,11 +458,7 @@ export function LandingPage({
           <a href="#devices">Устройства</a>
           <a href="#support">Поддержка</a>
           <a
-            href={routes.help}
-            onClick={(event) => {
-              event.preventDefault();
-              navigate(routes.help);
-            }}
+            href="/help#setup"
           >
             Как подключиться
           </a>
