@@ -279,14 +279,34 @@ export function DashboardPage() {
             className="card-mascot"
             decorative
           />
-          <strong>{view.expired ? "Подключение приостановлено" : "Всё работает отлично!"}</strong>
+          {/*
+            Кабинет знает только срок подписки, а не то, поднят ли туннель
+            на телефоне. Писать здесь «Подключено» значило бы обманывать
+            того, у кого VPN как раз не работает, поэтому говорим о том,
+            что видим, и отправляем проверять в приложение.
+          */}
+          <strong>{view.expired ? "Подписка закончилась" : "Подписка активна"}</strong>
           <p className="muted">
             {view.expired
               ? "После продления доступ вернётся автоматически."
-              : "Подключение активно и готово к работе."}
+              : "Работает ли VPN, видно в приложении: значок VPN в строке состояния."}
           </p>
+          {!view.expired && (
+            <p className="muted">
+              Не подключается?{" "}
+              <a
+                href={routes.help}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(routes.help);
+                }}
+              >
+                Проверьте по инструкции
+              </a>
+            </p>
+          )}
           <span className={`status-pill ${view.expired ? "is-warning" : ""}`.trim()}>
-            {view.expired ? "Не подключено" : "Подключено"}
+            {view.expired ? "Нужно продлить" : "Оплачена"}
           </span>
         </CabinetCard>
       </div>

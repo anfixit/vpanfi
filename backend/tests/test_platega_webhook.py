@@ -66,6 +66,31 @@ async def test_repeated_confirmation_changes_nothing() -> None:
     assert session.commits == 0
 
 
+async def test_paid_without_link_needs_delivery() -> None:
+    """Панель молчала при первой выдаче: повтор вебхука должен довыдать."""
+    payment = _payment(PaymentStatus.SUCCEEDED)
+    service = _service(FakeSession(payment), get_settings())
+
+    assert await service.needs_delivery(provider_payment_id="tx-1") is True
+
+
+async def test_delivered_payment_is_not_delivered_again() -> None:
+    """Ссылка уже есть: повтор вебхука не трогает панель второй раз."""
+    payment = _payment(PaymentStatus.SUCCEEDED)
+    payment.subscription_url = "https://panel.example/sub/abc"
+    service = _service(FakeSession(payment), get_settings())
+
+    assert await service.needs_delivery(provider_payment_id="tx-1") is False
+
+
+async def test_pending_payment_is_not_delivered() -> None:
+    """Без ссылки, но и без оплаты: выдавать нечего."""
+    payment = _payment(PaymentStatus.PENDING)
+    service = _service(FakeSession(payment), get_settings())
+
+    assert await service.needs_delivery(provider_payment_id="tx-1") is False
+
+
 async def test_failed_status_marks_the_payment() -> None:
     payment = _payment(PaymentStatus.PENDING)
     session = FakeSession(payment)

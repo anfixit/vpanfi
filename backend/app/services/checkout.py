@@ -205,6 +205,23 @@ class CheckoutService:
         await self._session.commit()
         return True
 
+    async def needs_delivery(self, *, provider_payment_id: str) -> bool:
+        """Оплачен, а ссылки нет: выдача в прошлый раз сорвалась.
+
+        Ссылка на подписку появляется у платежа только после ответа
+        панели. Если панель молчала, платёж остался оплаченным без ссылки,
+        и человек с деньгами на нашей стороне сидит без доступа. Повторный
+        вебхук от Platega это второй шанс довыдать, а не повод ждать письма
+        в поддержку.
+        """
+        payment = await self._by_provider_id(provider_payment_id)
+        if payment is None or payment.contact_email is None:
+            return False
+        return (
+            payment.status is PaymentStatus.SUCCEEDED
+            and payment.subscription_url is None
+        )
+
     async def deliver(self, *, provider_payment_id: str) -> None:
         """Выдать оплаченную подписку в панели.
 

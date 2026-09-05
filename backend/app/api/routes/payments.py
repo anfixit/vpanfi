@@ -184,9 +184,11 @@ async def platega_webhook(
     paid = await checkout.confirm(
         provider_payment_id=identifier, status_name=state
     )
-    # Подписку выдаём только тому вызову, который сам перевёл платёж в
-    # succeeded: Platega присылает уведомление несколько раз.
-    if paid:
+    # Подписку выдаём тому вызову, который сам перевёл платёж в succeeded:
+    # Platega присылает уведомление несколько раз, и повтор не должен
+    # продлевать. Исключение одно: если в прошлый раз панель не ответила,
+    # платёж оплачен, а ссылки нет, и повтор вебхука довыдаёт подписку.
+    if paid or await checkout.needs_delivery(provider_payment_id=identifier):
         await checkout.deliver(provider_payment_id=identifier)
 
     return Response(status_code=status.HTTP_200_OK)
