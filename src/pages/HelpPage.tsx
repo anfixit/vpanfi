@@ -716,11 +716,19 @@ function Support({ platform }: { platform: Platform }) {
       </p>
       <a
         className="button button-primary"
+        href={telegramSupportUrl}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Написать в Telegram ↗
+      </a>
+      <a
+        className="button button-ghost"
         href={maxSupportUrl}
         target="_blank"
         rel="noreferrer"
       >
-        Написать Анфисе в MAX ↗
+        Написать в MAX ↗
       </a>
       <a
         className="button button-ghost"
@@ -728,12 +736,15 @@ function Support({ platform }: { platform: Platform }) {
       >
         Написать на почту
       </a>
+      <a
+        className="button button-ghost"
+        href={`${routes.support}#support-form`}
+      >
+        Форма обращения на сайте
+      </a>
       <p className="help-secondary">
-        Если VPN не подключается, попробуйте MAX или почту.{" "}
-        <a href={telegramSupportUrl} target="_blank" rel="noreferrer">
-          Telegram
-        </a>{" "}
-        может быть недоступен в Вашей сети.
+        Для формы нужен вход в личный кабинет. Если Telegram не открывается,
+        выберите MAX, почту или форму на сайте.
       </p>
       <details className="help-detail">
         <summary>Что написать, чтобы быстрее разобраться</summary>
@@ -875,11 +886,17 @@ export function HelpPage({
         </div>
         <p className="help-quick-contact">
           Можно сразу обратиться за помощью:{" "}
-          <a href={maxSupportUrl} target="_blank" rel="noreferrer">
-            Анфиса в MAX ↗
+          <a href={telegramSupportUrl} target="_blank" rel="noreferrer">
+            Telegram ↗
           </a>{" "}
           <span aria-hidden="true">·</span>{" "}
-          <a href={`mailto:${supportEmail}`}>Написать на почту</a>
+          <a href={maxSupportUrl} target="_blank" rel="noreferrer">
+            MAX ↗
+          </a>{" "}
+          <span aria-hidden="true">·</span>{" "}
+          <a href={`mailto:${supportEmail}`}>Почта</a>{" "}
+          <span aria-hidden="true">·</span>{" "}
+          <a href={`${routes.support}#support-form`}>Форма обращения на сайте</a>
         </p>
         <nav className="help-tabs" aria-label="Ваше устройство">
           {PLATFORMS.map((p) => (

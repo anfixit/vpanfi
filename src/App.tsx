@@ -85,6 +85,8 @@ export function App() {
   const openAuth = () => setAuthOpen(true);
   const handleAuthenticated = () => {
     setAuthOpen(false);
+    // Ссылка из помощи должна открыть форму после входа, а не главную кабинета.
+    if (pathname === routes.support) return;
     navigate(routes.dashboard);
   };
 

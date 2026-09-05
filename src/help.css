@@ -372,8 +372,7 @@
   margin-top: 36px;
 }
 .help-contact {
-  position: sticky;
-  top: 90px;
+  position: static;
   scroll-margin-top: 90px;
   display: grid;
   gap: 14px;

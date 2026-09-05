@@ -417,6 +417,7 @@
 }
 
 .support-form-card {
+  scroll-margin-top: 100px;
   display: grid;
   grid-template-columns: minmax(250px, 0.7fr) minmax(320px, 1.3fr);
   gap: 34px;

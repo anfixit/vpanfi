@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiRequestError } from "../api/client";
 import type { SupportCategory } from "../api/contracts";
 import { maxSupportUrl, supportEmail, telegramSupportUrl } from "../config";
@@ -27,6 +27,11 @@ const faq = [
 const MESSAGE_MIN = 10;
 
 export function SupportPage() {
+  useEffect(() => {
+    if (window.location.hash === "#support-form") {
+      document.getElementById("support-form")?.scrollIntoView();
+    }
+  }, []);
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<SupportCategory>("connection");
   const [sent, setSent] = useState(false);
@@ -153,7 +158,7 @@ export function SupportPage() {
         </article>
       </section>
 
-      <section className="cabinet-card support-form-card">
+      <section id="support-form" className="cabinet-card support-form-card">
         <div className="support-form-copy">
           <span className="section-kicker">Форма обращения</span>
           <h2>Что случилось?</h2>
