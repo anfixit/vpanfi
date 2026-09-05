@@ -22,6 +22,11 @@ export const routes = {
    */
   passwordReset: "/password/reset",
   legal: "/legal",
+  /*
+   * Помощь открыта без входа: сюда идёт тот, у кого ничего не работает,
+   * и заставлять его сначала войти в кабинет нельзя.
+   */
+  help: "/help",
 } as const;
 
 export type AppRoute = (typeof routes)[keyof typeof routes];

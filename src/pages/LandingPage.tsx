@@ -114,6 +114,15 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#countries">Страны</a>
           <a href="#support">Поддержка</a>
+          <a
+            href={routes.help}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(routes.help);
+            }}
+          >
+            Как подключиться
+          </a>
           <a href="#documents">Документы</a>
         </nav>
         <div className="header-actions">
@@ -324,6 +333,23 @@ export function LandingPage({
             <div className="support-choice">
                 <a
                   className="support-option"
+                  href={routes.help}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate(routes.help);
+                  }}
+                >
+                  <span className="support-option-icon">
+                    <Icon name="question" />
+                  </span>
+                  <span className="support-option-copy">
+                    <strong>Как подключиться</strong>
+                    <small>Пошагово с картинками: iPhone, Android, Windows, роутер</small>
+                  </span>
+                  <Icon name="arrow-right" />
+                </a>
+                <a
+                  className="support-option"
                   href={telegramSupportUrl}
                   target="_blank"
                   rel="noreferrer"
@@ -435,6 +461,15 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#devices">Устройства</a>
           <a href="#support">Поддержка</a>
+          <a
+            href={routes.help}
+            onClick={(event) => {
+              event.preventDefault();
+              navigate(routes.help);
+            }}
+          >
+            Как подключиться
+          </a>
         </div>
         {/*
           Документы отдельной группой, а не вперемешку с разделами
