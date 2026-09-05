@@ -63,7 +63,7 @@ function Shot({
         onClick={() => dialog.current?.showModal()}
         aria-label={`Увеличить: ${caption}`}
       >
-        <img src={`/help/${src}`} alt={caption} loading="lazy" />
+        <img src={`/help-images/${src}`} alt={caption} loading="lazy" />
         <span>Увеличить скриншот ↗</span>
       </button>
       <figcaption>
@@ -88,9 +88,9 @@ function Shot({
         >
           Закрыть ×
         </button>
-        <img src={`/help/${src}`} alt={caption} loading="lazy" />
+        <img src={`/help-images/${src}`} alt={caption} loading="lazy" />
         <p>{caption}</p>
-        <a href={`/help/${src}`} target="_blank" rel="noreferrer">
+        <a href={`/help-images/${src}`} target="_blank" rel="noreferrer">
           Открыть оригинал в отдельной вкладке ↗
         </a>
       </dialog>
