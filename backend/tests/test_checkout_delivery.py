@@ -57,6 +57,24 @@ def test_new_user_gets_a_squad_a_tag_and_a_device_limit() -> None:
     assert "hwid_device_limit=" in source
 
 
+def test_extension_also_marks_the_buyer_as_paid() -> None:
+    """Продление без тега оставляло покупателя с триальной разметкой.
+
+    07.09.2026 shur_vlad_ead77bf0 пришёл с триала и купил месяц: срок
+    продлился до 07.10, а тег остался TRIAL. Выручку считают по PAID,
+    и такая покупка в подсчёт не попадала.
+    """
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService.deliver)
+    _, prodlenie = source.split("panel_user = read_panel_user(existing)", 1)
+
+    assert "set_expiry" in prodlenie
+    assert 'tag="PAID"' in prodlenie
+
+
 def test_delivery_refuses_to_create_a_user_without_a_squad() -> None:
     """Тихая выдача битой учётки хуже отказа: деньги уже приняты."""
     import inspect

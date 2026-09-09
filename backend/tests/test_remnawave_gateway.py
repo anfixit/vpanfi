@@ -117,6 +117,28 @@ async def test_set_expiry_patches_the_user() -> None:
     # Панель ждёт числовой id: на uuid она отвечает 400 «expected number».
     assert f'"id":{USER_ID}' in body
     assert "2027-06-01" in body
+    # Без тега поле не уходит вовсе: панель не трогает то, чего нет
+    # в теле, и продление не должно сбрасывать чужую разметку.
+    assert "tag" not in body
+
+
+@respx.mock
+async def test_set_expiry_carries_the_tag_when_given() -> None:
+    """Срок и тег переезжают одним запросом, а не двумя."""
+    route = respx.patch(USERS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"response": {"id": USER_ID}}
+        )
+    )
+
+    async with _gateway() as gateway:
+        await gateway.set_expiry(
+            USER_ID, datetime(2027, 6, 1, tzinfo=UTC), tag="PAID"
+        )
+
+    body = route.calls.last.request.content.decode()
+    assert '"tag":"PAID"' in body
+    assert "2027-06-01" in body
 
 
 @respx.mock

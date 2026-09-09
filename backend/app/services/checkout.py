@@ -297,6 +297,13 @@ class CheckoutService:
                         datetime.min.time(),
                         tzinfo=UTC,
                     ),
+                    # Тег ставится и при продлении, а не только при
+                    # создании учётки. 07.09.2026 shur_vlad_ead77bf0
+                    # пришёл с триала, купил месяц и остался TRIAL:
+                    # срок продлился, тег никто не тронул. Выручку
+                    # считают по PAID, и такой покупатель в неё не
+                    # попадал бы, а это самый желанный путь воронки.
+                    tag="PAID",
                 )
                 payment.subscription_url = panel_user.subscription_url
                 await self._session.commit()

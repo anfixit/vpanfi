@@ -197,12 +197,20 @@ class RemnawaveGateway:
         self,
         user_id: int,
         expire_at: datetime,
+        tag: str | None = None,
     ) -> Mapping[str, Any]:
-        """Передвинуть дату окончания подписки."""
-        body = {
+        """Передвинуть дату окончания подписки и, при нужде, тег.
+
+        Тег идёт тем же запросом, а не отдельным: продление и пометка
+        покупателя должны случиться вместе или не случиться вовсе.
+        Поля, которых нет в теле, панель не трогает.
+        """
+        body: dict[str, Any] = {
             "id": user_id,
             "expireAt": _to_panel_time(expire_at),
         }
+        if tag is not None:
+            body["tag"] = tag
         return _as_user(await self._request("PATCH", USERS_PATH, json=body))
 
     async def list_devices(self, user_id: int) -> list[Mapping[str, Any]]:
