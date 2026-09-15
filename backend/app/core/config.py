@@ -102,7 +102,7 @@ class Settings(BaseSettings):
 
     # Поддержка — живой человек, а не бот оформления: с вопросом
     # в меню покупки идти некуда.
-    telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/Anfikus")
+    telegram_support_url: AnyHttpUrl = AnyHttpUrl("https://t.me/artem_vpanfi_bot")
 
     # Почта и MAX открываются без VPN, телеграм — нет. Письмо со ссылкой
     # получает и тот, у кого подписка не заработала: контакт, до которого

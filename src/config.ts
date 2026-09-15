@@ -8,7 +8,7 @@
  */
 
 const DEFAULT_BOT_URL = "https://t.me/VPaNfi_bot";
-const DEFAULT_SUPPORT_URL = "https://t.me/Anfikus";
+const DEFAULT_SUPPORT_URL = "https://t.me/artem_vpanfi_bot";
 const DEFAULT_MAX_URL =
   "https://max.ru/u/f9LHodD0cOJIWTlbUHU-46ujRE3vHfFd5g5TwqeeHCpHpjK4tq5DJ1joVkM";
 const DEFAULT_SUPPORT_EMAIL = "anfisa.kovganyuk@gmail.com";
