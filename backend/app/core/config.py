@@ -108,10 +108,7 @@ class Settings(BaseSettings):
     # получает и тот, у кого подписка не заработала: контакт, до которого
     # он не дотянется, в таком письме бесполезен.
     support_email: str = "anfisa.kovganyuk@gmail.com"
-    max_support_url: str = (
-        "https://max.ru/u/"
-        "f9LHodD0cOJIWTlbUHU-46ujRE3vHfFd5g5TwqeeHCpHpjK4tq5DJ1joVkM"
-    )
+    max_support_url: str = "https://max.ru/id632418110551_bot"
 
     # Способы входа в кабинет. Каждый включается независимо: провайдер
     # без учётных данных просто не предлагается на экране входа, а не
