@@ -130,6 +130,7 @@ class FakeRewardStore:
         self.rewards: list[ReferralReward] = []
         self.paid_emails: set[str] = set()
         self.save_calls = 0
+        self.rollback_calls = 0
         self.raise_on_add: Exception | None = None
         # Ровно на этом по счёту вызове save() бросить исключение
         # (однократно): проверяет сбой сохранения после удачной выдачи.
@@ -137,6 +138,9 @@ class FakeRewardStore:
         # Хук перед возвратом из refresh(): тесты гонки подделывают тут
         # состояние, которое якобы успел записать другой обработчик.
         self.refresh_hook: Any = None
+        # Порядок вызовов add()/save(): проверяет, что запись
+        # коммитится раньше, чем register() вернёт её вызывающему.
+        self.call_order: list[str] = []
 
     async def has_earlier_paid(self, email: str, payment_id: UUID) -> bool:
         return email.lower() in self.paid_emails
@@ -149,9 +153,16 @@ class FakeRewardStore:
         )
 
     async def add(self, reward: ReferralReward) -> None:
+        self.call_order.append("add")
         if self.raise_on_add is not None:
             raise self.raise_on_add
         self.rewards.append(reward)
+
+    async def get(self, reward_id: UUID) -> ReferralReward | None:
+        for r in self.rewards:
+            if r.id == reward_id:
+                return r
+        return None
 
     async def granted_in_last_days(
         self, inviter_username: str, days: int
@@ -165,13 +176,17 @@ class FakeRewardStore:
             and r.inviter_granted_at >= threshold
         )
 
-    async def due(self, limit: int) -> list[ReferralReward]:
-        return [r for r in self.rewards if r.status == "pending"][:limit]
+    async def due_ids(self, limit: int) -> list[UUID]:
+        return [r.id for r in self.rewards if r.status == "pending"][:limit]
 
     async def save(self) -> None:
+        self.call_order.append("save")
         self.save_calls += 1
         if self.fail_on_save_call == self.save_calls:
             raise RuntimeError("сбой сохранения")
+
+    async def rollback(self) -> None:
+        self.rollback_calls += 1
 
     async def refresh(self, reward: ReferralReward) -> None:
         if self.refresh_hook is not None:
@@ -961,28 +976,35 @@ async def test_lock_registry_drops_entries_for_terminal_rewards() -> None:
     assert failing_reward.id not in referral_module._LOCKS
 
 
-# --- retry_due ------------------------------------------------------------
+# --- process_by_id ---------------------------------------------------------
 
 
-async def test_retry_due_processes_pending_rewards_and_returns_count() -> None:
+async def test_process_by_id_processes_the_matching_reward() -> None:
+    """Фоновая задача знает только id: process_by_id находит запись сама."""
     panel = FakePanelGateway(
         by_id={
             900: _panel_payload(user_id=900, username="friend_acc"),
-            901: _panel_payload(user_id=901, username="friend_acc_2"),
             500: _panel_payload(user_id=500, username=INVITER_USERNAME),
         }
     )
     store = FakeRewardStore()
-    store.rewards.append(_reward(friend_panel_user_id=900))
-    store.rewards.append(
-        _reward(friend_panel_user_id=901, friend_email="second@example.test")
-    )
+    reward = _reward(friend_panel_user_id=900)
+    store.rewards.append(reward)
     service, store, panel, _bedolaga = _service(store=store, panel=panel)
 
-    processed = await service.retry_due(limit=20)
+    await service.process_by_id(reward.id)
 
-    assert processed == 2
-    assert all(r.status == "granted" for r in store.rewards)
+    assert reward.status == "granted"
+    assert 900 in panel.set_expiry_calls
+
+
+async def test_process_by_id_warns_and_does_nothing_when_missing() -> None:
+    """Награда пропала между постановкой задачи и её запуском."""
+    service, store, panel, _bedolaga = _service()
+
+    await service.process_by_id(uuid4())  # не должно бросить исключение
+
+    assert panel.set_expiry_calls == []
 
 
 # --- устойчивость к неожиданным сбоям ------------------------------------
@@ -1056,13 +1078,54 @@ async def test_record_failure_survives_a_broken_store() -> None:
     assert reward.last_error is not None
 
 
-async def test_retry_due_never_raises_when_the_store_is_unavailable() -> None:
-    class BrokenStore(FakeRewardStore):
-        async def due(self, limit: int) -> list[ReferralReward]:
-            raise RuntimeError("база недоступна")
+async def test_register_rolls_back_the_session_after_a_broken_add() -> None:
+    """Сбой в register не должен оставить сессию мёртвой для соседей.
 
-    service, *_ = _service(store=BrokenStore())
+    Незакоммиченная ошибка внутри одной сессии портит любое следующее
+    действие в ней PendingRollbackError, а обработка одной награды
+    делает несколько запросов подряд (другу, потом пригласившему).
+    """
+    store = FakeRewardStore()
+    store.raise_on_add = RuntimeError("база недоступна")
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
 
-    processed = await service.retry_due()
+    await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
 
-    assert processed == 0
+    assert store.rollback_calls == 1
+
+
+# --- register: коммит награды ------------------------------------------
+
+
+async def test_register_commits_the_reward_before_returning() -> None:
+    """Фоновая задача открывает свою сессию сразу после register.
+
+    Если запись ещё не закоммичена, эта свежая сессия её не увидит:
+    ``add`` обязан завершиться сохранением, а не просто добавлением
+    в память сессии.
+    """
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert store.call_order == ["add", "save"]
+    assert store.save_calls == 1

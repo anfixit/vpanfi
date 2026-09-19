@@ -16,7 +16,10 @@ from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
 from app.services.checkout import CheckoutService
 from app.services.oauth import OAuthService
-from app.services.referral_wiring import build_referral_service
+from app.services.referral_wiring import (
+    build_referral_service,
+    zapustit_obrabotku,
+)
 from app.services.subscription import SubscriptionService
 from app.services.support import SupportService
 
@@ -127,7 +130,10 @@ def get_checkout_service(
     settings: SettingsDep,
 ) -> CheckoutService:
     return CheckoutService(
-        session, settings, build_referral_service(session, settings)
+        session,
+        settings,
+        build_referral_service(session, settings),
+        zapustit_obrabotku,
     )
 
 

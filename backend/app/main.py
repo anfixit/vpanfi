@@ -11,7 +11,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
-from app.services.referral_wiring import build_referral_service
+from app.services.referral_wiring import obojti_ozhidayushchie
 from app.services.reminders import RemindersService
 
 logger = logging.getLogger(__name__)
@@ -54,10 +54,11 @@ async def _nagrady() -> None:
     """Повторять зависшие награды за приглашение.
 
     Рефералка выключена по умолчанию, и тогда задача выходит сразу же:
-    пустой обход каждые полчаса не стоит даже строчки в журнале. Ту же
-    сборку сервиса использует и запрос кассы — вынесена в
-    ``referral_wiring``, чтобы этот модуль и ``api/dependencies.py`` не
-    зависели друг от друга.
+    пустой обход каждые полчаса не стоит даже строчки в журнале. Сама
+    выдача идёт своей задачей на свою же награду (см.
+    ``referral_wiring.obojti_ozhidayushchie``): здесь только регулярный
+    запуск, чтобы этот модуль и ``api/dependencies.py`` не зависели
+    друг от друга напрямую.
     """
     settings = get_settings()
     if not settings.referral_enabled:
@@ -68,9 +69,7 @@ async def _nagrady() -> None:
     await asyncio.sleep(90)
     while True:
         try:
-            async with async_session_factory() as session:
-                service = build_referral_service(session, settings)
-                obrabotano = await service.retry_due()
+            obrabotano = await obojti_ozhidayushchie()
             if obrabotano:
                 logger.info(
                     "Рефералка: повторных попыток выдачи сделано: %s",

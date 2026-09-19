@@ -1,8 +1,14 @@
 from typing import Any
+from uuid import UUID, uuid4
 
 import app.services.checkout as checkout_module
 from app.core.config import Settings, get_settings
-from app.models.billing import Payment, PaymentPurpose, PaymentStatus
+from app.models.billing import (
+    Payment,
+    PaymentPurpose,
+    PaymentStatus,
+    ReferralReward,
+)
 from app.services.checkout import CheckoutService, panel_username
 
 
@@ -205,6 +211,53 @@ class _CountingReferral:
         raise AssertionError("register вернул None, process звать незачем")
 
 
+class _RewardReferral:
+    """Поддельный сервис рефералки: register всегда отдаёт награду.
+
+    ``process`` тут падает с AssertionError: выдачу теперь запускает
+    только ``schedule_reward`` в фоне, и checkout не должен ждать её
+    результата внутри ответа вебхуку.
+    """
+
+    def __init__(self, reward: ReferralReward) -> None:
+        self._reward = reward
+        self.register_calls = 0
+
+    async def register(self, **_kwargs: Any) -> ReferralReward | None:
+        self.register_calls += 1
+        return self._reward
+
+    async def process(self, _reward: object) -> None:
+        raise AssertionError(
+            "process не должен звать: выдача идёт в фоне через "
+            "schedule_reward"
+        )
+
+
+class _RollbackTrackingSession:
+    """Поддельная сессия, у которой есть только async rollback."""
+
+    def __init__(self) -> None:
+        self.rollback_calls = 0
+
+    async def rollback(self) -> None:
+        self.rollback_calls += 1
+
+
+def _reward_for_test() -> ReferralReward:
+    return ReferralReward(
+        id=uuid4(),
+        payment_id=uuid4(),
+        friend_email="friend@example.test",
+        friend_panel_user_id=42,
+        inviter_username="Alyona_Tutina",
+        inviter_panel_user_id=500,
+        friend_days=30,
+        inviter_days=30,
+        status="pending",
+    )
+
+
 def _payment_with_code(referral_code: str | None) -> Payment:
     return Payment(
         user_id=None,
@@ -256,6 +309,63 @@ async def test_referral_step_is_skipped_without_a_code() -> None:
     )
 
     assert referral.register_calls == 0
+
+
+async def test_referral_reward_schedules_background_processing() -> None:
+    """Награда есть - schedule_reward зовётся с её id ровно один раз."""
+    reward = _reward_for_test()
+    scheduled: list[UUID] = []
+    service = CheckoutService(
+        object(),  # type: ignore[arg-type]
+        get_settings(),
+        _RewardReferral(reward),
+        schedule_reward=scheduled.append,
+    )
+
+    await service._nachislit_za_priglashenie(
+        _payment_with_code("Alyona_Tutina"),
+        friend_panel_user_id=42,
+        friend_was_paid=False,
+    )
+
+    assert scheduled == [reward.id]
+
+
+async def test_no_reward_means_nothing_is_scheduled() -> None:
+    """register вернул None - schedule_reward звать незачем."""
+    scheduled: list[UUID] = []
+    service = CheckoutService(
+        object(),  # type: ignore[arg-type]
+        get_settings(),
+        _CountingReferral(),
+        schedule_reward=scheduled.append,
+    )
+
+    await service._nachislit_za_priglashenie(
+        _payment_with_code("Alyona_Tutina"),
+        friend_panel_user_id=42,
+        friend_was_paid=False,
+    )
+
+    assert scheduled == []
+
+
+async def test_referral_failure_triggers_a_guarded_rollback() -> None:
+    """Сбой register откатывает сессию, а не просто гасит исключение."""
+    session = _RollbackTrackingSession()
+    service = CheckoutService(
+        session,  # type: ignore[arg-type]
+        get_settings(),
+        _BrokenReferral(),
+    )
+
+    await service._nachislit_za_priglashenie(
+        _payment_with_code("Alyona_Tutina"),
+        friend_panel_user_id=42,
+        friend_was_paid=False,
+    )  # не должно ничего бросить
+
+    assert session.rollback_calls == 1
 
 
 class _FakeShop:

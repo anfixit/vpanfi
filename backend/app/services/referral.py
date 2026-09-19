@@ -58,17 +58,19 @@ _CAP_WINDOW_DAYS = 30
 # Совпадает с длиной колонки `last_error` (String(500)).
 _MAX_ERROR_LENGTH = 500
 
-# Свежую запись фон не трогает: вебхук уже обрабатывает её инлайн, и
-# гонка с фоновой задачей нужна не раньше, чем инлайн-обработка успеет
-# провалиться и записать это в базу.
+# Свежую запись обход не трогает: за ней уже идёт фоновая задача,
+# которую checkout поставил сразу после register, и гонка с обходом
+# нужна не раньше, чем эта задача успеет провалиться и записать сбой
+# в базу.
 _DUE_MIN_AGE = timedelta(minutes=10)
 
 GatewayFactory = Callable[[], AbstractAsyncContextManager[Any]]
 
 # Блокировки по id награды, общие для всех экземпляров ReferralService
-# в процессе: вебхук вызывает process сразу после register, а фоновый
-# retry_due читает ту же запись из другой сессии, и оба должны видеть
-# одну и ту же блокировку, а не свою локальную.
+# в процессе: фоновая задача, запущенная сразу после register, и
+# периодический обход читают одну и ту же запись каждый из своей
+# сессии, и оба должны видеть одну и ту же блокировку, а не свою
+# локальную.
 _LOCKS: dict[UUID, asyncio.Lock] = {}
 
 # Статусы, после которых с наградой больше никто не будет работать
@@ -130,18 +132,39 @@ class RewardStore(Protocol):
         """Завести новую запись награды."""
         ...
 
+    async def get(self, reward_id: UUID) -> ReferralReward | None:
+        """Найти запись награды по id, если она ещё существует."""
+        ...
+
     async def granted_in_last_days(
         self, inviter_username: str, days: int
     ) -> int:
         """Сколько раз пригласившему уже выдали награду за окно дней."""
         ...
 
-    async def due(self, limit: int) -> list[ReferralReward]:
-        """Записи, ожидающие выдачи, самые старые первыми."""
+    async def due_ids(self, limit: int) -> list[UUID]:
+        """Id записей, ожидающих выдачи, самые старые первыми.
+
+        Отдаёт именно id, а не сами записи: обход обрабатывает каждую
+        награду в своей сессии, и объект из чужой сессии тут был бы
+        бесполезен.
+        """
         ...
 
     async def save(self) -> None:
         """Сохранить то, что изменилось в записях наград."""
+        ...
+
+    async def rollback(self) -> None:
+        """Откатить сессию после сбоя, чтобы она не осталась мёртвой.
+
+        Одна обработка награды делает несколько запросов в одной
+        сессии (сперва другу, потом пригласившему). Незакоммиченный
+        сбой первого из них оставляет сессию в состоянии, где любое
+        следующее действие получает PendingRollbackError, и без
+        явного отката вторая половина той же обработки не выполнится
+        даже там, где сеть в порядке.
+        """
         ...
 
     async def refresh(self, reward: ReferralReward) -> None:
@@ -192,6 +215,9 @@ class SqlRewardStore(RewardStore):
     async def add(self, reward: ReferralReward) -> None:
         self._session.add(reward)
 
+    async def get(self, reward_id: UUID) -> ReferralReward | None:
+        return await self._session.get(ReferralReward, reward_id)
+
     async def granted_in_last_days(
         self, inviter_username: str, days: int
     ) -> int:
@@ -203,10 +229,10 @@ class SqlRewardStore(RewardStore):
         )
         return int(await self._session.scalar(stmt) or 0)
 
-    async def due(self, limit: int) -> list[ReferralReward]:
+    async def due_ids(self, limit: int) -> list[UUID]:
         threshold = datetime.now(UTC) - _DUE_MIN_AGE
         stmt = (
-            select(ReferralReward)
+            select(ReferralReward.id)
             .where(
                 ReferralReward.status == "pending",
                 ReferralReward.created_at <= threshold,
@@ -218,6 +244,9 @@ class SqlRewardStore(RewardStore):
 
     async def save(self) -> None:
         await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
 
     async def refresh(self, reward: ReferralReward) -> None:
         await self._session.refresh(reward)
@@ -365,7 +394,25 @@ class ReferralService:
             return reward
         except Exception:
             logger.exception("Рефералка: не удалось завести награду")
+            await self._otkatit_bezopasno()
             return None
+
+    async def process_by_id(self, reward_id: UUID) -> None:
+        """Обработать награду по id: вход для фоновой задачи со своей сессией.
+
+        И сразу после ``register``, и на периодическом обходе к этому
+        моменту известен только id награды: сама запись живёт в чужой
+        сессии либо не читалась вовсе. Награды не удаляются, и
+        пропажа записи означала бы ошибку где-то ещё, а не штатный
+        случай, поэтому здесь предупреждение в лог, а не тихий возврат.
+        """
+        reward = await self._store.get(reward_id)
+        if reward is None:
+            logger.warning(
+                "Рефералка: награда %s не найдена для обработки", reward_id
+            )
+            return
+        await self.process(reward)
 
     async def process(self, reward: ReferralReward) -> None:
         """Выдать то, что причитается по записи и ещё не выдано.
@@ -374,10 +421,12 @@ class ReferralService:
         сетевого вызова: повтор после сбоя должен продлить только то,
         что не продлилось в прошлый раз.
 
-        Вебхук вызывает это сразу после ``register``, а фоновая задача
-        читает ту же запись из отдельной сессии: держим замок на всё
-        время обработки и первым делом перечитываем состояние записи,
-        чтобы второй обработчик увидел, что первый уже успел сделать.
+        Фоновая задача, которую ``checkout`` запускает сразу после
+        ``register``, и периодический обход зависших наград читают
+        одну и ту же запись каждый из своей сессии: держим замок на
+        всё время обработки и первым делом перечитываем состояние
+        записи, чтобы второй обработчик увидел, что первый уже успел
+        сделать.
         """
         lock = _lock_for(reward.id)
         async with lock:
@@ -417,22 +466,6 @@ class ReferralService:
             finally:
                 if reward.status in _TERMINAL_STATUSES:
                     _release_lock(reward.id)
-
-    async def retry_due(self, limit: int = 20) -> int:
-        """Повторить зависшие выдачи. Возвращает число обработанных.
-
-        Не сообщает, сколько из них выдались успешно, только сколько
-        попыток сделано за этот обход.
-        """
-        try:
-            rewards = await self._store.due(limit)
-        except Exception:
-            logger.exception("Рефералка: не удалось получить список наград")
-            return 0
-
-        for reward in rewards:
-            await self.process(reward)
-        return len(rewards)
 
     async def _grant_friend(self, reward: ReferralReward) -> bool:
         """Продлить подписку друга в панели. True значит: выдано или уже было.
@@ -560,6 +593,7 @@ class ReferralService:
                 "Рефералка: не удалось сохранить попытку по награде %s",
                 reward.id,
             )
+            await self._otkatit_bezopasno()
 
     async def _mark_unrecoverable(
         self, reward: ReferralReward, side: str
@@ -591,3 +625,16 @@ class ReferralService:
                 "награде %s",
                 reward.id,
             )
+            await self._otkatit_bezopasno()
+
+    async def _otkatit_bezopasno(self) -> None:
+        """Откатить сессию после сбоя, не давая самому откату всё уронить.
+
+        Хранилище в этой сессии могло уже упасть один раз: если и
+        rollback не выйдет, обработке всё равно нужно закончиться и
+        отдать след в лог, а не поднять исключение выше себя.
+        """
+        try:
+            await self._store.rollback()
+        except Exception:
+            logger.exception("Рефералка: не удалось откатить сессию")

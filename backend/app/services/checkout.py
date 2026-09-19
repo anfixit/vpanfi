@@ -8,6 +8,7 @@
 import hashlib
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
@@ -112,12 +113,17 @@ class CheckoutService:
         session: AsyncSession,
         settings: Settings,
         referral: ReferralService | None = None,
+        schedule_reward: Callable[[UUID], None] | None = None,
     ) -> None:
         self._session = session
         self._settings = settings
         # По умолчанию None: старые вызовы и тесты, которые не знают про
         # рефералку, продолжают работать в точности как раньше.
         self._referral = referral
+        # То же для фоновой постановки: без неё выдача награды просто
+        # не запускается сама, и её всё равно подхватит периодический
+        # обход зависших наград.
+        self._schedule_reward = schedule_reward
 
     async def start(
         self,
@@ -318,10 +324,13 @@ class CheckoutService:
                     self._soobshchit_o_pokupke(
                         payment, expires_at.date(), is_new=True
                     )
-                    # Рефералка — после письма и уведомления о покупке:
-                    # человек должен получить ссылку раньше любых
-                    # наград, а сама награда ставится за оплаченным
-                    # платежом, который уже посчитан выданным.
+                    # Рефералка идёт после письма и уведомления о
+                    # покупке: человек должен получить ссылку раньше
+                    # любых наград. Дни другу ложатся поверх только что
+                    # закоммиченного здесь срока, и это безопасно:
+                    # награда уходит в обработку фоновой задачей уже
+                    # после этого commit, и её собственная свежая
+                    # сессия увидит именно эту подписку.
                     await self._nachislit_za_priglashenie(
                         payment,
                         friend_panel_user_id=_to_panel_id(created.get("id")),
@@ -366,8 +375,9 @@ class CheckoutService:
                 )
                 self._soobshchit_o_pokupke(payment, expires_at, is_new=False)
                 # См. комментарий у ветки новой учётки выше: рефералка
-                # идёт после письма покупателю и после set_expiry, на
-                # уже продлённый срок.
+                # идёт после письма покупателю, а дни другу ложатся
+                # поверх срока, который set_expiry только что продлил
+                # и который уже закоммичен строкой выше.
                 await self._nachislit_za_priglashenie(
                     payment,
                     friend_panel_user_id=panel_user.id,
@@ -556,13 +566,20 @@ class CheckoutService:
         friend_panel_user_id: int | None,
         friend_was_paid: bool,
     ) -> None:
-        """Завести и обработать награду за приглашение, если она положена.
+        """Завести награду за приглашение и поставить её выдачу в фон.
 
-        Публичное ядро рефералки (``register``/``process``) само не
-        поднимает исключений, но здесь ещё один слой try/except: этот
-        метод обязан переживать даже поддельный или будущий сервис,
-        который вести себя иначе. Деньги уже приняты и подписка уже
-        выдана — сбой награды не должен ронять ответ вебхуку.
+        Публичное ядро рефералки (``register``) само не поднимает
+        исключений, но здесь ещё один слой try/except: этот метод
+        обязан переживать даже поддельный или будущий сервис, который
+        ведёт себя иначе. Деньги уже приняты и подписка уже выдана,
+        сбой награды не должен ронять ответ вебхуку.
+
+        ``process`` здесь не вызывается вовсе: до шести сетевых
+        походов по 10-15 секунд каждый внутри одного webhook-запроса
+        превращали ответ Platega в минуту, и провайдер начинал слать
+        повтор. Выдачу запускает ``schedule_reward`` в отдельной
+        задаче со своей сессией, а если его не передали, награда
+        просто ждёт периодического обхода зависших наград.
         """
         if self._referral is None or not payment.referral_code:
             return
@@ -574,13 +591,22 @@ class CheckoutService:
             )
             if reward is not None:
                 self._soobshchit_o_nagrade(reward)
-                await self._referral.process(reward)
+                if self._schedule_reward is not None:
+                    self._schedule_reward(reward.id)
         except Exception:
             logger.exception(
                 "Рефералка: начисление за приглашение сорвалось, "
                 "платёж %s",
                 payment.id,
             )
+            try:
+                await self._session.rollback()
+            except Exception:
+                logger.exception(
+                    "Рефералка: не удалось откатить сессию после сбоя "
+                    "начисления, платёж %s",
+                    payment.id,
+                )
 
     def _soobshchit_o_nagrade(self, reward: ReferralReward) -> None:
         """Рассказать о заведённой награде за приглашение."""
