@@ -7,6 +7,7 @@ import { Mascot } from "../components/Mascot";
 import { ThemeToggle, type Theme } from "../components/ThemeToggle";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { legalDocuments, legalPath } from "../legal";
+import { clearReferral, currentReferral } from "../referral";
 
 /*
  * Покупка без регистрации.
@@ -43,6 +44,15 @@ function PurchaseResult({
 }) {
   const [status, setStatus] = useState<GuestPurchaseStatus | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    // Подписка выдана: код приглашения сделал своё дело. Стираем его,
+    // чтобы повторная покупка на эту же почту не считалась приглашённой
+    // второй раз.
+    if (status?.done && status.subscriptionUrl) {
+      clearReferral();
+    }
+  }, [status?.done, status?.subscriptionUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,6 +280,12 @@ export function BuyPage({
               Telegram не нужен: выберите срок, укажите почту и оплатите.
               Ссылку на подписку покажем сразу после оплаты.
             </p>
+
+            {currentReferral() !== null && (
+              <p className="buy-note">
+                Вы пришли по приглашению. К первой покупке добавится 30 дней.
+              </p>
+            )}
 
             {config.loading && <p className="muted">Загружаем тарифы…</p>}
             {config.error && (

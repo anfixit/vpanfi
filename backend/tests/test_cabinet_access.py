@@ -7,6 +7,7 @@ PRIVATE_ROUTES = [
     ("get", "/api/v1/cabinet/devices"),
     ("get", "/api/v1/cabinet/payments"),
     ("delete", "/api/v1/cabinet/devices/device_demo"),
+    ("get", "/api/v1/cabinet/referral"),
 ]
 
 

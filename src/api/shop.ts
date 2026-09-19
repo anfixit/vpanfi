@@ -11,6 +11,7 @@
  * проксирует /shop/ дальше (см. nginx.conf).
  */
 
+import { currentReferral } from "../referral";
 import type {
   CheckoutPaymentMethod,
   GuestPurchase,
@@ -174,6 +175,8 @@ export const shop = {
    * назначить себе самому.
    */
   async createPurchase(payload: GuestPurchasePayload): Promise<GuestPurchase> {
+    const ref = currentReferral();
+
     const response = await fetch("/api/v1/payments/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -189,6 +192,9 @@ export const shop = {
         ...(payload.paymentMethod === null
           ? {}
           : { paymentMethod: payload.paymentMethod }),
+        // Код приглашения шлём только когда он есть: старый бэкенд без
+        // поля ref не должен получать лишний ключ в теле.
+        ...(ref === null ? {} : { ref }),
       }),
     });
 

@@ -1,10 +1,13 @@
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.dependencies import (
     CurrentUser,
+    SettingsDep,
     get_cabinet_service,
+    get_reward_store,
     get_subscription_service,
     get_support_service,
 )
@@ -14,6 +17,7 @@ from app.schemas.cabinet import (
     DashboardResponse,
     DeviceResponse,
     PaymentResponse,
+    ReferralResponse,
     SubscriptionLinkRequest,
     SubscriptionLinkResponse,
 )
@@ -22,6 +26,7 @@ from app.schemas.support import (
     TicketCreateRequest,
 )
 from app.services.cabinet import CabinetService
+from app.services.referral import RewardStore
 from app.services.subscription import (
     PanelUnavailableError,
     SubscriptionAlreadyClaimedError,
@@ -39,6 +44,8 @@ SubscriptionServiceDep = Annotated[
 ]
 
 SupportServiceDep = Annotated[SupportService, Depends(get_support_service)]
+
+RewardStoreDep = Annotated[RewardStore, Depends(get_reward_store)]
 
 UNAUTHORIZED_RESPONSE = {401: {"description": "Требуется вход в кабинет"}}
 
@@ -288,3 +295,53 @@ async def create_support_ticket(
     service: SupportServiceDep,
 ) -> TicketCreatedResponse:
     return await service.create(user, request)
+
+
+@router.get(
+    "/referral",
+    response_model=ReferralResponse,
+    summary="Ссылка на приглашение друга и счётчики по ней",
+    description=(
+        "Код приглашения это имя учётки в панели, поэтому ссылка есть "
+        "только у тех, кто её привязал. Выключенная рефералка отдаёт "
+        "нули и не трогает хранилище наград."
+    ),
+    responses=UNAUTHORIZED_RESPONSE,
+)
+async def get_referral(
+    user: CurrentUser,
+    store: RewardStoreDep,
+    settings: SettingsDep,
+) -> ReferralResponse:
+    if not settings.referral_enabled:
+        return ReferralResponse(
+            enabled=False,
+            friend_days=settings.referral_friend_days,
+            inviter_days=settings.referral_inviter_days,
+        )
+
+    username = user.remnawave_username
+    if username is None:
+        # Без привязанной учётки панели у награды нет по чему искать:
+        # inviter_username в referral_rewards это её имя, а не id
+        # сайтового аккаунта.
+        return ReferralResponse(
+            enabled=True,
+            friend_days=settings.referral_friend_days,
+            inviter_days=settings.referral_inviter_days,
+        )
+
+    origin = (
+        settings.allowed_origins[0] if settings.allowed_origins else ""
+    ).rstrip("/")
+    link = f"{origin}/?ref={quote(username, safe='')}"
+    friends, days_earned = await store.inviter_stats(username)
+
+    return ReferralResponse(
+        enabled=True,
+        link=link,
+        friends=friends,
+        days_earned=days_earned,
+        friend_days=settings.referral_friend_days,
+        inviter_days=settings.referral_inviter_days,
+    )

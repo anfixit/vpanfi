@@ -4,6 +4,7 @@ import type {
   DashboardPayload,
   Device,
   Payment,
+  ReferralInfo,
   SubscriptionLink,
 } from "./contracts";
 
@@ -197,3 +198,12 @@ export function readDemoSubscriptionLink(): SubscriptionLink {
 export function setDemoSubscriptionLinked(linked: boolean): void {
   demoLinked = linked;
 }
+
+export const demoReferral: ReferralInfo = {
+  enabled: true,
+  link: "https://vpanfi.su/?ref=demo_user",
+  friends: 2,
+  daysEarned: 60,
+  friendDays: 30,
+  inviterDays: 30,
+};

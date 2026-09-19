@@ -23,7 +23,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -176,6 +176,18 @@ class RewardStore(Protocol):
         """
         ...
 
+    async def inviter_stats(self, inviter_username: str) -> tuple[int, int]:
+        """Сколько друзей засчитано пригласившему и сколько дней он получил.
+
+        Друг считается засчитанным, если ему уже продлили подписку
+        (``inviter_granted_at`` не пусто), либо у награды нулевые дни
+        пригласившему при статусе ``granted``: это тег ``SVOI``, где
+        друг получает бонус, а пригласившему дни не положены вовсе.
+        Дни считаются только по уже выданным наградам: то, что ждёт
+        своей очереди, здесь не в счёт.
+        """
+        ...
+
 
 class SqlRewardStore(RewardStore):
     """Хранилище наград поверх обычной сессии SQLAlchemy.
@@ -250,6 +262,27 @@ class SqlRewardStore(RewardStore):
 
     async def refresh(self, reward: ReferralReward) -> None:
         await self._session.refresh(reward)
+
+    async def inviter_stats(self, inviter_username: str) -> tuple[int, int]:
+        friends_stmt = select(func.count()).where(
+            ReferralReward.inviter_username == inviter_username,
+            or_(
+                ReferralReward.inviter_granted_at.is_not(None),
+                and_(
+                    ReferralReward.inviter_days == 0,
+                    ReferralReward.status == "granted",
+                ),
+            ),
+        )
+        days_stmt = select(
+            func.coalesce(func.sum(ReferralReward.inviter_days), 0)
+        ).where(
+            ReferralReward.inviter_username == inviter_username,
+            ReferralReward.inviter_granted_at.is_not(None),
+        )
+        friends = int(await self._session.scalar(friends_stmt) or 0)
+        days_earned = int(await self._session.scalar(days_stmt) or 0)
+        return friends, days_earned
 
 
 def _inviter_days(raw: Mapping[str, Any], settings: Settings) -> int | None:

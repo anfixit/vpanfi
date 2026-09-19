@@ -16,6 +16,7 @@ from app.services.auth import AuthService
 from app.services.cabinet import CabinetService
 from app.services.checkout import CheckoutService
 from app.services.oauth import OAuthService
+from app.services.referral import RewardStore, SqlRewardStore
 from app.services.referral_wiring import (
     build_referral_service,
     zapustit_obrabotku,
@@ -163,3 +164,13 @@ def get_support_service(
     settings: SettingsDep,
 ) -> SupportService:
     return SupportService(session, settings)
+
+
+def get_reward_store(session: DatabaseSession) -> RewardStore:
+    """Хранилище наград рефералки для кабинета.
+
+    Отдельная зависимость, а не сборка внутри маршрута: тестам счётчиков
+    базы не досталось, и подделка хранилища через неё не заводит
+    настоящую сессию.
+    """
+    return SqlRewardStore(session)

@@ -117,6 +117,20 @@ export type SubscriptionLinkPayload = {
 };
 
 /*
+ * Ссылка на приглашение друга и счётчики по ней. Код приглашения это
+ * имя учётки пригласившего в панели, и ссылка есть только у тех, кто
+ * её привязал (у кого линка нет, показывать в кабинете нечего).
+ */
+export type ReferralInfo = {
+  enabled: boolean;
+  link: string | null;
+  friends: number;
+  daysEarned: number;
+  friendDays: number;
+  inviterDays: number;
+};
+
+/*
  * Витрина и покупка приходят от бота: тарифы, цены и приём платежей
  * живут в нём, и вторая их копия на сайте означала бы вторую кассу.
  *

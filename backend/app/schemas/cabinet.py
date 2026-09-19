@@ -113,6 +113,23 @@ class SubscriptionLinkResponse(BaseModel):
     subscription: SubscriptionResponse | None = None
 
 
+class ReferralResponse(BaseModel):
+    """Ссылка на приглашение друга и счётчики по ней.
+
+    Счётчики читаются из ``referral_rewards`` по имени учётки в панели,
+    поэтому без привязанной учётки (``link`` пуст) считать нечего.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    enabled: bool
+    link: str | None = None
+    friends: int = Field(ge=0, default=0)
+    days_earned: int = Field(ge=0, default=0, serialization_alias="daysEarned")
+    friend_days: int = Field(ge=0, serialization_alias="friendDays")
+    inviter_days: int = Field(ge=0, serialization_alias="inviterDays")
+
+
 class CheckoutRequest(BaseModel):
     """Заявка на покупку.
 

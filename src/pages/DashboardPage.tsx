@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { api } from "../api/client";
 import type { Subscription } from "../api/contracts";
 import { navigate, routes } from "../app/navigation";
@@ -8,9 +9,10 @@ import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ErrorState, LoadingState } from "../components/ResourceState";
 import { SubscriptionOnboarding } from "../components/SubscriptionOnboarding";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { formatRubles } from "../utils/format";
+import { formatRubles, pluralizeRu } from "../utils/format";
 
 const VISIBLE_COUNTRIES = 5;
+const COPIED_HINT_MS = 2400;
 
 type SubscriptionView = {
   title: string;
@@ -52,6 +54,82 @@ function describeSubscription(subscription: Subscription): SubscriptionView {
     actionLabel: "Продлить",
     expired: false,
   };
+}
+
+/*
+ * Ссылка на приглашение живёт в имени учётки панели, поэтому у части
+ * аккаунтов её нет вовсе. При выключенной рефералке или сбое запроса
+ * карточки не должно быть на экране: показывать пустую заготовку
+ * хуже, чем не показывать ничего.
+ */
+function ReferralCard() {
+  const referral = useAsyncResource(api.getReferral);
+  const [copied, setCopied] = useState(false);
+  const { explain } = useDemoNotice();
+
+  if (referral.loading && !referral.data) return null;
+  if (referral.error || !referral.data || !referral.data.enabled) {
+    return null;
+  }
+
+  const { link, friends, daysEarned } = referral.data;
+
+  const copyLink = async () => {
+    if (!link) return;
+
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), COPIED_HINT_MS);
+    } catch {
+      explain(
+        "Браузер не разрешил копирование. Ссылку можно выделить и скопировать вручную.",
+      );
+    }
+  };
+
+  return (
+    <CabinetCard title="Пригласите друга" icon="sparkle" className="referral-card">
+      <p className="muted">
+        Друг оплатит подписку по Вашей ссылке, и каждый из Вас получит по 30
+        дней.
+      </p>
+
+      {link ? (
+        <>
+          <p className="buy-subscription-link">
+            <code>{link}</code>
+          </p>
+          <button
+            className="button button-secondary full-button"
+            type="button"
+            onClick={copyLink}
+          >
+            {copied ? "Скопировано" : "Скопировать"}
+          </button>
+        </>
+      ) : (
+        <p className="muted">
+          Привяжите подписку в панели, чтобы получить свою ссылку.
+        </p>
+      )}
+
+      <div className="subscription-meta referral-stats">
+        <span>
+          <small>Приглашено</small>
+          <strong>
+            {friends} {pluralizeRu(friends, "друг", "друга", "друзей")}
+          </strong>
+        </span>
+        <span>
+          <small>Получено дней</small>
+          <strong>
+            {daysEarned} {pluralizeRu(daysEarned, "день", "дня", "дней")}
+          </strong>
+        </span>
+      </div>
+    </CabinetCard>
+  );
 }
 
 export function DashboardPage() {
@@ -213,6 +291,8 @@ export function DashboardPage() {
         </section>
 
         <aside className="cabinet-side-column">
+          <ReferralCard />
+
           <CabinetCard title="Поддержка" icon="support" className="cabinet-support">
             <Mascot variant="support" className="card-mascot" decorative />
             <strong>Мы на связи</strong>

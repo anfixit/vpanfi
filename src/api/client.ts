@@ -13,6 +13,7 @@ import type {
   Payment,
   ChangePasswordPayload,
   Country,
+  ReferralInfo,
   RegisterPayload,
   SubscriptionLink,
   SupportTicket,
@@ -26,6 +27,7 @@ import {
   demoDashboard,
   demoDevices,
   demoPayments,
+  demoReferral,
   readDemoSubscriptionLink,
   setDemoSubscriptionLinked,
 } from "./demo";
@@ -352,5 +354,10 @@ export const api = {
       return demoDelay(undefined);
     }
     await request<void>("/v1/cabinet/subscription/link", { method: "DELETE" });
+  },
+
+  async getReferral(): Promise<ReferralInfo> {
+    if (DEMO_MODE) return demoDelay(demoReferral);
+    return request<ReferralInfo>("/v1/cabinet/referral");
   },
 };
