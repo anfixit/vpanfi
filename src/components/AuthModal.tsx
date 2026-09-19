@@ -31,7 +31,6 @@ export function AuthModal({
    */
   const [mode, setMode] = useState<"login" | "register" | "recover">("register");
   const [sentTo, setSentTo] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -50,7 +49,13 @@ export function AuthModal({
         return;
       }
       if (mode === "register") {
-        await register({ displayName: displayName.trim(), email, password });
+        /*
+         * Имя при регистрации не спрашиваем: главная обещает «почта и
+         * пароль», а лишнее поле стоит на пути к пробным дням. Берём
+         * часть адреса до «@», поменять её можно в профиле.
+         */
+        const displayName = email.trim().split("@")[0].slice(0, 80) || "Пользователь";
+        await register({ displayName, email, password });
       } else {
         await login({ email, password });
       }
@@ -121,12 +126,6 @@ export function AuthModal({
           <button className={mode === "login" ? "is-active" : ""} type="button" onClick={() => switchMode("login")}>Вход</button>
         </div>
         <form className="auth-form" onSubmit={submit}>
-          {mode === "register" && (
-            <label>
-              Как Вас зовут
-              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required minLength={1} maxLength={80} autoComplete="name" />
-            </label>
-          )}
           <label>
             Email
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required autoComplete="email" />

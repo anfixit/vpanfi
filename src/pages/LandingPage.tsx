@@ -22,7 +22,7 @@ const steps = [
   {
     mascot: "greeting",
     title: "Зарегистрируйтесь",
-    text: "Создайте аккаунт за пару минут — понадобится только почта.",
+    text: "Создайте аккаунт за пару минут: почта и пароль. Карта не нужна.",
   },
   {
     mascot: "phone",
@@ -191,7 +191,8 @@ export function LandingPage({
               )}
             </div>
             <p className="hero-hint">
-              От 300 ₽, без пароля и без Telegram.
+              Бесплатная неделя: карта не нужна, автосписаний нет, дальше 300 ₽ в месяц.
+              Купить сразу можно без регистрации и без Telegram.
             </p>
             <ul className="trust-row" aria-label="Преимущества">
               {advantages.map((advantage) => (
