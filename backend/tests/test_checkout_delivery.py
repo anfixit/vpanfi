@@ -2,7 +2,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import app.services.checkout as checkout_module
-from app.core.config import Settings, get_settings
+from app.core.config import Settings
 from app.models.billing import (
     Payment,
     PaymentPurpose,
@@ -276,7 +276,9 @@ def _payment_with_code(referral_code: str | None) -> Payment:
 async def test_referral_failure_does_not_escape_delivery() -> None:
     """Сбой рефералки не должен ронять ответ вебхуку."""
     service = CheckoutService(
-        object(), get_settings(), _BrokenReferral()  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        _platega_settings(referral_enabled=True),
+        _BrokenReferral(),
     )
 
     await service._nachislit_za_priglashenie(
@@ -288,7 +290,9 @@ async def test_referral_failure_does_not_escape_delivery() -> None:
 
 async def test_referral_step_is_skipped_without_a_service() -> None:
     """Без сервиса рефералки шаг должен просто ничего не делать."""
-    service = CheckoutService(object(), get_settings())  # type: ignore[arg-type]
+    service = CheckoutService(
+        object(), _platega_settings()  # type: ignore[arg-type]
+    )
 
     await service._nachislit_za_priglashenie(
         _payment_with_code("Alyona_Tutina"),
@@ -297,10 +301,18 @@ async def test_referral_step_is_skipped_without_a_service() -> None:
     )  # не должно ничего бросить
 
 
-async def test_referral_step_is_skipped_without_a_code() -> None:
-    """Без кода у платежа рефералку звать незачем, даже если сервис есть."""
+async def test_referral_step_is_skipped_when_the_program_is_off() -> None:
+    """Выключенная программа не должна и заглядывать в сервис рефералки.
+
+    Раньше решал код у платежа, теперь сам флаг: программу можно
+    включить и без кода, ведь друг на продлении его уже не приносит.
+    """
     referral = _CountingReferral()
-    service = CheckoutService(object(), get_settings(), referral)  # type: ignore[arg-type]
+    service = CheckoutService(
+        object(),  # type: ignore[arg-type]
+        _platega_settings(referral_enabled=False),
+        referral,
+    )
 
     await service._nachislit_za_priglashenie(
         _payment_with_code(None),
@@ -311,13 +323,38 @@ async def test_referral_step_is_skipped_without_a_code() -> None:
     assert referral.register_calls == 0
 
 
+async def test_referral_step_runs_without_a_code_when_the_program_is_on() -> (
+    None
+):
+    """Без кода у платежа это, возможно, продление, а не пустой случай.
+
+    У продлевающегося друга кода в браузере больше нет: register сам
+    решает, положена ли награда, а checkout больше не отсекает такие
+    платежи заранее.
+    """
+    referral = _CountingReferral()
+    service = CheckoutService(
+        object(),  # type: ignore[arg-type]
+        _platega_settings(referral_enabled=True),
+        referral,
+    )
+
+    await service._nachislit_za_priglashenie(
+        _payment_with_code(None),
+        friend_panel_user_id=42,
+        friend_was_paid=True,
+    )
+
+    assert referral.register_calls == 1
+
+
 async def test_referral_reward_schedules_background_processing() -> None:
     """Награда есть - schedule_reward зовётся с её id ровно один раз."""
     reward = _reward_for_test()
     scheduled: list[UUID] = []
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        get_settings(),
+        _platega_settings(referral_enabled=True),
         _RewardReferral(reward),
         schedule_reward=scheduled.append,
     )
@@ -336,7 +373,7 @@ async def test_no_reward_means_nothing_is_scheduled() -> None:
     scheduled: list[UUID] = []
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        get_settings(),
+        _platega_settings(referral_enabled=True),
         _CountingReferral(),
         schedule_reward=scheduled.append,
     )
@@ -355,7 +392,7 @@ async def test_referral_failure_triggers_a_guarded_rollback() -> None:
     session = _RollbackTrackingSession()
     service = CheckoutService(
         session,  # type: ignore[arg-type]
-        get_settings(),
+        _platega_settings(referral_enabled=True),
         _BrokenReferral(),
     )
 

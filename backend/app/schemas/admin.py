@@ -58,6 +58,8 @@ class ReferralRewardAdminResponse(AdminSchema):
     friend_email: EmailStr = Field(serialization_alias="friendEmail")
     inviter_username: str = Field(serialization_alias="inviterUsername")
     status: str
+    # "first" за первую покупку друга, "renewal" за его первое продление.
+    kind: str
     friend_days: int = Field(serialization_alias="friendDays")
     inviter_days: int = Field(serialization_alias="inviterDays")
     created_at: datetime = Field(serialization_alias="createdAt")

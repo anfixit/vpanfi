@@ -113,6 +113,7 @@ def test_referral_defaults_are_off_and_thirty_days() -> None:
     assert settings.referral_enabled is False
     assert settings.referral_friend_days == 15
     assert settings.referral_inviter_days == 15
+    assert settings.referral_renewal_days == 15
     assert settings.referral_monthly_cap == 5
     assert settings.referral_retry_minutes == 30
     assert settings.bedolaga_api_url == "https://vpanfibot.ru/api"

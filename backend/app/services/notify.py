@@ -125,18 +125,36 @@ def sboj_vydachi_soobshchenie(
 
 
 def nagrada_soobshchenie(
-    *, friend_email: str, inviter_username: str, status: str
+    *,
+    friend_email: str,
+    inviter_username: str,
+    status: str,
+    kind: str = "first",
 ) -> str:
-    """Сообщение о начисленной награде за приглашение.
+    """Сообщение о начисленной награде за приглашение или за продление.
+
+    kind "renewal" значит, что друг не новый: он уже был вознаграждён
+    за первую покупку, а теперь просто продлил подписку, и именно это
+    продление принесло пригласившему ещё дней. Сам друг тут ничего не
+    получает, поэтому и сообщение говорит "продлил", а не "друг".
 
     Статус held означает, что пригласивший уже выбрал месячный потолок
-    наград: другу дни всё равно ушли, а решение по пригласившему ждёт
-    человека, а не фоновую задачу.
+    наград: другу дни всё равно ушли (при первой покупке), а решение
+    по пригласившему ждёт человека, а не фоновую задачу.
     """
+    is_renewal = kind == "renewal"
     lines = [
-        "🎁 <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ</b>",
+        (
+            "🎁 <b>НАГРАДА ЗА ПРОДЛЕНИЕ ДРУГА</b>"
+            if is_renewal
+            else "🎁 <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ</b>"
+        ),
         "",
-        f"👤 Друг: {html.escape(friend_email)}",
+        (
+            f"👤 Друг продлил подписку: {html.escape(friend_email)}"
+            if is_renewal
+            else f"👤 Друг: {html.escape(friend_email)}"
+        ),
         f"🔗 Пригласил: {html.escape(inviter_username)}",
     ]
     if status == "held":
@@ -160,22 +178,37 @@ def nagrada_itog_soobshchenie(
     friend_days: int,
     inviter_days: int,
     last_error: str | None,
+    kind: str = "first",
 ) -> str:
     """Сообщение об итоге обработки награды: выдана или сдалась.
 
     Зовётся ровно на переходе в granted или failed, поэтому status
     здесь всегда один из этих двух и других вариантов не разбирает.
+
+    kind "renewal" значит, что друг ничего не получал (friend_days
+    всегда 0): сообщение говорит "продлил подписку", а не называет
+    выдачу дней, которой для друга и не было.
     """
+    is_renewal = kind == "renewal"
     if status == "granted":
+        friend_line = (
+            f"👤 Друг продлил подписку: {html.escape(friend_email)}"
+            if is_renewal
+            else f"👤 Друг: {html.escape(friend_email)}, {friend_days} дн."
+        )
         return "\n".join([
             "✅ <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ ВЫДАНА</b>",
             "",
-            f"👤 Друг: {html.escape(friend_email)}, {friend_days} дн.",
+            friend_line,
             f"🔗 Пригласил: {html.escape(inviter_username)}, "
             f"{inviter_days} дн.",
         ])
 
-    friend_hint = "выдано" if friend_granted else "не выдано"
+    friend_hint = (
+        "продление не требовалось"
+        if is_renewal
+        else ("выдано" if friend_granted else "не выдано")
+    )
     inviter_hint = "выдано" if inviter_granted else "не выдано"
     lines = [
         "🔴 <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ НЕ ВЫДАНА</b>",

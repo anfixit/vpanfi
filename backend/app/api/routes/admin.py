@@ -94,6 +94,7 @@ def _describe_reward(reward: ReferralReward) -> ReferralRewardAdminResponse:
         friend_email=reward.friend_email,
         inviter_username=reward.inviter_username,
         status=reward.status,
+        kind=reward.kind,
         friend_days=reward.friend_days,
         inviter_days=reward.inviter_days,
         created_at=reward.created_at,

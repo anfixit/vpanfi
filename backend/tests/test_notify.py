@@ -205,6 +205,33 @@ def test_reward_message_explains_a_held_status() -> None:
     assert "—" not in text
 
 
+def test_reward_message_for_a_renewal_says_the_friend_renewed() -> None:
+    """kind="renewal": друг не новый, он продлил уже оплаченную подписку."""
+    text = nagrada_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="pending",
+        kind="renewal",
+    )
+
+    assert "продлил" in text
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "—" not in text
+
+
+def test_reward_message_defaults_to_the_first_purchase_kind() -> None:
+    """Без kind сообщение остаётся тем же, что и до появления продления."""
+    text = nagrada_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="pending",
+    )
+
+    assert "продлил" not in text
+    assert "👤 Друг: friend@example.test" in text
+
+
 def test_reward_outcome_message_for_a_grant_shows_both_day_counts() -> None:
     text = nagrada_itog_soobshchenie(
         friend_email="friend@example.test",
@@ -242,6 +269,47 @@ def test_reward_outcome_message_for_a_failure_names_what_is_missing() -> None:
     assert "панель не отвечает" in text
     assert "вручную" in text
     assert "referral-rewards" in text
+    assert "—" not in text
+
+
+def test_renewal_grant_message_says_the_friend_renewed() -> None:
+    """kind="renewal": friend_days всегда 0, показывать "0 дн." незачем."""
+    text = nagrada_itog_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="granted",
+        friend_granted=True,
+        inviter_granted=True,
+        friend_days=0,
+        inviter_days=15,
+        last_error=None,
+        kind="renewal",
+    )
+
+    assert "ВЫДАНА" in text
+    assert "продлил" in text
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "15" in text
+    assert "—" not in text
+
+
+def test_renewal_failure_message_names_no_friend_grant() -> None:
+    """Другу тут нечего было выдавать: сообщение не должно врать об этом."""
+    text = nagrada_itog_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="failed",
+        friend_granted=False,
+        inviter_granted=False,
+        friend_days=0,
+        inviter_days=15,
+        last_error="панель не отвечает",
+        kind="renewal",
+    )
+
+    assert "НЕ ВЫДАНА" in text
+    assert "продление не требовалось" in text
     assert "—" not in text
 
 

@@ -121,6 +121,10 @@ class Payment(TimestampMixin, Base):
 class ReferralReward(TimestampMixin, Base):
     """Награда за приглашение: по дню обеим сторонам за первую оплату.
 
+    С 19.09.2026 у награды появился второй вид (``kind``): друг может
+    один раз продлить подписку и принести пригласившему ещё дней,
+    сам при этом ничего сверху не получая (``friend_days == 0``).
+
     Заводится после того, как другу выдана подписка, и живёт своей
     жизнью: сбой панели или бота продаж не должен ронять ответ вебхуку,
     поэтому обработчик наград работает отдельно и умеет повторять
@@ -132,8 +136,15 @@ class ReferralReward(TimestampMixin, Base):
         UniqueConstraint(
             "payment_id", name="uq_referral_rewards_payment_id"
         ),
+        # Раньше на почту друга был ровно один индекс без kind: одна
+        # награда на друга навсегда. С 19.09.2026 у друга может быть
+        # две записи: first за первую покупку и одна-единственная
+        # renewal за первое продление, поэтому уникальность теперь по
+        # паре (почта, вид), а не по одной почте.
         UniqueConstraint(
-            "friend_email", name="uq_referral_rewards_friend_email"
+            "friend_email",
+            "kind",
+            name="uq_referral_rewards_friend_email_kind",
         ),
     )
 
@@ -162,6 +173,13 @@ class ReferralReward(TimestampMixin, Base):
     inviter_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
     friend_days: Mapped[int] = mapped_column(Integer, nullable=False)
     inviter_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Вид награды: "first" за первую оплату друга (обоим по дню),
+    # "renewal" за его первое продление (дни только пригласившему).
+    # Строкой, а не перечислением Postgres, по той же причине, что и
+    # у status.
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="first"
+    )
     # Строкой, а не перечислением Postgres: новое значение статуса не
     # потребует миграции типа.
     status: Mapped[str] = mapped_column(

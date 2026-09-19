@@ -103,6 +103,7 @@ def _reward(
     inviter_telegram_id: int | None = None,
     friend_days: int = 30,
     inviter_days: int = 30,
+    kind: str = "first",
     status: str = "pending",
     friend_granted_at: datetime | None = None,
     inviter_granted_at: datetime | None = None,
@@ -120,6 +121,7 @@ def _reward(
         inviter_telegram_id=inviter_telegram_id,
         friend_days=friend_days,
         inviter_days=inviter_days,
+        kind=kind,
         status=status,
         friend_granted_at=friend_granted_at,
         inviter_granted_at=inviter_granted_at,
@@ -149,14 +151,41 @@ class FakeRewardStore:
         self.call_order: list[str] = []
         # Сбой самого чтения свежих наград для device_overlaps.
         self.raise_on_recent: Exception | None = None
+        # Имена вызванных методов чтения: проверяет, что выключенная
+        # программа не заглядывает в хранилище вовсе, а не просто
+        # ничего в нём не находит.
+        self.lookup_calls: list[str] = []
 
     async def has_earlier_paid(self, email: str, payment_id: UUID) -> bool:
+        self.lookup_calls.append("has_earlier_paid")
         return email.lower() in self.paid_emails
 
     async def reward_exists(self, payment_id: UUID, email: str) -> bool:
+        self.lookup_calls.append("reward_exists")
         email_lower = email.lower()
         return any(
-            r.payment_id == payment_id or r.friend_email.lower() == email_lower
+            r.payment_id == payment_id
+            or (r.friend_email.lower() == email_lower and r.kind == "first")
+            for r in self.rewards
+        )
+
+    async def first_reward_for(self, email: str) -> ReferralReward | None:
+        self.lookup_calls.append("first_reward_for")
+        email_lower = email.lower()
+        for r in self.rewards:
+            if (
+                r.friend_email.lower() == email_lower
+                and r.kind == "first"
+                and r.status != "rejected"
+            ):
+                return r
+        return None
+
+    async def renewal_exists(self, email: str) -> bool:
+        self.lookup_calls.append("renewal_exists")
+        email_lower = email.lower()
+        return any(
+            r.friend_email.lower() == email_lower and r.kind == "renewal"
             for r in self.rewards
         )
 
@@ -380,6 +409,29 @@ async def test_disabled_program_returns_none() -> None:
 
     assert result is None
     assert store.rewards == []
+    assert store.lookup_calls == []
+
+
+async def test_disabled_program_skips_the_renewal_path_too() -> None:
+    """Выключенная программа не должна и заглядывать в хранилище.
+
+    Продлевающийся друг всегда приходит без кода и уже платящим
+    (``friend_was_paid=True``), и без явной проверки флага в самом
+    начале ``register`` эти признаки сами по себе выглядели бы как
+    заявка на продление.
+    """
+    disabled = _settings(referral_enabled=False)
+    service, store, _panel, _bedolaga = _service(settings=disabled)
+
+    result = await service.register(
+        payment=_payment(referral_code=None),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert result is None
+    assert store.rewards == []
+    assert store.lookup_calls == []
 
 
 async def test_missing_code_returns_none() -> None:
@@ -701,6 +753,222 @@ async def test_svoi_inviter_ignores_the_monthly_cap() -> None:
     assert reward.status == "pending"
 
 
+# --- register: продление друга ------------------------------------------
+
+
+def _first_reward_in_store(
+    store: FakeRewardStore, **overrides: Any
+) -> ReferralReward:
+    """Завести в поддельном хранилище награду за первую покупку друга.
+
+    Тесты продления интересует только то, что первая покупка уже
+    вознаграждена, а не то, как она такой стала (это уже проверено
+    выше): проще положить готовую запись в хранилище, чем гонять
+    ``register`` два раза подряд.
+    """
+    reward = _reward(kind="first", **overrides)
+    store.rewards.append(reward)
+    return reward
+
+
+def _renewal_payment(payment_id: UUID | None = None) -> Payment:
+    """Платёж продлевающегося друга: кода в браузере у него больше нет."""
+    return _payment(referral_code=None, payment_id=payment_id or uuid4())
+
+
+async def test_renewal_creates_a_reward_with_zero_friend_days() -> None:
+    """Второй платёж уже вознаграждённого друга приносит дни только
+    пригласившему, а не другу: тот бонус за друга получил один раз.
+    """
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
+    assert reward.friend_days == 0
+    assert reward.inviter_days == 15
+    assert reward.friend_email == FRIEND_EMAIL
+    assert reward.status == "pending"
+
+
+async def test_third_payment_after_a_renewal_returns_none() -> None:
+    """Продление положено только раз: третий платёж уже не награда."""
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    store.rewards.append(_reward(kind="renewal", payment_id=uuid4()))
+    service, store, *_ = _service(store=store)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_renewal_is_not_created_for_the_same_payment_as_the_first() -> (
+    None
+):
+    """Тот же платёж, что уже принёс first-награду, это не продление."""
+    store = FakeRewardStore()
+    first = _first_reward_in_store(store)
+    service, store, *_ = _service(store=store)
+
+    reward = await service.register(
+        payment=_renewal_payment(payment_id=first.payment_id),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_rejected_first_reward_blocks_the_renewal() -> None:
+    """Отклонённая first-награда значит, что приглашения и не было."""
+    store = FakeRewardStore()
+    _first_reward_in_store(store, status="rejected")
+    service, store, *_ = _service(store=store)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_renewal_disabled_by_settings_returns_none() -> None:
+    """Ноль в настройке отключает только награду за продление."""
+    settings = _settings(referral_renewal_days=0)
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    service, store, *_ = _service(settings=settings, store=store)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+    assert len(store.rewards) == 1  # только предзаведённая first-запись
+
+
+@pytest.mark.parametrize(
+    ("status_", "tag"),
+    [("ACTIVE", "TRIAL"), ("ACTIVE", "UNPAID"), ("EXPIRED", "PAID")],
+)
+async def test_renewal_is_skipped_when_the_inviter_is_no_longer_eligible(
+    status_: str, tag: str
+) -> None:
+    """Пригласивший мог за это время потерять подписку или тег PAID."""
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, status=status_, tag=tag
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_renewal_is_skipped_when_the_inviter_is_gone() -> None:
+    """Пригласившего вовсе не нашли в панели: учётку могли удалить."""
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    service, store, *_ = _service(store=store)  # без учётки в панели
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_svoi_inviter_does_not_create_a_renewal_reward() -> None:
+    """SVOI никому ничего не должен: заводить пустую запись незачем."""
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, tag="SVOI"
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+async def test_monthly_cap_reached_holds_the_renewal_reward() -> None:
+    """Продление подчиняется тому же потолку, что и первая покупка."""
+    settings = _settings(referral_monthly_cap=1)
+    store = FakeRewardStore()
+    _first_reward_in_store(store)
+    now = datetime.now(UTC)
+    store.rewards.append(
+        _reward(
+            friend_email="earlier-friend@example.test",
+            inviter_username=INVITER_USERNAME,
+            inviter_granted_at=now,
+        )
+    )
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(settings=settings, store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
+    assert reward.status == "held"
+    assert reward.friend_days == 0
+
+
 # --- process: выдача другу и пригласившему -----------------------------
 
 
@@ -790,6 +1058,80 @@ async def test_zero_inviter_days_grants_only_once_friend_is_done() -> None:
     assert reward.inviter_granted_at is None
     assert bedolaga.extend_calls == []
     assert 500 not in panel.set_expiry_calls
+
+
+# --- process: продление друга --------------------------------------------
+
+
+async def test_process_grants_only_the_inviter_for_a_renewal_reward() -> (
+    None
+):
+    """У продления friend_days == 0: другу тут вообще нечего выдавать."""
+    panel = FakePanelGateway(
+        by_id={500: _panel_payload(user_id=500, username=INVITER_USERNAME)}
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(kind="renewal", friend_days=0, inviter_days=15)
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert reward.friend_granted_at is None
+    assert 900 not in panel.set_expiry_calls
+    assert 500 in panel.set_expiry_calls
+    assert bedolaga.extend_calls == []
+
+
+async def test_process_grants_a_bot_inviter_for_a_renewal_reward() -> None:
+    bedolaga = FakeBedolagaGateway(subscription_by_telegram_id={100500: 777})
+    service, store, panel, bedolaga = _service(bedolaga=bedolaga)
+    reward = _reward(
+        kind="renewal",
+        friend_days=0,
+        inviter_days=15,
+        inviter_telegram_id=100500,
+    )
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert reward.friend_granted_at is None
+    assert bedolaga.extend_calls == [(777, 15)]
+    assert panel.set_expiry_calls == []
+
+
+async def test_held_renewal_reward_waits_for_the_owner() -> None:
+    """held это held независимо от вида награды: ждём человека, не бота."""
+    panel = FakePanelGateway(
+        by_id={500: _panel_payload(user_id=500, username=INVITER_USERNAME)}
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(
+        kind="renewal", friend_days=0, inviter_days=15, status="held"
+    )
+
+    await service.process(reward)
+
+    assert reward.status == "held"
+    assert panel.set_expiry_calls == []
+    assert bedolaga.extend_calls == []
+
+
+async def test_on_terminal_fires_with_the_renewal_kind() -> None:
+    panel = FakePanelGateway(
+        by_id={500: _panel_payload(user_id=500, username=INVITER_USERNAME)}
+    )
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        panel=panel, on_terminal=seen.append
+    )
+    reward = _reward(kind="renewal", friend_days=0, inviter_days=15)
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert len(seen) == 1
+    assert seen[0].kind == "renewal"
 
 
 # --- process: держатель потолка -----------------------------------------
@@ -1447,3 +1789,41 @@ async def test_device_overlaps_fetches_the_shared_inviter_once() -> None:
 
     assert hits == []
     assert panel.list_devices_calls.count(500) == 1
+
+
+# --- SqlRewardStore: то, что нельзя проверить без базы --------------------
+
+
+def test_sql_reward_store_counts_only_first_purchase_friends() -> None:
+    """У проекта нет тестовой Postgres, а SQL здесь не поддельный.
+
+    Друзья считаются только по first-наградам: продление это тот же
+    самый друг, а не второй, и не должно раздуть счётчик друзей в
+    кабинете пригласившего. Дни считаются по обоим видам сразу, и это
+    проверяет вторая половина того же запроса.
+    """
+    import inspect
+
+    from app.services.referral import SqlRewardStore
+
+    source = inspect.getsource(SqlRewardStore.inviter_stats)
+    friends_part, days_part = source.split("days_stmt", 1)
+
+    assert 'ReferralReward.kind == "first"' in friends_part
+    assert '"first"' not in days_part
+
+
+def test_sql_reward_store_reward_exists_checks_kind_first() -> None:
+    """Дедупликация первой покупки не должна путать её с продлением.
+
+    Иначе уже вознаграждённый первой покупкой друг никогда не смог бы
+    получить награду за продление: reward_exists() увидела бы его
+    почту и решила бы, что для этого платежа уже всё заведено.
+    """
+    import inspect
+
+    from app.services.referral import SqlRewardStore
+
+    source = inspect.getsource(SqlRewardStore.reward_exists)
+
+    assert 'ReferralReward.kind == "first"' in source

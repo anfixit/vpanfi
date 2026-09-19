@@ -34,17 +34,20 @@ def test_payment_has_a_referral_code_column() -> None:
     assert "referral_code" in cols
 
 
-def test_referral_reward_has_unique_constraints_on_payment_and_email() -> (
+def test_referral_reward_has_unique_constraints_on_payment_and_kind() -> (
     None
 ):
     """Без них повторная выдача завела бы вторую награду на тот же платёж
 
-    или на ту же почту, и друг с пригласившим получили бы дни дважды.
+    или на тот же (почта, вид), и друг с пригласившим получили бы дни
+    дважды. 19.09.2026 индекс по одной почте сменился на пару (почта,
+    вид): у друга теперь может быть до двух наград, first и renewal.
     """
     names = {c.name for c in ReferralReward.__table__.constraints}
 
     assert "uq_referral_rewards_payment_id" in names
-    assert "uq_referral_rewards_friend_email" in names
+    assert "uq_referral_rewards_friend_email_kind" in names
+    assert "uq_referral_rewards_friend_email" not in names
 
 
 def test_referral_reward_default_status_and_attempts() -> None:
@@ -54,6 +57,7 @@ def test_referral_reward_default_status_and_attempts() -> None:
     """
     columns = ReferralReward.__table__.columns
 
+    assert columns["kind"].default.arg == "first"
     assert columns["status"].default.arg == "pending"
     assert columns["attempts"].default.arg == 0
 
@@ -68,6 +72,14 @@ def test_referral_reward_default_status_and_attempts() -> None:
 
     assert reward.friend_granted_at is None
     assert reward.inviter_granted_at is None
+
+
+def test_referral_reward_kind_column_is_a_short_string() -> None:
+    """Строкой, а не перечислением: новое значение не потребует миграции."""
+    column = ReferralReward.__table__.columns["kind"]
+
+    assert str(column.type) == "VARCHAR(16)"
+    assert column.nullable is False
 
 
 def test_reward_keeps_its_payment_from_being_deleted() -> None:

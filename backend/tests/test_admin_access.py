@@ -135,7 +135,7 @@ def test_panel_username_is_validated(app: FastAPI) -> None:
 # --- release/reject наград за приглашение -------------------------------
 
 
-def _reward(*, status: str = "held") -> ReferralReward:
+def _reward(*, status: str = "held", kind: str = "first") -> ReferralReward:
     return ReferralReward(
         id=uuid4(),
         payment_id=uuid4(),
@@ -145,6 +145,7 @@ def _reward(*, status: str = "held") -> ReferralReward:
         inviter_panel_user_id=500,
         friend_days=30,
         inviter_days=30,
+        kind=kind,
         status=status,
         created_at=datetime.now(UTC),
     )
@@ -276,7 +277,7 @@ def test_reject_from_granted_is_a_conflict(app: FastAPI) -> None:
 
 
 def test_list_referral_rewards_filters_by_status(app: FastAPI) -> None:
-    held = _reward(status="held")
+    held = _reward(status="held", kind="renewal")
     granted = _reward(status="granted")
     store = FakeAdminRewardStore([held, granted])
 
@@ -292,6 +293,7 @@ def test_list_referral_rewards_filters_by_status(app: FastAPI) -> None:
     body = response.json()
     assert len(body) == 1
     assert body[0]["id"] == str(held.id)
+    assert body[0]["kind"] == "renewal"
     assert body[0]["status"] == "held"
     assert body[0]["friendEmail"] == held.friend_email
     _clear_overrides(app)

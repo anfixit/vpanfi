@@ -607,8 +607,15 @@ class CheckoutService:
         повтор. Выдачу запускает ``schedule_reward`` в отдельной
         задаче со своей сессией, а если его не передали, награда
         просто ждёт периодического обхода зависших наград.
+
+        Раньше отсекали по ``payment.referral_code``: без кода нечего
+        заводить. С 19.09.2026 это неверно: у продлевающегося друга
+        код в браузере давно потерян, а награда за продление всё равно
+        положена. Смотрим сам флаг программы, а решать, к какому из
+        путей (первая покупка или продление) отнести именно этот
+        платёж, теперь целиком дело ``register``.
         """
-        if self._referral is None or not payment.referral_code:
+        if self._referral is None or not self._settings.referral_enabled:
             return
         try:
             reward = await self._referral.register(
@@ -644,6 +651,7 @@ class CheckoutService:
                 friend_email=reward.friend_email,
                 inviter_username=reward.inviter_username,
                 status=reward.status,
+                kind=reward.kind,
             )
         )
 

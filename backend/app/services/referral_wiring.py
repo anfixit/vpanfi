@@ -64,6 +64,7 @@ def _soobshchit_ob_itoge(settings: Settings, reward: ReferralReward) -> None:
             friend_days=reward.friend_days,
             inviter_days=reward.inviter_days,
             last_error=reward.last_error,
+            kind=reward.kind,
         )
     )
 

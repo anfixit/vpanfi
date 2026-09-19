@@ -133,7 +133,32 @@ class RewardStore(Protocol):
         ...
 
     async def reward_exists(self, payment_id: UUID, email: str) -> bool:
-        """Награда по этому платежу или почте уже заведена."""
+        """Награда за первую покупку по этому платежу или почте уже есть.
+
+        Смотрит только вид ``first``: у продления своя собственная
+        проверка (``renewal_exists``), и смешивать их здесь означало
+        бы, что уже вознаграждённый друг вовсе не может продлиться.
+        """
+        ...
+
+    async def first_reward_for(self, email: str) -> ReferralReward | None:
+        """Награда за первую покупку этого друга, если она есть.
+
+        Ищет без учёта регистра почты и отдаёт запись любого статуса
+        кроме ``rejected``: отклонённая награда значит, что человек
+        решил, что первой покупки как приглашения не было, и продление
+        от такого "друга" тоже не в счёт.
+        """
+        ...
+
+    async def renewal_exists(self, email: str) -> bool:
+        """У этого друга уже есть награда за продление, любого статуса.
+
+        Продление положено только один раз за всю историю друга, и
+        рэйс на "первое продление" здесь не важен: как только запись
+        появилась, все следующие покупки друга снова обычное продление
+        без награды.
+        """
         ...
 
     async def add(self, reward: ReferralReward) -> None:
@@ -204,8 +229,13 @@ class RewardStore(Protocol):
         (``inviter_granted_at`` не пусто), либо у награды нулевые дни
         пригласившему при статусе ``granted``: это тег ``SVOI``, где
         друг получает бонус, а пригласившему дни не положены вовсе.
-        Дни считаются только по уже выданным наградам: то, что ждёт
-        своей очереди, здесь не в счёт.
+        Считаются только награды вида ``first``: продление это тот же
+        самый друг, а не новый, и не должно посчитаться вторым другом.
+
+        Дни считаются только по уже выданным наградам и обоих видов
+        сразу: то, что ждёт своей очереди, здесь не в счёт, а дни за
+        продление это такие же честно заработанные дни, как и за
+        первую покупку.
         """
         ...
 
@@ -266,8 +296,35 @@ class SqlRewardStore(RewardStore):
             .where(
                 or_(
                     ReferralReward.payment_id == payment_id,
-                    func.lower(ReferralReward.friend_email) == email.lower(),
+                    and_(
+                        func.lower(ReferralReward.friend_email)
+                        == email.lower(),
+                        ReferralReward.kind == "first",
+                    ),
                 )
+            )
+            .limit(1)
+        )
+        return await self._session.scalar(stmt) is not None
+
+    async def first_reward_for(self, email: str) -> ReferralReward | None:
+        stmt = (
+            select(ReferralReward)
+            .where(
+                func.lower(ReferralReward.friend_email) == email.lower(),
+                ReferralReward.kind == "first",
+                ReferralReward.status != "rejected",
+            )
+            .limit(1)
+        )
+        return await self._session.scalar(stmt)
+
+    async def renewal_exists(self, email: str) -> bool:
+        stmt = (
+            select(ReferralReward.id)
+            .where(
+                func.lower(ReferralReward.friend_email) == email.lower(),
+                ReferralReward.kind == "renewal",
             )
             .limit(1)
         )
@@ -316,6 +373,9 @@ class SqlRewardStore(RewardStore):
     async def inviter_stats(self, inviter_username: str) -> tuple[int, int]:
         friends_stmt = select(func.count()).where(
             ReferralReward.inviter_username == inviter_username,
+            # Только first: продление это тот же друг, что и при первой
+            # покупке, а не второй, и не должно раздувать счётчик друзей.
+            ReferralReward.kind == "first",
             or_(
                 ReferralReward.inviter_granted_at.is_not(None),
                 and_(
@@ -324,6 +384,9 @@ class SqlRewardStore(RewardStore):
                 ),
             ),
         )
+        # Дни за продление считаются вместе с first: у renewal-записи
+        # kind тут не проверяем нарочно, дни там честно заработаны так
+        # же, как и за первую покупку.
         days_stmt = select(
             func.coalesce(func.sum(ReferralReward.inviter_days), 0)
         ).where(
@@ -355,8 +418,13 @@ class SqlRewardStore(RewardStore):
         return list(await self._session.scalars(stmt))
 
 
-def _inviter_days(raw: Mapping[str, Any], settings: Settings) -> int | None:
+def _inviter_days(raw: Mapping[str, Any], days_if_paid: int) -> int | None:
     """Сколько дней причитается пригласившему, либо None, если не принят.
+
+    ``days_if_paid`` разное для первой покупки и для продления
+    (``referral_inviter_days`` и ``referral_renewal_days``
+    соответственно), сама проверка тега и статуса при этом общая, и
+    вызывающий передаёт нужное число, а не читает настройки здесь.
 
     Порядок проверок важен: учётки интеграции отсекаются раньше тега и
     статуса, а мёртвая подписка отсекается раньше тега, потому что дни
@@ -375,7 +443,7 @@ def _inviter_days(raw: Mapping[str, Any], settings: Settings) -> int | None:
         # Вечный срок дней не просит, но друг всё равно на бонусе.
         return 0
     if tag == "PAID":
-        return settings.referral_inviter_days
+        return days_if_paid
     return None
 
 
@@ -417,7 +485,13 @@ class ReferralService:
         friend_panel_user_id: int | None,
         friend_was_paid: bool,
     ) -> ReferralReward | None:
-        """Завести награду за первую оплату друга, если она положена.
+        """Завести награду за друга: за первую покупку или за продление.
+
+        Пробуем сперва первую покупку (``_register_first_purchase``), а
+        если она неприменима, отдельно пробуем продление
+        (``_register_renewal``): это разные события в жизни одного и
+        того же друга, и правило "первая покупка" не должно мешать
+        правилу "продление" видеть тот же платёж.
 
         Ничего не выдаёт сама, только заводит запись. Выдачу делает
         ``process``, отдельно от ответа вебхуку: сбой панели или бота
@@ -427,97 +501,233 @@ class ReferralService:
             if not self._settings.referral_enabled:
                 return None
 
-            code = normalize_code(payment.referral_code)
-            if code is None:
-                return None
-
             email = (payment.contact_email or "").strip().lower()
             if not email:
                 return None
 
-            if friend_was_paid:
-                return None
-            if await self._store.has_earlier_paid(email, payment.id):
-                return None
-            if await self._store.reward_exists(payment.id, email):
-                return None
-
-            async with self._panel_factory() as panel:
-                try:
-                    inviter_raw = await panel.get_user_by_username(code)
-                except RemnawaveUserNotFoundError:
-                    return None
-
-                inviter_user = read_panel_user(inviter_raw)
-
-                if friend_panel_user_id is not None:
-                    if inviter_user.id == friend_panel_user_id:
-                        # Код совпал с собственной учёткой: это
-                        # приглашение самого себя.
-                        return None
-                    try:
-                        friend_raw = await panel.get_user_by_id(
-                            friend_panel_user_id
-                        )
-                    except RemnawaveUserNotFoundError:
-                        friend_raw = None
-                    if friend_raw is not None:
-                        friend_username = str(friend_raw.get("username") or "")
-                        if friend_username and (
-                            friend_username.casefold() == code.casefold()
-                        ):
-                            return None
-
-            inviter_days = _inviter_days(inviter_raw, self._settings)
-            if inviter_days is None:
-                return None
-
-            status = "pending"
-            if inviter_days > 0:
-                # Считаем заведённые (pending/granted/failed), а не
-                # выданные: несколько оплат подряд видели бы в старом
-                # granted_in_last_days один и тот же ноль, потому что
-                # ни один process() ещё не успел отработать, и пачка
-                # платежей в одну секунду пробивала бы потолок целиком.
-                #
-                # Остаточная гонка: два по-настоящему одновременных
-                # register() всё равно могут прочитать один и тот же
-                # counted до того, как второй из них вставит свою
-                # запись, и оба пройдут потолок. Для одного процесса
-                # uvicorn это редкое совпадение в пределах одного
-                # event loop, а цена ошибки, одна лишняя награда сверх
-                # потолка, а не потерянная защита, приемлема.
-                counted = await self._store.counted_in_last_days(
-                    inviter_user.username or code, _CAP_WINDOW_DAYS
-                )
-                if counted >= self._settings.referral_monthly_cap:
-                    # Шестая и дальше ждут одобрения, но другу дни
-                    # всё равно причитаются: process выдаст их сразу.
-                    status = "held"
-
-            reward = ReferralReward(
-                payment_id=payment.id,
-                friend_email=email,
+            reward = await self._register_first_purchase(
+                payment=payment,
+                email=email,
                 friend_panel_user_id=friend_panel_user_id,
-                inviter_username=inviter_user.username or code,
-                inviter_panel_user_id=inviter_user.id,
-                inviter_telegram_id=_read_telegram_id(inviter_raw),
-                friend_days=self._settings.referral_friend_days,
-                inviter_days=inviter_days,
-                status=status,
-                friend_granted_at=None,
-                inviter_granted_at=None,
-                attempts=0,
-                last_error=None,
+                friend_was_paid=friend_was_paid,
             )
+            if reward is not None:
+                return reward
 
-            await self._store.add(reward)
-            await self._store.save()
-            return reward
+            return await self._register_renewal(
+                payment=payment,
+                email=email,
+                friend_panel_user_id=friend_panel_user_id,
+            )
         except Exception:
             logger.exception("Рефералка: не удалось завести награду")
             await self._otkatit_bezopasno()
             return None
+
+    async def _validate_inviter(
+        self, panel: Any, username: str, days_if_paid: int
+    ) -> tuple[Mapping[str, Any], Any, int] | None:
+        """Проверить пригласившего в панели: общий код для обоих путей.
+
+        Первая покупка и продление ищут пригласившего по одному и тому
+        же имени учётки и принимают его по одним и тем же правилам
+        (не интеграция, подписка жива, тег даёт право на награду),
+        выносить эту проверку в двух местах по отдельности означало бы
+        рано или поздно поправить только одно из них. Сколько дней
+        положено за тег PAID, у путей разное (``days_if_paid``), и это
+        решает вызывающий, а не сама проверка.
+
+        Returns:
+            Кортеж (сырой ответ панели, разобранный пользователь, дни
+            пригласившему), либо None, если пригласившего не приняли.
+        """
+        try:
+            inviter_raw = await panel.get_user_by_username(username)
+        except RemnawaveUserNotFoundError:
+            return None
+        inviter_days = _inviter_days(inviter_raw, days_if_paid)
+        if inviter_days is None:
+            return None
+        return inviter_raw, read_panel_user(inviter_raw), inviter_days
+
+    async def _cap_status(
+        self, inviter_username: str, inviter_days: int
+    ) -> str:
+        """pending или held по потолку наград одному пригласившему за месяц.
+
+        Тег ``SVOI`` (``inviter_days == 0``) потолок не расходует и не
+        проверяет: ему всё равно нечего выдавать, и держать нулевые
+        награды нет смысла.
+        """
+        if inviter_days <= 0:
+            return "pending"
+        # Считаем заведённые (pending/granted/failed), а не выданные:
+        # несколько оплат подряд видели бы в старом granted_in_last_days
+        # один и тот же ноль, потому что ни один process() ещё не успел
+        # отработать, и пачка платежей в одну секунду пробивала бы
+        # потолок целиком.
+        #
+        # Остаточная гонка: два по-настоящему одновременных register()
+        # всё равно могут прочитать один и тот же counted до того, как
+        # второй из них вставит свою запись, и оба пройдут потолок. Для
+        # одного процесса uvicorn это редкое совпадение в пределах
+        # одного event loop, а цена ошибки, одна лишняя награда сверх
+        # потолка, а не потерянная защита, приемлема.
+        counted = await self._store.counted_in_last_days(
+            inviter_username, _CAP_WINDOW_DAYS
+        )
+        if counted >= self._settings.referral_monthly_cap:
+            # Шестая и дальше ждут одобрения, но другу (если ему тут
+            # что-то причитается) дни всё равно достанутся: process
+            # выдаст их сразу.
+            return "held"
+        return "pending"
+
+    async def _register_first_purchase(
+        self,
+        *,
+        payment: Payment,
+        email: str,
+        friend_panel_user_id: int | None,
+        friend_was_paid: bool,
+    ) -> ReferralReward | None:
+        """Первая оплата друга по коду из ссылки: дни обеим сторонам."""
+        code = normalize_code(payment.referral_code)
+        if code is None:
+            return None
+
+        if friend_was_paid:
+            return None
+        if await self._store.has_earlier_paid(email, payment.id):
+            return None
+        if await self._store.reward_exists(payment.id, email):
+            return None
+
+        async with self._panel_factory() as panel:
+            validated = await self._validate_inviter(
+                panel, code, self._settings.referral_inviter_days
+            )
+            if validated is None:
+                return None
+            inviter_raw, inviter_user, inviter_days = validated
+
+            if friend_panel_user_id is not None:
+                if inviter_user.id == friend_panel_user_id:
+                    # Код совпал с собственной учёткой: это
+                    # приглашение самого себя.
+                    return None
+                try:
+                    friend_raw = await panel.get_user_by_id(
+                        friend_panel_user_id
+                    )
+                except RemnawaveUserNotFoundError:
+                    friend_raw = None
+                if friend_raw is not None:
+                    friend_username = str(friend_raw.get("username") or "")
+                    if friend_username and (
+                        friend_username.casefold() == code.casefold()
+                    ):
+                        return None
+
+        status = await self._cap_status(
+            inviter_user.username or code, inviter_days
+        )
+
+        reward = ReferralReward(
+            payment_id=payment.id,
+            friend_email=email,
+            friend_panel_user_id=friend_panel_user_id,
+            inviter_username=inviter_user.username or code,
+            inviter_panel_user_id=inviter_user.id,
+            inviter_telegram_id=_read_telegram_id(inviter_raw),
+            friend_days=self._settings.referral_friend_days,
+            inviter_days=inviter_days,
+            kind="first",
+            status=status,
+            friend_granted_at=None,
+            inviter_granted_at=None,
+            attempts=0,
+            last_error=None,
+        )
+
+        await self._store.add(reward)
+        await self._store.save()
+        return reward
+
+    async def _register_renewal(
+        self,
+        *,
+        payment: Payment,
+        email: str,
+        friend_panel_user_id: int | None,
+    ) -> ReferralReward | None:
+        """Первое продление друга после уже вознаграждённой первой покупки.
+
+        В отличие от первой покупки, здесь нет ни кода в платеже (у
+        продлевающегося друга в браузере его больше нет), ни проверки
+        ``friend_was_paid`` (продлевающийся друг, конечно же, уже PAID):
+        решает не платёж, а то, что у этой почты уже есть награда за
+        первую покупку.
+        """
+        if self._settings.referral_renewal_days <= 0:
+            return None
+
+        first = await self._store.first_reward_for(email)
+        if first is None or first.payment_id == payment.id:
+            # Нет первой покупки, значит, и продлять как за друга
+            # нечего. Совпавший id платежа означает тот же самый
+            # платёж, что уже принёс first-награду (повторный вызов),
+            # а не новое продление.
+            #
+            # Отдельной проверки "у этого payment_id ещё нет никакой
+            # награды" тут больше нет: за неё в самом крайнем случае
+            # отвечает уникальный индекс uq_referral_rewards_payment_id
+            # в базе, тот же, что стоит на страже и у первой покупки, и
+            # повторять его проверку средствами приложения незачем.
+            return None
+        if await self._store.renewal_exists(email):
+            return None
+
+        async with self._panel_factory() as panel:
+            validated = await self._validate_inviter(
+                panel,
+                first.inviter_username,
+                self._settings.referral_renewal_days,
+            )
+            if validated is None:
+                return None
+            inviter_raw, inviter_user, inviter_days = validated
+
+        if inviter_days == 0:
+            # SVOI: пригласившему дни не положены вовсе, а другу на
+            # продлении бонуса и так не бывает. Заводить запись, которая
+            # никому ничего не даст, незачем.
+            return None
+
+        status = await self._cap_status(
+            inviter_user.username or first.inviter_username, inviter_days
+        )
+
+        reward = ReferralReward(
+            payment_id=payment.id,
+            friend_email=email,
+            friend_panel_user_id=friend_panel_user_id,
+            inviter_username=inviter_user.username or first.inviter_username,
+            inviter_panel_user_id=inviter_user.id,
+            inviter_telegram_id=_read_telegram_id(inviter_raw),
+            friend_days=0,
+            inviter_days=inviter_days,
+            kind="renewal",
+            status=status,
+            friend_granted_at=None,
+            inviter_granted_at=None,
+            attempts=0,
+            last_error=None,
+        )
+
+        await self._store.add(reward)
+        await self._store.save()
+        return reward
 
     async def process_by_id(self, reward_id: UUID) -> None:
         """Обработать награду по id: вход для фоновой задачи со своей сессией.
@@ -567,7 +777,13 @@ class ReferralService:
                     return
                 entered = True
 
-                if reward.friend_granted_at is None:
+                # Продление (kind="renewal") ничего не должно другу:
+                # friend_days == 0, и звать панель за нулём дней незачем.
+                # friend_granted_at у такой награды навсегда останется
+                # пустым, единственное, что на него смотрит, это же
+                # самое условие чуть выше, и повторный process() снова
+                # безопасно пропустит этот шаг.
+                if reward.friend_granted_at is None and reward.friend_days > 0:
                     granted = await self._grant_friend(reward)
                     if not granted:
                         return
