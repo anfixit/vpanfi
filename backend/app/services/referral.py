@@ -14,6 +14,7 @@
 прод собирал настоящие ``RemnawaveGateway``/``BedolagaGateway``.
 """
 
+import asyncio
 import logging
 import re
 from collections.abc import Callable, Mapping
@@ -57,7 +58,37 @@ _CAP_WINDOW_DAYS = 30
 # Совпадает с длиной колонки `last_error` (String(500)).
 _MAX_ERROR_LENGTH = 500
 
+# Свежую запись фон не трогает: вебхук уже обрабатывает её инлайн, и
+# гонка с фоновой задачей нужна не раньше, чем инлайн-обработка успеет
+# провалиться и записать это в базу.
+_DUE_MIN_AGE = timedelta(minutes=10)
+
 GatewayFactory = Callable[[], AbstractAsyncContextManager[Any]]
+
+# Блокировки по id награды, общие для всех экземпляров ReferralService
+# в процессе: вебхук вызывает process сразу после register, а фоновый
+# retry_due читает ту же запись из другой сессии, и оба должны видеть
+# одну и ту же блокировку, а не свою локальную.
+_LOCKS: dict[UUID, asyncio.Lock] = {}
+
+# Статусы, после которых с наградой больше никто не будет работать
+# параллельно: держать для них блокировку значило бы копить словарь
+# без границы на каждую когда-либо обработанную запись.
+_TERMINAL_STATUSES = frozenset({"granted", "failed", "rejected"})
+
+
+def _lock_for(reward_id: UUID) -> asyncio.Lock:
+    """Отдать (и при нужде завести) блокировку конкретной награды."""
+    lock = _LOCKS.get(reward_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _LOCKS[reward_id] = lock
+    return lock
+
+
+def _release_lock(reward_id: UUID) -> None:
+    """Убрать блокировку завершённой награды, чтобы словарь не рос."""
+    _LOCKS.pop(reward_id, None)
 
 
 def normalize_code(raw: str | None) -> str | None:
@@ -113,6 +144,15 @@ class RewardStore(Protocol):
         """Сохранить то, что изменилось в записях наград."""
         ...
 
+    async def refresh(self, reward: ReferralReward) -> None:
+        """Перечитать текущее состояние записи перед решением, что выдать.
+
+        Нужно под замком в ``process``: без этого второй обработчик
+        решал бы по устаревшему объекту в памяти, не видя, что первый
+        уже успел выдать часть награды.
+        """
+        ...
+
 
 class SqlRewardStore(RewardStore):
     """Хранилище наград поверх обычной сессии SQLAlchemy.
@@ -164,9 +204,13 @@ class SqlRewardStore(RewardStore):
         return int(await self._session.scalar(stmt) or 0)
 
     async def due(self, limit: int) -> list[ReferralReward]:
+        threshold = datetime.now(UTC) - _DUE_MIN_AGE
         stmt = (
             select(ReferralReward)
-            .where(ReferralReward.status == "pending")
+            .where(
+                ReferralReward.status == "pending",
+                ReferralReward.created_at <= threshold,
+            )
             .order_by(ReferralReward.created_at)
             .limit(limit)
         )
@@ -174,6 +218,9 @@ class SqlRewardStore(RewardStore):
 
     async def save(self) -> None:
         await self._session.commit()
+
+    async def refresh(self, reward: ReferralReward) -> None:
+        await self._session.refresh(reward)
 
 
 def _inviter_days(raw: Mapping[str, Any], settings: Settings) -> int | None:
@@ -326,38 +373,50 @@ class ReferralService:
         Каждая удачная выдача сохраняется сразу же, до следующего
         сетевого вызова: повтор после сбоя должен продлить только то,
         что не продлилось в прошлый раз.
+
+        Вебхук вызывает это сразу после ``register``, а фоновая задача
+        читает ту же запись из отдельной сессии: держим замок на всё
+        время обработки и первым делом перечитываем состояние записи,
+        чтобы второй обработчик увидел, что первый уже успел сделать.
         """
-        try:
-            if reward.status not in ("pending", "held"):
-                return
+        lock = _lock_for(reward.id)
+        async with lock:
+            try:
+                await self._store.refresh(reward)
 
-            if reward.friend_granted_at is None:
-                granted = await self._grant_friend(reward)
-                if not granted:
+                if reward.status not in ("pending", "held"):
                     return
 
-            if reward.status == "held":
-                # Другу выдано, а снятие потолка пригласившему
-                # дожидается человека, а не фоновой задачи.
-                return
+                if reward.friend_granted_at is None:
+                    granted = await self._grant_friend(reward)
+                    if not granted:
+                        return
 
-            if reward.inviter_days == 0:
-                if reward.status != "granted":
-                    reward.status = "granted"
-                    await self._store.save()
-                return
-
-            if reward.inviter_granted_at is None:
-                granted = await self._grant_inviter(reward)
-                if not granted:
+                if reward.status == "held":
+                    # Другу выдано, а снятие потолка пригласившему
+                    # дожидается человека, а не фоновой задачи.
                     return
 
-            reward.status = "granted"
-            await self._store.save()
-        except Exception:
-            logger.exception(
-                "Рефералка: сбой обработки награды %s", reward.id
-            )
+                if reward.inviter_days == 0:
+                    if reward.status != "granted":
+                        reward.status = "granted"
+                        await self._store.save()
+                    return
+
+                if reward.inviter_granted_at is None:
+                    granted = await self._grant_inviter(reward)
+                    if not granted:
+                        return
+
+                reward.status = "granted"
+                await self._store.save()
+            except Exception:
+                logger.exception(
+                    "Рефералка: сбой обработки награды %s", reward.id
+                )
+            finally:
+                if reward.status in _TERMINAL_STATUSES:
+                    _release_lock(reward.id)
 
     async def retry_due(self, limit: int = 20) -> int:
         """Повторить зависшие выдачи. Возвращает число обработанных.
@@ -387,10 +446,9 @@ class ReferralService:
             # означало бы завести циклический импорт с checkout и, хуже
             # того, продлить не ту учётку, если имя из почты кому-то
             # уже принадлежит.
-            self._record_failure(
+            await self._record_failure(
                 reward, "у награды нет id учётки друга в панели"
             )
-            await self._store.save()
             return False
 
         try:
@@ -412,12 +470,15 @@ class ReferralService:
                 "Рефералка: не удалось выдать дни другу по награде %s",
                 reward.id,
             )
-            self._record_failure(reward, f"не выдано другу: {error}")
-            await self._store.save()
+            await self._record_failure(reward, f"не выдано другу: {error}")
             return False
 
         reward.friend_granted_at = datetime.now(UTC)
-        await self._store.save()
+        try:
+            await self._store.save()
+        except Exception:
+            await self._mark_unrecoverable(reward, "friend")
+            return False
         return True
 
     async def _grant_inviter(self, reward: ReferralReward) -> bool:
@@ -440,11 +501,10 @@ class ReferralService:
                             "боте только триал",
                             reward.id,
                         )
-                        self._record_failure(
+                        await self._record_failure(
                             reward,
                             f"у пригласившего в боте только триал: {error}",
                         )
-                        await self._store.save()
                         return False
                     await bedolaga.extend(subscription_id, reward.inviter_days)
             else:
@@ -467,17 +527,67 @@ class ReferralService:
                 "награде %s",
                 reward.id,
             )
-            self._record_failure(reward, f"не выдано пригласившему: {error}")
-            await self._store.save()
+            await self._record_failure(
+                reward, f"не выдано пригласившему: {error}"
+            )
             return False
 
         reward.inviter_granted_at = datetime.now(UTC)
-        await self._store.save()
+        try:
+            await self._store.save()
+        except Exception:
+            await self._mark_unrecoverable(reward, "inviter")
+            return False
         return True
 
-    def _record_failure(self, reward: ReferralReward, message: str) -> None:
-        """Отметить неудачную попытку, а после многих сдаться."""
+    async def _record_failure(
+        self, reward: ReferralReward, message: str
+    ) -> None:
+        """Отметить неудачную попытку, а после многих сдаться.
+
+        Сохраняет сама: это последняя запись, которую в данной попытке
+        можно сделать, и мёртвое хранилище тут не должно ронять того,
+        кто вызвал ``_record_failure`` из своего except.
+        """
         reward.attempts += 1
         reward.last_error = message[:_MAX_ERROR_LENGTH]
         if reward.attempts >= _MAX_ATTEMPTS:
             reward.status = "failed"
+        try:
+            await self._store.save()
+        except Exception:
+            logger.exception(
+                "Рефералка: не удалось сохранить попытку по награде %s",
+                reward.id,
+            )
+
+    async def _mark_unrecoverable(
+        self, reward: ReferralReward, side: str
+    ) -> None:
+        """Дни выдались, а отметка об этом не сохранилась.
+
+        Повтор тут же продлил бы того, кому уже продлили: единственный
+        безопасный выход это перестать трогать награду автоматикой и
+        отдать её человеку. Пробуем сохранить это решение ещё раз, но
+        отдельным try/except: если хранилище мёртвое и вторая попытка
+        тоже упадёт, объект в памяти всё равно останется failed, а
+        трасса уйдёт в лог.
+        """
+        reward.status = "failed"
+        reward.last_error = (
+            f"выдано, но не сохранено: нужна проверка вручную ({side})"
+        )[:_MAX_ERROR_LENGTH]
+        logger.exception(
+            "Рефералка: выдано (%s) по награде %s, но не сохранилось; "
+            "нужна ручная проверка",
+            side,
+            reward.id,
+        )
+        try:
+            await self._store.save()
+        except Exception:
+            logger.exception(
+                "Рефералка: не удалось сохранить отметку failed по "
+                "награде %s",
+                reward.id,
+            )

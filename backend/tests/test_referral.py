@@ -6,6 +6,7 @@
 тестов, и без сети.
 """
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -27,6 +28,7 @@ from app.models.billing import (
     PaymentStatus,
     ReferralReward,
 )
+from app.services import referral as referral_module
 from app.services.referral import (
     CODE_RE,
     ReferralService,
@@ -129,6 +131,12 @@ class FakeRewardStore:
         self.paid_emails: set[str] = set()
         self.save_calls = 0
         self.raise_on_add: Exception | None = None
+        # Ровно на этом по счёту вызове save() бросить исключение
+        # (однократно): проверяет сбой сохранения после удачной выдачи.
+        self.fail_on_save_call: int | None = None
+        # Хук перед возвратом из refresh(): тесты гонки подделывают тут
+        # состояние, которое якобы успел записать другой обработчик.
+        self.refresh_hook: Any = None
 
     async def has_earlier_paid(self, email: str, payment_id: UUID) -> bool:
         return email.lower() in self.paid_emails
@@ -162,6 +170,12 @@ class FakeRewardStore:
 
     async def save(self) -> None:
         self.save_calls += 1
+        if self.fail_on_save_call == self.save_calls:
+            raise RuntimeError("сбой сохранения")
+
+    async def refresh(self, reward: ReferralReward) -> None:
+        if self.refresh_hook is not None:
+            self.refresh_hook(reward)
 
 
 class FakePanelGateway:
@@ -174,11 +188,16 @@ class FakePanelGateway:
         by_id: dict[int, dict[str, Any]] | None = None,
         fail_set_expiry_for: set[int] | None = None,
         raise_on_set_expiry: Exception | None = None,
+        sleep_before_set_expiry: bool = False,
     ) -> None:
         self.by_username = by_username or {}
         self.by_id = by_id or {}
         self.fail_set_expiry_for = fail_set_expiry_for or set()
         self.raise_on_set_expiry = raise_on_set_expiry
+        # Отдаёт управление циклу перед записью вызова: без этой точки
+        # переключения два process() никогда бы не пересеклись даже
+        # без замка, и гонку было бы нечем проверить.
+        self.sleep_before_set_expiry = sleep_before_set_expiry
         self.set_expiry_calls: list[int] = []
 
     async def __aenter__(self) -> "FakePanelGateway":
@@ -202,6 +221,8 @@ class FakePanelGateway:
     async def set_expiry(
         self, user_id: int, expire_at: datetime, tag: str | None = None
     ) -> dict[str, Any]:
+        if self.sleep_before_set_expiry:
+            await asyncio.sleep(0)
         self.set_expiry_calls.append(user_id)
         if user_id in self.fail_set_expiry_for or self.raise_on_set_expiry:
             raise self.raise_on_set_expiry or RemnawaveUnavailableError(
@@ -802,6 +823,144 @@ async def test_missing_friend_panel_user_id_is_recorded_as_an_error() -> None:
     assert panel.set_expiry_calls == []
 
 
+# --- process: сбой сохранения после удачной выдачи ----------------------
+
+
+async def test_friend_grant_survives_but_save_fails_once() -> None:
+    """save() падает сразу после выдачи другу: повтор не должен продлить."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    store = FakeRewardStore()
+    store.fail_on_save_call = 1
+    service, store, panel, bedolaga = _service(store=store, panel=panel)
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "failed"
+    assert reward.friend_granted_at is not None
+    assert reward.last_error is not None
+    assert "нужна проверка вручную" in reward.last_error
+    assert "friend" in reward.last_error
+    assert panel.set_expiry_calls.count(900) == 1
+
+    await service.process(reward)
+
+    assert panel.set_expiry_calls.count(900) == 1
+    assert 500 not in panel.set_expiry_calls
+    assert bedolaga.extend_calls == []
+
+
+async def test_inviter_grant_survives_but_save_fails_once() -> None:
+    """save() падает сразу после выдачи пригласившему: повтор не продлит."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    store = FakeRewardStore()
+    store.fail_on_save_call = 2
+    service, store, panel, bedolaga = _service(store=store, panel=panel)
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "failed"
+    assert reward.friend_granted_at is not None
+    assert reward.inviter_granted_at is not None
+    assert reward.last_error is not None
+    assert "нужна проверка вручную" in reward.last_error
+    assert "inviter" in reward.last_error
+    assert panel.set_expiry_calls.count(900) == 1
+    assert panel.set_expiry_calls.count(500) == 1
+
+    await service.process(reward)
+
+    assert panel.set_expiry_calls.count(900) == 1
+    assert panel.set_expiry_calls.count(500) == 1
+    assert bedolaga.extend_calls == []
+
+
+# --- process: одновременная обработка ------------------------------------
+
+
+async def test_concurrent_process_grants_each_side_exactly_once() -> None:
+    """Вебхук и фон дёргают process на одну и ту же запись сразу же."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        },
+        sleep_before_set_expiry=True,
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward()
+
+    await asyncio.gather(service.process(reward), service.process(reward))
+
+    assert reward.status == "granted"
+    assert panel.set_expiry_calls.count(900) == 1
+    assert panel.set_expiry_calls.count(500) == 1
+
+
+async def test_refresh_seeing_another_workers_grant_skips_the_friend() -> None:
+    """refresh перечитал: другой обработчик уже выдал дни другу."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    store = FakeRewardStore()
+    store.refresh_hook = lambda r: setattr(
+        r, "friend_granted_at", datetime.now(UTC)
+    )
+    service, store, panel, bedolaga = _service(store=store, panel=panel)
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert 900 not in panel.set_expiry_calls
+    assert 500 in panel.set_expiry_calls
+
+
+async def test_lock_registry_drops_entries_for_terminal_rewards() -> None:
+    """granted/failed награды не должны копиться в реестре замков."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    granted_reward = _reward()
+    await service.process(granted_reward)
+    assert granted_reward.status == "granted"
+
+    panel_for_failing = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga_failing = FakeBedolagaGateway(
+        subscription_by_telegram_id={100500: 777}, fail_extend=True
+    )
+    service_failed, store_failed, _panel2, _bedolaga2 = _service(
+        panel=panel_for_failing, bedolaga=bedolaga_failing
+    )
+    failing_reward = _reward(inviter_telegram_id=100500)
+    for _ in range(referral_module._MAX_ATTEMPTS):
+        await service_failed.process(failing_reward)
+    assert failing_reward.status == "failed"
+
+    assert granted_reward.id not in referral_module._LOCKS
+    assert failing_reward.id not in referral_module._LOCKS
+
+
 # --- retry_due ------------------------------------------------------------
 
 
@@ -849,6 +1008,12 @@ async def test_register_never_raises_even_on_a_broken_store() -> None:
 
 
 async def test_process_never_raises_on_a_broken_store() -> None:
+    """Другу выдано, а сохранить это не удалось: награда уходит в failed.
+
+    Повтор с мёртвым хранилищем не должен продлить другу второй раз:
+    единственный безопасный выход тут "сдаться" и подождать человека.
+    """
+
     class BrokenStore(FakeRewardStore):
         async def save(self) -> None:
             raise RuntimeError("база недоступна")
@@ -862,6 +1027,33 @@ async def test_process_never_raises_on_a_broken_store() -> None:
     reward = _reward()
 
     await service.process(reward)  # не должно бросить исключение
+
+    assert reward.status == "failed"
+    assert reward.friend_granted_at is not None
+    assert reward.last_error is not None
+    assert "нужна проверка вручную" in reward.last_error
+    assert "friend" in reward.last_error
+
+    friend_calls_before = list(panel.set_expiry_calls)
+    await service.process(reward)
+
+    assert panel.set_expiry_calls == friend_calls_before
+
+
+async def test_record_failure_survives_a_broken_store() -> None:
+    """Сама попытка не сохранилась, но process всё равно не падает."""
+
+    class BrokenStore(FakeRewardStore):
+        async def save(self) -> None:
+            raise RuntimeError("база недоступна")
+
+    service, store, panel, _bedolaga = _service(store=BrokenStore())
+    reward = _reward(friend_panel_user_id=None)
+
+    await service.process(reward)  # не должно бросить исключение
+
+    assert reward.attempts == 1
+    assert reward.last_error is not None
 
 
 async def test_retry_due_never_raises_when_the_store_is_unavailable() -> None:
