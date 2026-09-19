@@ -93,6 +93,51 @@ def test_referral_reward_kind_column_is_a_short_string() -> None:
     assert column.nullable is False
 
 
+def test_referral_reward_bot_bridge_columns() -> None:
+    """19.09.2026: друг может прийти не с сайта, а из бота продаж."""
+    columns = ReferralReward.__table__.columns
+
+    assert str(columns["source"].type) == "VARCHAR(8)"
+    assert columns["source"].nullable is False
+    assert columns["source"].default.arg == "site"
+    assert columns["payment_id"].nullable is True
+    assert str(columns["friend_telegram_id"].type) == "BIGINT"
+    assert columns["friend_telegram_id"].nullable is True
+    assert str(columns["bot_transaction_id"].type) == "INTEGER"
+    assert columns["bot_transaction_id"].nullable is True
+
+
+def test_referral_reward_has_a_unique_constraint_on_bot_transaction_id() -> (
+    None
+):
+    """Вторая защита от повторной выдачи наград из бота продаж,
+
+    аналогичная uq_referral_rewards_payment_id у наград с сайта.
+    """
+    names = {c.name for c in ReferralReward.__table__.constraints}
+
+    assert "uq_referral_rewards_bot_transaction_id" in names
+
+
+def test_referral_reward_without_a_payment_can_be_built() -> None:
+    """Награда из бота продаж заводится без payment_id вовсе."""
+    reward = ReferralReward(
+        payment_id=None,
+        source="bot",
+        friend_email="tg:100500",
+        friend_telegram_id=100500,
+        inviter_username="anfisa",
+        inviter_panel_user_id=7,
+        friend_days=15,
+        inviter_days=15,
+        bot_transaction_id=42,
+    )
+
+    assert reward.payment_id is None
+    assert reward.source == "bot"
+    assert reward.bot_transaction_id == 42
+
+
 def test_reward_keeps_its_payment_from_being_deleted() -> None:
     """Награда это единственная запись о выданных днях.
 

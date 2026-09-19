@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import httpx
 import pytest
 import respx
@@ -8,6 +10,7 @@ from app.integrations.bedolaga.client import (
     BedolagaNotConfiguredError,
     BedolagaUnavailableError,
     BedolagaUserNotFoundError,
+    BotUser,
 )
 
 BASE_URL = "https://bedolaga.example.test/api"
@@ -293,3 +296,361 @@ async def test_extend_refuses_non_positive_days_before_the_network(
             await gateway.extend(777, days)
 
     assert route.call_count == 0
+
+
+@respx.mock
+async def test_user_by_telegram_id_parses_the_referral_fields() -> None:
+    respx.get(f"{BASE_URL}/users/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "telegram_id": TELEGRAM_ID,
+                "referral_code": "anfisa-42",
+                "referred_by_id": 7,
+                "has_had_paid_subscription": True,
+                "subscription": None,
+                "subscriptions": [],
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.user_by_telegram_id(TELEGRAM_ID)
+
+    assert user == BotUser(
+        id=42,
+        telegram_id=TELEGRAM_ID,
+        referral_code="anfisa-42",
+        referred_by_id=7,
+        has_had_paid_subscription=True,
+    )
+
+
+@respx.mock
+async def test_user_by_telegram_id_unknown_is_not_found() -> None:
+    respx.get(f"{BASE_URL}/users/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(404)
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUserNotFoundError):
+            await gateway.user_by_telegram_id(TELEGRAM_ID)
+
+
+@respx.mock
+async def test_user_by_id_fetches_the_numeric_endpoint() -> None:
+    route = respx.get(f"{BASE_URL}/users/42").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "telegram_id": None,
+                "referral_code": "anfisa-42",
+                "referred_by_id": None,
+                "has_had_paid_subscription": False,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.user_by_id(42)
+
+    assert user == BotUser(
+        id=42,
+        telegram_id=None,
+        referral_code="anfisa-42",
+        referred_by_id=None,
+        has_had_paid_subscription=False,
+    )
+    assert route.calls.last.request.headers["X-API-Key"] == TOKEN
+
+
+@respx.mock
+async def test_user_by_id_unknown_is_not_found() -> None:
+    respx.get(f"{BASE_URL}/users/42").mock(return_value=httpx.Response(404))
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUserNotFoundError):
+            await gateway.user_by_id(42)
+
+
+@respx.mock
+async def test_user_by_id_failure_becomes_domain_error() -> None:
+    respx.get(f"{BASE_URL}/users/42").mock(return_value=httpx.Response(500))
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUnavailableError):
+            await gateway.user_by_id(42)
+
+
+@respx.mock
+async def test_list_users_returns_the_page_and_total() -> None:
+    route = respx.get(f"{BASE_URL}/users").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": 1,
+                        "telegram_id": 1001,
+                        "referral_code": "a",
+                        "referred_by_id": None,
+                        "has_had_paid_subscription": True,
+                    },
+                    {
+                        "id": 2,
+                        "telegram_id": 1002,
+                        "referral_code": "b",
+                        "referred_by_id": 1,
+                        "has_had_paid_subscription": False,
+                    },
+                ],
+                "total": 2,
+                "limit": 200,
+                "offset": 0,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        users, total = await gateway.list_users()
+
+    assert total == 2
+    assert [user.id for user in users] == [1, 2]
+    query = route.calls.last.request.url.params
+    assert query["limit"] == "200"
+    assert query["offset"] == "0"
+
+
+@respx.mock
+async def test_list_users_skips_a_malformed_item(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Обломок одного пользователя не должен прерывать обход всех."""
+    respx.get(f"{BASE_URL}/users").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"telegram_id": 1001},  # без id: бракуется целиком
+                    {
+                        "id": 2,
+                        "telegram_id": 1002,
+                        "referral_code": None,
+                        "referred_by_id": None,
+                        "has_had_paid_subscription": True,
+                    },
+                ],
+                "total": 2,
+                "limit": 200,
+                "offset": 0,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        users, total = await gateway.list_users()
+
+    assert total == 2
+    assert [user.id for user in users] == [2]
+    assert any(
+        record.levelname == "WARNING" for record in caplog.records
+    )
+
+
+@respx.mock
+async def test_list_users_failure_becomes_domain_error() -> None:
+    respx.get(f"{BASE_URL}/users").mock(return_value=httpx.Response(500))
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUnavailableError):
+            await gateway.list_users()
+
+
+@respx.mock
+async def test_purchases_walks_every_page_ascending_by_time() -> None:
+    """Две страницы транзакций собираются в один список по возрастанию."""
+    route = respx.get(f"{BASE_URL}/transactions").mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 1,
+                            "user_id": 2,
+                            "type": "subscription_payment",
+                            "is_completed": True,
+                            "created_at": "2027-01-01T00:00:00",
+                            "completed_at": "2027-01-02T00:00:00",
+                        }
+                    ],
+                    "total": 2,
+                    "limit": 1,
+                    "offset": 0,
+                },
+            ),
+            httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": 2,
+                            "user_id": 2,
+                            "type": "subscription_payment",
+                            "is_completed": True,
+                            "created_at": "2026-12-01T00:00:00",
+                            "completed_at": "2026-12-05T00:00:00",
+                        }
+                    ],
+                    "total": 2,
+                    "limit": 1,
+                    "offset": 1,
+                },
+            ),
+        ]
+    )
+
+    async with _gateway() as gateway:
+        purchases = await gateway.purchases(2)
+
+    assert [purchase.id for purchase in purchases] == [2, 1]
+    assert purchases[0].completed_at < purchases[1].completed_at
+    first_request = route.calls[0].request
+    query = first_request.url.params
+    assert query["user_id"] == "2"
+    assert query["type"] == "subscription_payment"
+    assert query["is_completed"] == "true"
+
+
+@respx.mock
+async def test_purchases_falls_back_to_created_at_when_completed_at_is_null(
+) -> None:
+    respx.get(f"{BASE_URL}/transactions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": 1,
+                        "user_id": 2,
+                        "type": "subscription_payment",
+                        "is_completed": True,
+                        "created_at": "2027-01-01T00:00:00",
+                        "completed_at": None,
+                    }
+                ],
+                "total": 1,
+                "limit": 200,
+                "offset": 0,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        purchases = await gateway.purchases(2)
+
+    assert len(purchases) == 1
+    assert purchases[0].completed_at == datetime(
+        2027, 1, 1, tzinfo=UTC
+    )
+
+
+@respx.mock
+async def test_purchases_skips_a_malformed_transaction(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    respx.get(f"{BASE_URL}/transactions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {"user_id": 2},  # без id транзакции
+                    {
+                        "id": 2,
+                        "user_id": 2,
+                        "created_at": "2027-01-01T00:00:00",
+                        "completed_at": "2027-01-02T00:00:00",
+                    },
+                ],
+                "total": 2,
+                "limit": 200,
+                "offset": 0,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        purchases = await gateway.purchases(2)
+
+    assert [purchase.id for purchase in purchases] == [2]
+    assert any(
+        record.levelname == "WARNING" for record in caplog.records
+    )
+
+
+@respx.mock
+async def test_purchases_stops_at_an_empty_page() -> None:
+    """total лжёт про число страниц: пустая страница обрывает обход."""
+    route = respx.get(f"{BASE_URL}/transactions").mock(
+        return_value=httpx.Response(
+            200,
+            json={"items": [], "total": 999, "limit": 200, "offset": 0},
+        )
+    )
+
+    async with _gateway() as gateway:
+        purchases = await gateway.purchases(2)
+
+    assert purchases == []
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_purchases_stops_after_the_hard_page_cap() -> None:
+    """Неверный total на стороне бота не должен превратить обход в вечный
+    цикл: потолок в 20 страниц останавливает его сам.
+    """
+
+    def _page(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params["offset"])
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": offset + 1,
+                        "user_id": 2,
+                        "created_at": "2027-01-01T00:00:00",
+                        "completed_at": "2027-01-01T00:00:00",
+                    }
+                ],
+                # total всегда больше того, что реально отдано: без
+                # потолка страниц обход не остановился бы сам.
+                "total": 10_000,
+                "limit": 1,
+                "offset": offset,
+            },
+        )
+
+    route = respx.get(f"{BASE_URL}/transactions").mock(side_effect=_page)
+
+    async with _gateway() as gateway:
+        purchases = await gateway.purchases(2)
+
+    assert route.call_count == 20
+    assert len(purchases) == 20
+
+
+@respx.mock
+async def test_purchases_never_leaks_the_token_on_failure() -> None:
+    respx.get(f"{BASE_URL}/transactions").mock(
+        return_value=httpx.Response(500)
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUnavailableError) as exc_info:
+            await gateway.purchases(2)
+
+    assert TOKEN not in str(exc_info.value)

@@ -224,3 +224,88 @@ async def test_a_persistent_outage_still_fails() -> None:
     # Повтор ровно один: бесконечные попытки держали бы запрос
     # пользователя, пока он не отвалится по таймауту сам.
     assert route.call_count == 2
+
+
+TELEGRAM_ID = 100500
+
+
+@respx.mock
+async def test_get_user_by_telegram_id_unwraps_the_list() -> None:
+    respx.get(f"{USERS_URL}/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={"response": [{"id": USER_ID, "status": "ACTIVE"}]},
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_telegram_id(TELEGRAM_ID)
+
+    assert user["id"] == USER_ID
+
+
+@respx.mock
+async def test_get_user_by_telegram_id_prefers_the_active_one() -> None:
+    """Один телеграм-аккаунт бывает привязан к нескольким учёткам панели."""
+    respx.get(f"{USERS_URL}/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "response": [
+                    {"id": 1, "status": "DISABLED"},
+                    {"id": 2, "status": "ACTIVE"},
+                    {"id": 3, "status": "ACTIVE"},
+                ]
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_telegram_id(TELEGRAM_ID)
+
+    assert user["id"] == 2
+
+
+@respx.mock
+async def test_get_user_by_telegram_id_falls_back_to_the_first() -> None:
+    """Без ни одного ACTIVE берём первую учётку, а не отказываем вовсе."""
+    respx.get(f"{USERS_URL}/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "response": [
+                    {"id": 1, "status": "DISABLED"},
+                    {"id": 2, "status": "EXPIRED"},
+                ]
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.get_user_by_telegram_id(TELEGRAM_ID)
+
+    assert user["id"] == 1
+
+
+@respx.mock
+async def test_get_user_by_telegram_id_empty_list_is_not_found() -> None:
+    respx.get(f"{USERS_URL}/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(200, json={"response": []})
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(RemnawaveUserNotFoundError):
+            await gateway.get_user_by_telegram_id(TELEGRAM_ID)
+
+
+@respx.mock
+async def test_get_user_by_telegram_id_failure_becomes_domain_error() -> (
+    None
+):
+    respx.get(f"{USERS_URL}/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(500)
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(RemnawaveUnavailableError):
+            await gateway.get_user_by_telegram_id(TELEGRAM_ID)

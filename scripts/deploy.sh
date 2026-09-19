@@ -41,6 +41,9 @@ VPANFI_TELEGRAM_ALERT_CHAT_ID=
 # Рефералка выключена, пока её не включат отдельно: без этого код
 # приглашения не сохранялся бы, а награды не заводились.
 VPANFI_REFERRAL_ENABLED=false
+# Мост к боту продаж выключен отдельно от самой рефералки выше: пока
+# ложный, сайт не делает в бота ни одного запроса.
+VPANFI_REFERRAL_BOT_ENABLED=false
 VPANFI_BEDOLAGA_API_TOKEN=
 # Поддержка — живой человек. Бот продаж на вопрос не ответит:
 # человек попадёт в меню покупки и решит, что писать некуда.
@@ -84,6 +87,7 @@ apply_panel_credentials() {
   set_env_value VPANFI_PLATEGA_MERCHANT_ID "${VPANFI_PLATEGA_MERCHANT_ID:-}"
   set_env_value VPANFI_PLATEGA_SECRET "${VPANFI_PLATEGA_SECRET:-}"
   set_env_value VPANFI_REFERRAL_ENABLED "${VPANFI_REFERRAL_ENABLED:-}"
+  set_env_value VPANFI_REFERRAL_BOT_ENABLED "${VPANFI_REFERRAL_BOT_ENABLED:-}"
   set_env_value VPANFI_BEDOLAGA_API_TOKEN "${VPANFI_BEDOLAGA_API_TOKEN:-}"
   set_env_value VPANFI_SMTP_HOST "${VPANFI_SMTP_HOST:-}"
   set_env_value VPANFI_SMTP_PORT "${VPANFI_SMTP_PORT:-}"

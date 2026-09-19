@@ -155,6 +155,35 @@ class RemnawaveGateway:
             await self._get(f"{USERS_PATH}/by-username/{username}")
         )
 
+    async def get_user_by_telegram_id(
+        self,
+        telegram_id: int,
+    ) -> Mapping[str, Any]:
+        """Вернуть пользователя панели по телеграм-идентификатору.
+
+        В отличие от прочих методов get_user_by_*, этот отдаёт список:
+        один телеграм-аккаунт бывает привязан сразу к нескольким
+        учёткам панели. Из нескольких берём первую активную (ACTIVE),
+        а если такой нет, то просто первую в списке. Пустой список
+        значит, что панель никого с этим id не знает.
+        """
+        payload = await self._get(f"{USERS_PATH}/by-telegram-id/{telegram_id}")
+        body = _unwrap(payload)
+        if not isinstance(body, list):
+            raise RemnawaveUnavailableError(
+                "Remnawave returned an unexpected user payload"
+            )
+        users = [item for item in body if isinstance(item, Mapping)]
+        if not users:
+            raise RemnawaveUserNotFoundError(
+                f"{USERS_PATH}/by-telegram-id/{telegram_id}"
+            )
+
+        for user in users:
+            if user.get("status") == "ACTIVE":
+                return user
+        return users[0]
+
     async def create_user(
         self,
         *,

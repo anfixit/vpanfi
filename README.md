@@ -117,12 +117,15 @@ Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected
 - `VPANFI_REFERRAL_ENABLED`: set to `true` to turn on the referral program; defaults to `false`, which keeps the site behaving exactly as before
+- `VPANFI_REFERRAL_BOT_ENABLED`: set to `true` to also reward invites that turn into a purchase in the sales bot instead of on the site; defaults to `false` and requires `VPANFI_REFERRAL_ENABLED=true` and a working `VPANFI_BEDOLAGA_API_TOKEN` as well
 
 They travel inside the SSH channel rather than on the remote command line, so they never appear in the server's process list or in a workflow log.
 
 The referral program's guarantee that a reward is never granted twice rests on a lock kept in the `api` process's own memory (`_LOCKS` in `backend/app/services/referral.py`), not in the database. That holds only while `api` runs as a single uvicorn process in a single container, which is how `docker-compose.yml` runs it today; do not add `--workers` or a second replica of that service without moving the lock into the database first (for example a `SELECT ... FOR UPDATE` on the reward row).
 
 A related, smaller limitation: extending a panel subscription is read-then-set (read the current expiry, add days, write it back), both for an ordinary purchase and for a referral reward. If a purchase and a reward land on the same panel account within the same second, one of the two reads can miss the other's write, and one increment is lost. This undercounts the account's days; it never grants extra days that were not earned.
+
+The bot bridge (`VPANFI_REFERRAL_BOT_ENABLED`) lets a friend who followed an invite link buy their subscription inside the sales bot (Bedolaga) instead of on the site, and still earn the same rewards for both sides. It is off by default and makes no request to the bot at all while off. Before turning it on, the sales bot's own `.env` must have `REFERRAL_REWARD_SCHEME=levels` with an empty levels table (so the bot itself pays no reward) and `REFERRAL_NOTIFICATIONS_ENABLED=false` (so the bot does not also notify people about rewards the site is granting); skipping either line risks a reward paid twice.
 
 The web service binds only to `127.0.0.1:8080`. The public domain is served by the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
 

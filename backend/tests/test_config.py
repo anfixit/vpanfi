@@ -146,3 +146,22 @@ def test_empty_bedolaga_token_is_treated_as_unset() -> None:
 
     assert settings.bedolaga_api_token is None
     assert settings.is_bedolaga_configured is False
+
+
+def test_referral_bot_bridge_defaults_are_off() -> None:
+    """Мост к боту продаж выключен, пока его не включат явно."""
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_bot_enabled is False
+    assert settings.referral_bot_sync_minutes == 30
+    assert settings.telegram_sales_bot_username == "VPaNfi_bot"
+
+
+def test_referral_bot_enabled_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VPANFI_REFERRAL_BOT_ENABLED", "true")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_bot_enabled is True

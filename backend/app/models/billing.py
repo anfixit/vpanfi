@@ -127,6 +127,13 @@ class ReferralReward(TimestampMixin, Base):
     один раз продлить подписку и принести пригласившему ещё дней,
     сам при этом ничего сверху не получая (``friend_days == 0``).
 
+    С той же даты у награды появился источник (``source``): друг может
+    прийти по ссылке не только на сайт, но и в бота продаж. У такой
+    награды нет своего платежа сайта, поэтому ``payment_id`` стал
+    необязателен, а привязка к боту идёт через ``bot_transaction_id``
+    (та же защита от повторной вставки, что даёт платежу его собственный
+    уникальный id) и ``friend_telegram_id``.
+
     Заводится после того, как другу выдана подписка, и живёт своей
     жизнью: сбой панели или бота продаж не должен ронять ответ вебхуку,
     поэтому обработчик наград работает отдельно и умеет повторять
@@ -137,6 +144,10 @@ class ReferralReward(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint(
             "payment_id", name="uq_referral_rewards_payment_id"
+        ),
+        UniqueConstraint(
+            "bot_transaction_id",
+            name="uq_referral_rewards_bot_transaction_id",
         ),
         # Раньше на почту друга был ровно один индекс без kind: одна
         # награда на друга навсегда. С 19.09.2026 у друга может быть
@@ -167,15 +178,28 @@ class ReferralReward(TimestampMixin, Base):
         primary_key=True,
         default=uuid4,
     )
-    payment_id: Mapped[UUID] = mapped_column(
+    # Nullable с 19.09.2026: у награды из бота продаж своего платежа
+    # сайта нет вовсе, FK остаётся RESTRICT для наград с сайта.
+    payment_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("payments.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+    )
+    # Источник награды: "site" (по умолчанию, как раньше) или "bot",
+    # когда друг купил в боте продаж, а не на сайте.
+    source: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="site"
     )
     # Почта друга: вторая защита от повторной выдачи, если платежей у
     # него окажется несколько до того, как первый успеет обработаться.
+    # Для друга из бота продаж почты может не быть вовсе, поэтому здесь
+    # хранится ключ вида "tg:<telegram_id>": уникальность (friend_email,
+    # kind) защищает от повторной выдачи так же, как для друга с сайта.
     friend_email: Mapped[str] = mapped_column(String(320), nullable=False)
     friend_panel_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Телеграм-идентификатор друга из бота продаж: продление ему идёт
+    # через Bedolaga, а не через панель, и панельского id может не быть.
+    friend_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
     inviter_username: Mapped[str] = mapped_column(
         String(64), nullable=False, index=True
     )
@@ -209,5 +233,8 @@ class ReferralReward(TimestampMixin, Base):
         Integer, nullable=False, default=0
     )
     last_error: Mapped[str | None] = mapped_column(String(500))
+    # id транзакции в боте продаж: главная защита от повторной выдачи
+    # для наград с source == "bot" (у них ещё нет своего payment_id).
+    bot_transaction_id: Mapped[int | None] = mapped_column(Integer)
 
     payment: Mapped[Payment] = relationship()
