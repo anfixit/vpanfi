@@ -74,6 +74,17 @@ def test_referral_reward_default_status_and_attempts() -> None:
     assert reward.inviter_granted_at is None
 
 
+def test_referral_reward_has_a_lower_email_expression_index() -> None:
+    """Поиск first-/renewal-наград всегда идёт через func.lower(friend_email);
+
+    без выражения-индекса такой запрос не смог бы использовать обычный
+    индекс на колонку.
+    """
+    names = {ix.name for ix in ReferralReward.__table__.indexes}
+
+    assert "ix_referral_rewards_friend_email_lower" in names
+
+
 def test_referral_reward_kind_column_is_a_short_string() -> None:
     """Строкой, а не перечислением: новое значение не потребует миграции."""
     column = ReferralReward.__table__.columns["kind"]

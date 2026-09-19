@@ -142,12 +142,27 @@ class RewardStore(Protocol):
         ...
 
     async def first_reward_for(self, email: str) -> ReferralReward | None:
-        """Награда за первую покупку этого друга, если она есть.
+        """Награда за первую покупку этого друга, если она уже отработала.
 
-        Ищет без учёта регистра почты и отдаёт запись любого статуса
-        кроме ``rejected``: отклонённая награда значит, что человек
-        решил, что первой покупки как приглашения не было, и продление
-        от такого "друга" тоже не в счёт.
+        Ищет без учёта регистра почты и отдаёт запись только в статусе
+        ``granted`` или ``held``: в обоих друг реально получил свои
+        дни (``held`` держит только награду пригласившему, другу выдано
+        сразу же). Статусы ``pending`` и ``failed`` значат, что другу
+        либо ещё ничего не выдано, либо выдача не задалась вовсе, и
+        продление за такого "друга" было бы наградой за то, чего не
+        случилось. ``rejected`` значит, что человек решил, что первой
+        покупки как приглашения не было вовсе.
+        """
+        ...
+
+    async def renewal_for(self, email: str) -> ReferralReward | None:
+        """Награда за продление этого друга, если она есть, любого статуса.
+
+        Ищет без учёта регистра почты. Единственный вызывающий,
+        ``admin.reject_referral_reward``, отклоняет продление вслед за
+        first-наградой того же друга: без этого метода отклонённая
+        первая покупка оставляла бы продление висеть в ожидании выдачи
+        за друга, которого по факту отменили.
         """
         ...
 
@@ -313,7 +328,18 @@ class SqlRewardStore(RewardStore):
             .where(
                 func.lower(ReferralReward.friend_email) == email.lower(),
                 ReferralReward.kind == "first",
-                ReferralReward.status != "rejected",
+                ReferralReward.status.in_(("granted", "held")),
+            )
+            .limit(1)
+        )
+        return await self._session.scalar(stmt)
+
+    async def renewal_for(self, email: str) -> ReferralReward | None:
+        stmt = (
+            select(ReferralReward)
+            .where(
+                func.lower(ReferralReward.friend_email) == email.lower(),
+                ReferralReward.kind == "renewal",
             )
             .limit(1)
         )
@@ -445,6 +471,20 @@ def _inviter_days(raw: Mapping[str, Any], days_if_paid: int) -> int | None:
     if tag == "PAID":
         return days_if_paid
     return None
+
+
+def _as_aware_utc(moment: datetime) -> datetime:
+    """Достроить временную зону там, где драйвер её не дал.
+
+    ``created_at`` приходит либо от asyncpg (``timezone=True``, значение
+    уже осведомлено о зоне), либо из объекта, собранного тестом или
+    ``add()`` до записи в базу, где naive-datetime это просто "сейчас"
+    без зоны. Считать наивное время каким-то другим часовым поясом,
+    кроме UTC, здесь неоткуда, весь проект и так работает в UTC.
+    """
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment
 
 
 def _read_telegram_id(raw: Mapping[str, Any]) -> int | None:
@@ -654,6 +694,19 @@ class ReferralService:
         await self._store.save()
         return reward
 
+    def _renewal_gap_is_satisfied(self, first_created_at: datetime) -> bool:
+        """Прошло ли достаточно дней от первой покупки для продления.
+
+        Ноль в настройке отключает проверку вовсе: значит, разделять
+        вторую оплату того же вечера от настоящего продления через
+        месяц владелец не просит.
+        """
+        gap_days = self._settings.referral_renewal_min_gap_days
+        if gap_days <= 0:
+            return True
+        elapsed = datetime.now(UTC) - _as_aware_utc(first_created_at)
+        return elapsed >= timedelta(days=gap_days)
+
     async def _register_renewal(
         self,
         *,
@@ -686,6 +739,15 @@ class ReferralService:
             # повторять его проверку средствами приложения незачем.
             return None
         if await self._store.renewal_exists(email):
+            return None
+
+        if not self._renewal_gap_is_satisfied(first.created_at):
+            # Слишком рано после первой покупки: похоже на вторую
+            # оплату тем же вечером, а не на настоящее продление месяц
+            # спустя. Награду за это НЕ заводим (не rejected, а просто
+            # никакой записи): друг ещё не истратил своё единственное
+            # продление, и настоящее продление позже снова пройдёт
+            # первую проверку выше (``renewal_exists``).
             return None
 
         async with self._panel_factory() as panel:

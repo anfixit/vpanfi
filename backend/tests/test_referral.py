@@ -176,8 +176,16 @@ class FakeRewardStore:
             if (
                 r.friend_email.lower() == email_lower
                 and r.kind == "first"
-                and r.status != "rejected"
+                and r.status in ("granted", "held")
             ):
+                return r
+        return None
+
+    async def renewal_for(self, email: str) -> ReferralReward | None:
+        self.lookup_calls.append("renewal_for")
+        email_lower = email.lower()
+        for r in self.rewards:
+            if r.friend_email.lower() == email_lower and r.kind == "renewal":
                 return r
         return None
 
@@ -209,13 +217,23 @@ class FakeRewardStore:
         # register()) его ещё нет: тут это то же самое, что "прямо
         # сейчас", и такая запись обязана считаться.
         threshold = datetime.now(UTC) - timedelta(days=days)
+
+        def _aware(moment: datetime) -> datetime:
+            # Тест продления разрыва дат нарочно кладёт naive
+            # created_at (проверяет ту же нормализацию, что и
+            # _renewal_gap_is_satisfied): без неё эта сумма упала бы
+            # с TypeError вместо настоящего сравнения дат.
+            return moment if moment.tzinfo is not None else moment.replace(
+                tzinfo=UTC
+            )
+
         return sum(
             1
             for r in self.rewards
             if r.inviter_username == inviter_username
             and r.inviter_days > 0
             and r.status in ("pending", "granted", "failed")
-            and (r.created_at is None or r.created_at >= threshold)
+            and (r.created_at is None or _aware(r.created_at) >= threshold)
         )
 
     async def due_ids(self, limit: int) -> list[UUID]:
@@ -273,6 +291,9 @@ class FakePanelGateway:
         self.devices_by_id = devices_by_id or {}
         self.fail_list_devices_for = fail_list_devices_for or set()
         self.list_devices_calls: list[int] = []
+        # Проверяет, что защита от слишком раннего продления не ходит
+        # в панель вовсе, а не просто игнорирует её ответ.
+        self.get_user_by_username_calls: list[str] = []
 
     async def __aenter__(self) -> "FakePanelGateway":
         return self
@@ -281,6 +302,7 @@ class FakePanelGateway:
         return None
 
     async def get_user_by_username(self, username: str) -> dict[str, Any]:
+        self.get_user_by_username_calls.append(username)
         try:
             return self.by_username[username]
         except KeyError:
@@ -756,6 +778,13 @@ async def test_svoi_inviter_ignores_the_monthly_cap() -> None:
 # --- register: продление друга ------------------------------------------
 
 
+# Первая покупка по умолчанию случилась достаточно давно (больше
+# referral_renewal_min_gap_days из _settings), чтобы тесты продления,
+# которым сам разрыв дат не важен, не спотыкались о защиту от второй
+# оплаты в тот же вечер.
+_LONG_AGO = datetime.now(UTC) - timedelta(days=40)
+
+
 def _first_reward_in_store(
     store: FakeRewardStore, **overrides: Any
 ) -> ReferralReward:
@@ -764,9 +793,13 @@ def _first_reward_in_store(
     Тесты продления интересует только то, что первая покупка уже
     вознаграждена, а не то, как она такой стала (это уже проверено
     выше): проще положить готовую запись в хранилище, чем гонять
-    ``register`` два раза подряд.
+    ``register`` два раза подряд. По умолчанию она в статусе
+    ``granted`` (другу дни правда выданы) и заведена давно (проверка
+    разрыва дат не мешает тестам, которые её не проверяют).
     """
-    reward = _reward(kind="first", **overrides)
+    values: dict[str, Any] = {"status": "granted", "created_at": _LONG_AGO}
+    values.update(overrides)
+    reward = _reward(kind="first", **values)
     store.rewards.append(reward)
     return reward
 
@@ -967,6 +1000,222 @@ async def test_monthly_cap_reached_holds_the_renewal_reward() -> None:
     assert reward.kind == "renewal"
     assert reward.status == "held"
     assert reward.friend_days == 0
+
+
+# --- register: разрыв между первой покупкой и продлением ---------------
+
+
+async def test_a_payment_the_next_day_is_not_a_renewal() -> None:
+    """Вторая оплата тем же вечером/на следующий день это не продление.
+
+    Настоящее продление месячного периода приходит примерно через 30
+    дней, и день после первой оплаты слишком похож на повторную
+    покупку или сговор, чтобы отдавать за него награду. Панель за
+    пригласившим при этом даже не спрашиваем: решает одна дата.
+    """
+    store = FakeRewardStore()
+    _first_reward_in_store(
+        store, created_at=datetime.now(UTC) - timedelta(days=1)
+    )
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+    assert panel.get_user_by_username_calls == []
+    assert len(store.rewards) == 1  # только предзаведённая first-запись
+
+
+async def test_a_payment_twenty_five_days_later_is_a_renewal() -> None:
+    """Через 25 дней разрыв больше настройки (20), продление проходит."""
+    store = FakeRewardStore()
+    _first_reward_in_store(
+        store, created_at=datetime.now(UTC) - timedelta(days=25)
+    )
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
+
+
+async def test_zero_gap_setting_allows_an_immediate_renewal() -> None:
+    """Ноль в настройке отключает проверку разрыва дат целиком."""
+    settings = _settings(referral_renewal_min_gap_days=0)
+    store = FakeRewardStore()
+    _first_reward_in_store(store, created_at=datetime.now(UTC))
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(settings=settings, store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
+
+
+async def test_naive_first_created_at_is_treated_as_utc() -> None:
+    """created_at может прийти без зоны в зависимости от драйвера.
+
+    Наивное время интерпретируется как UTC, а не как локальное время
+    процесса: без этого сравнение с datetime.now(UTC) either упало бы
+    (TypeError: naive и aware не сравниваются друг с другом) либо тихо
+    съело бы часовой сдвиг.
+    """
+    store = FakeRewardStore()
+    naive_25_days_ago = (
+        datetime.now(UTC) - timedelta(days=25)
+    ).replace(tzinfo=None)
+    _first_reward_in_store(store, created_at=naive_25_days_ago)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
+
+
+async def test_a_payment_rejected_by_the_gap_does_not_burn_the_renewal() -> (
+    None
+):
+    """Отказ по разрыву дат не создаёт запись: продление ещё не тронуто.
+
+    Друг остаётся с той же самой возможностью продлиться позже: если
+    вместо этого завести награду в каком-нибудь отклонённом статусе,
+    следующий (настоящий) платёж через месяц наткнулся бы на
+    ``renewal_exists`` и не получил бы награды никогда.
+    """
+    store = FakeRewardStore()
+    first = _first_reward_in_store(
+        store, created_at=datetime.now(UTC) - timedelta(days=1)
+    )
+    service, store, *_ = _service(store=store)
+
+    rejected = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+    assert rejected is None
+    assert not any(r.kind == "renewal" for r in store.rewards)
+
+    # Время идёт дальше: тот же друг платит снова, теперь по-настоящему
+    # продлевая подписку 25 дней спустя первой покупки.
+    first.created_at = datetime.now(UTC) - timedelta(days=25)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+    later = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert later is not None
+    assert later.kind == "renewal"
+
+
+# --- register: только выданная первая покупка тянет продление ----------
+
+
+@pytest.mark.parametrize("status_", ["pending", "failed", "rejected"])
+async def test_first_reward_not_yet_granted_does_not_unlock_a_renewal(
+    status_: str,
+) -> None:
+    """Продление положено только за друга, который правда получил дни.
+
+    ``pending`` и ``failed`` значат, что другу либо ещё ничего не
+    выдано, либо выдача не задалась вовсе, а ``rejected`` значит, что
+    человек решил, что приглашения не было. Ни в одном из этих трёх
+    случаев считать вторую оплату продлением нельзя.
+    """
+    store = FakeRewardStore()
+    _first_reward_in_store(store, status=status_)
+    service, store, *_ = _service(store=store)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is None
+
+
+@pytest.mark.parametrize("status_", ["granted", "held"])
+async def test_first_reward_granted_or_held_unlocks_a_renewal(
+    status_: str,
+) -> None:
+    """И granted, и held значат, что другу дни уже пришли: оба открывают
+    продление, разница между ними касается только пригласившего.
+    """
+    store = FakeRewardStore()
+    _first_reward_in_store(store, status=status_)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_renewal_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=True,
+    )
+
+    assert reward is not None
+    assert reward.kind == "renewal"
 
 
 # --- process: выдача другу и пригласившему -----------------------------

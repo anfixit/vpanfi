@@ -8,9 +8,11 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -145,6 +147,18 @@ class ReferralReward(TimestampMixin, Base):
             "friend_email",
             "kind",
             name="uq_referral_rewards_friend_email_kind",
+        ),
+        # Оба поиска по почте друга (``first_reward_for``,
+        # ``renewal_for``, ``reward_exists``) сравнивают через
+        # func.lower(), обычный индекс на friend_email такому запросу
+        # не служит. Текстом, а не func.lower(friend_email): колонка
+        # friend_email в момент вычисления __table_args__ ещё не
+        # определена ниже в теле класса. Объявлено здесь же, чтобы
+        # autogenerate не решил, что индекс из миграции 0007 надо
+        # снести как неизвестный моделям.
+        Index(
+            "ix_referral_rewards_friend_email_lower",
+            text("lower(friend_email)"),
         ),
     )
 

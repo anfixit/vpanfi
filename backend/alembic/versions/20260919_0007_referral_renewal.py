@@ -6,6 +6,11 @@
 новым видом наград это стало неверно, и на смену ему приходит индекс
 по паре (почта, вид).
 
+Здесь же заводится и выражение-индекс по lower(friend_email): поиск
+first- и renewal-наград друга (first_reward_for, renewal_for,
+reward_exists) всегда идёт через func.lower(), и обычный индекс на
+колонку такому запросу не служит вовсе.
+
 Revision ID: 20260919_0007
 Revises: 20260919_0006
 Create Date: 2026-09-19
@@ -43,9 +48,18 @@ def upgrade() -> None:
         "referral_rewards",
         ["friend_email", "kind"],
     )
+    op.create_index(
+        "ix_referral_rewards_friend_email_lower",
+        "referral_rewards",
+        [sa.text("lower(friend_email)")],
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        "ix_referral_rewards_friend_email_lower",
+        table_name="referral_rewards",
+    )
     # Может упасть по design: если у какого-то друга уже завелась
     # награда за продление, у него на этот момент две строки с одной
     # и той же почтой (first и renewal), и старый индекс "одна почта -

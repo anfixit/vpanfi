@@ -44,6 +44,11 @@ _RELEASABLE_STATUSES = frozenset({"held"})
 # Отклонить можно то, что ещё не выдано целиком и не отклонено уже:
 # granted и rejected это конечные состояния, трогать их незачем.
 _REJECTABLE_STATUSES = frozenset({"held", "pending", "failed"})
+# Продление того же друга каскадом отклоняется вместе с первой
+# покупкой только из этих статусов: если оно уже granted, дни другу
+# выдал не он сам, а пригласивший, и назад их эта функция не забирает
+# (см. docstring reject_referral_reward).
+_CASCADE_REJECTABLE_STATUSES = frozenset({"held", "pending", "failed"})
 
 
 class ReferralRewardNotFoundError(LookupError):
@@ -298,6 +303,16 @@ async def reject_referral_reward(
     выданы, назад не забираются: это ручное действие в панели, а не
     то, что делает эта функция.
 
+    Отклонение награды вида ``first`` тянет за собой и продление того
+    же друга (``renewal_for``): если первой покупки как приглашения не
+    было, то и продлевать нечего было в принципе, а не только
+    приостановить до выяснения. Каскад трогает только ``pending``,
+    ``held`` и ``failed`` у продления: уже выданный (``granted``)
+    оставляем как есть, те дни отдал пригласивший, и забирать их назад
+    здесь всё так же не наше дело. Отклонение самой награды за
+    продление на first, наоборот, никак не влияет: у друга остаётся
+    его честно засчитанная первая покупка.
+
     Raises:
         ReferralRewardNotFoundError: Нет записи с таким id.
         ReferralRewardStatusError: Награда уже ``granted`` или
@@ -309,5 +324,12 @@ async def reject_referral_reward(
     if reward.status not in _REJECTABLE_STATUSES:
         raise ReferralRewardStatusError(reward.status)
     reward.status = "rejected"
+    if reward.kind == "first":
+        renewal = await store.renewal_for(reward.friend_email)
+        if (
+            renewal is not None
+            and renewal.status in _CASCADE_REJECTABLE_STATUSES
+        ):
+            renewal.status = "rejected"
     await store.save()
     return reward

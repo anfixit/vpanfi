@@ -11,6 +11,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -163,6 +164,16 @@ class FakeAdminRewardStore:
     async def get(self, reward_id: UUID) -> ReferralReward | None:
         return self.rewards.get(reward_id)
 
+    async def renewal_for(self, email: str) -> ReferralReward | None:
+        email_lower = email.lower()
+        for reward in self.rewards.values():
+            if (
+                reward.friend_email.lower() == email_lower
+                and reward.kind == "renewal"
+            ):
+                return reward
+        return None
+
     async def save(self) -> None:
         self.save_calls += 1
 
@@ -273,6 +284,76 @@ def test_reject_from_granted_is_a_conflict(app: FastAPI) -> None:
 
     assert response.status_code == 409
     assert store.rewards[reward.id].status == "granted"
+    _clear_overrides(app)
+
+
+@pytest.mark.parametrize("renewal_status", ["pending", "held", "failed"])
+def test_reject_first_cascades_to_the_friends_renewal(
+    app: FastAPI, renewal_status: str
+) -> None:
+    """Отклонённая первая покупка значит, что приглашения не было вовсе,
+
+    и продление того же друга (не выданное пригласившему) отклоняется
+    вместе с ней в одном запросе.
+    """
+    first = _reward(status="pending", kind="first")
+    renewal = _reward(status=renewal_status, kind="renewal")
+    store = FakeAdminRewardStore([first, renewal])
+
+    app.dependency_overrides[get_current_user] = build_admin
+    app.dependency_overrides[get_reward_store] = lambda: store
+
+    with TestClient(app) as admin_client:
+        response = admin_client.post(
+            f"/api/v1/admin/referral-rewards/{first.id}/reject"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"
+    assert store.rewards[first.id].status == "rejected"
+    assert store.rewards[renewal.id].status == "rejected"
+    _clear_overrides(app)
+
+
+def test_reject_first_leaves_a_granted_renewal_untouched(
+    app: FastAPI,
+) -> None:
+    """Дни за granted-продление уже отдал пригласивший: назад их не берём."""
+    first = _reward(status="pending", kind="first")
+    renewal = _reward(status="granted", kind="renewal")
+    store = FakeAdminRewardStore([first, renewal])
+
+    app.dependency_overrides[get_current_user] = build_admin
+    app.dependency_overrides[get_reward_store] = lambda: store
+
+    with TestClient(app) as admin_client:
+        response = admin_client.post(
+            f"/api/v1/admin/referral-rewards/{first.id}/reject"
+        )
+
+    assert response.status_code == 200
+    assert store.rewards[first.id].status == "rejected"
+    assert store.rewards[renewal.id].status == "granted"
+    _clear_overrides(app)
+
+
+def test_reject_a_renewal_does_not_touch_the_first(app: FastAPI) -> None:
+    """Отклонение продления это решение только о нём самом."""
+    first = _reward(status="granted", kind="first")
+    renewal = _reward(status="pending", kind="renewal")
+    store = FakeAdminRewardStore([first, renewal])
+
+    app.dependency_overrides[get_current_user] = build_admin
+    app.dependency_overrides[get_reward_store] = lambda: store
+
+    with TestClient(app) as admin_client:
+        response = admin_client.post(
+            f"/api/v1/admin/referral-rewards/{renewal.id}/reject"
+        )
+
+    assert response.status_code == 200
+    assert store.rewards[renewal.id].status == "rejected"
+    assert store.rewards[first.id].status == "granted"
     _clear_overrides(app)
 
 
