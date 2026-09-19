@@ -144,7 +144,7 @@ class ReferralReward(TimestampMixin, Base):
     )
     payment_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("payments.id", ondelete="CASCADE"),
+        ForeignKey("payments.id", ondelete="RESTRICT"),
         nullable=False,
     )
     # Почта друга: вторая защита от повторной выдачи, если платежей у

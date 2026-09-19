@@ -43,7 +43,7 @@ def upgrade() -> None:
         sa.Column(
             "payment_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("payments.id", ondelete="CASCADE"),
+            sa.ForeignKey("payments.id", ondelete="RESTRICT"),
             nullable=False,
         ),
         sa.Column("friend_email", sa.String(320), nullable=False),

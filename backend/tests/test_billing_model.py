@@ -68,3 +68,16 @@ def test_referral_reward_default_status_and_attempts() -> None:
 
     assert reward.friend_granted_at is None
     assert reward.inviter_granted_at is None
+
+
+def test_reward_keeps_its_payment_from_being_deleted() -> None:
+    """Награда это единственная запись о выданных днях.
+
+    Каскад молча стирал бы её вместе с платежом, поэтому удаление
+    платежа с наградой база обязана запретить.
+    """
+    from app.models.billing import ReferralReward
+
+    fk = next(iter(ReferralReward.__table__.c.payment_id.foreign_keys))
+
+    assert fk.ondelete == "RESTRICT"
