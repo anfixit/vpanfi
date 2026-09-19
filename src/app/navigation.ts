@@ -27,6 +27,11 @@ export const routes = {
    * и заставлять его сначала войти в кабинет нельзя.
    */
   help: "/help",
+  /*
+   * Короткая страница «куда написать». На неё ведёт кнопка поддержки
+   * в приложении, поэтому она открыта без входа и не требует VPN.
+   */
+  contact: "/contact",
 } as const;
 
 export type AppRoute = (typeof routes)[keyof typeof routes];

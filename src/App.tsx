@@ -14,6 +14,7 @@ import { BuyPage } from "./pages/BuyPage";
 import { ConnectPage } from "./pages/ConnectPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
+import { ContactPage } from "./pages/ContactPage";
 import { HelpPage } from "./pages/HelpPage";
 import { LandingPage } from "./pages/LandingPage";
 import { LegalDocumentPage } from "./pages/LegalDocumentPage";
@@ -171,6 +172,8 @@ export function App() {
     );
   } else if (pathname === routes.help) {
     page = <HelpPage theme={theme} onToggleTheme={toggleTheme} />;
+  } else if (pathname === routes.contact) {
+    page = <ContactPage theme={theme} onToggleTheme={toggleTheme} />;
   } else if (pathname === routes.legal) {
     // Документы открыты всем: их читают до регистрации и до оплаты.
     page = <LegalPage theme={theme} onToggleTheme={toggleTheme} />;
