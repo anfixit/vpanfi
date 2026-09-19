@@ -276,3 +276,20 @@ async def test_error_text_never_contains_the_token() -> None:
         assert TOKEN not in repr(exc_info.value)
         # Тело ответа тоже не должно попадать в текст ошибки.
         assert "Failed to sync with Remnawave" not in str(exc_info.value)
+
+
+@respx.mock
+@pytest.mark.parametrize("days", [0, -5])
+async def test_extend_refuses_non_positive_days_before_the_network(
+    days: int,
+) -> None:
+    """Продление неповторяемо, поэтому негодные дни не доходят до сети."""
+    route = respx.post(f"{BASE_URL}/subscriptions/777/extend").mock(
+        return_value=httpx.Response(200, json={})
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(ValueError):
+            await gateway.extend(777, days)
+
+    assert route.call_count == 0

@@ -118,6 +118,11 @@ class BedolagaGateway:
         Не идемпотентен и не повторяется здесь: при сбое обработчик
         наград сам решает, продлевать ли ещё раз.
         """
+        # Запрос неповторяемый, поэтому негодное число дней отсекается до
+        # сети: ноль и минус бот отклонил бы, а сбой в настройках мог бы
+        # прислать сюда что угодно.
+        if days <= 0:
+            raise ValueError("days must be positive")
         path = f"{SUBSCRIPTIONS_PATH}/{subscription_id}/extend"
         await self._request("POST", path, json={"days": days})
 
