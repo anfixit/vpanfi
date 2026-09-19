@@ -1,0 +1,876 @@
+"""Тесты ядра рефералки: кто получает награду и как она выдаётся.
+
+База данных тестам не нужна: хранилище и оба шлюза здесь поддельные,
+классы с теми же методами, которые считают вызовы. Это позволяет
+проверить правила начисления без Postgres, которого у проекта нет для
+тестов, и без сети.
+"""
+
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.core.config import Settings
+from app.integrations.bedolaga.client import (
+    BedolagaUnavailableError,
+    BedolagaUserNotFoundError,
+)
+from app.integrations.remnawave.client import (
+    RemnawaveUnavailableError,
+    RemnawaveUserNotFoundError,
+)
+from app.models.billing import (
+    Payment,
+    PaymentPurpose,
+    PaymentStatus,
+    ReferralReward,
+)
+from app.services.referral import (
+    CODE_RE,
+    ReferralService,
+    normalize_code,
+)
+
+FRIEND_EMAIL = "friend@example.test"
+INVITER_USERNAME = "Alyona_Tutina"
+
+
+def _settings(**overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "_env_file": None,
+        "referral_enabled": True,
+    }
+    values.update(overrides)
+    return Settings(**values)  # type: ignore[arg-type]
+
+
+def _payment(
+    *,
+    referral_code: str | None = INVITER_USERNAME,
+    email: str | None = FRIEND_EMAIL,
+    payment_id: UUID | None = None,
+) -> Payment:
+    return Payment(
+        id=payment_id or uuid4(),
+        contact_email=email,
+        amount_kopecks=30000,
+        purpose=PaymentPurpose.SUBSCRIPTION,
+        status=PaymentStatus.SUCCEEDED,
+        description="тест",
+        referral_code=referral_code,
+    )
+
+
+def _panel_payload(
+    *,
+    user_id: int,
+    username: str,
+    status: str = "ACTIVE",
+    tag: str | None = "PAID",
+    telegram_id: int | None = None,
+    expires_at: date = date(2026, 9, 10),
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": user_id,
+        "username": username,
+        "status": status,
+        "expireAt": datetime.combine(
+            expires_at, datetime.min.time(), tzinfo=UTC
+        ).isoformat(),
+    }
+    if tag is not None:
+        payload["tag"] = tag
+    if telegram_id is not None:
+        payload["telegramId"] = telegram_id
+    return payload
+
+
+def _reward(
+    *,
+    payment_id: UUID | None = None,
+    friend_email: str = FRIEND_EMAIL,
+    friend_panel_user_id: int | None = 900,
+    inviter_username: str = INVITER_USERNAME,
+    inviter_panel_user_id: int = 500,
+    inviter_telegram_id: int | None = None,
+    friend_days: int = 30,
+    inviter_days: int = 30,
+    status: str = "pending",
+    friend_granted_at: datetime | None = None,
+    inviter_granted_at: datetime | None = None,
+    attempts: int = 0,
+    last_error: str | None = None,
+) -> ReferralReward:
+    return ReferralReward(
+        id=uuid4(),
+        payment_id=payment_id or uuid4(),
+        friend_email=friend_email,
+        friend_panel_user_id=friend_panel_user_id,
+        inviter_username=inviter_username,
+        inviter_panel_user_id=inviter_panel_user_id,
+        inviter_telegram_id=inviter_telegram_id,
+        friend_days=friend_days,
+        inviter_days=inviter_days,
+        status=status,
+        friend_granted_at=friend_granted_at,
+        inviter_granted_at=inviter_granted_at,
+        attempts=attempts,
+        last_error=last_error,
+    )
+
+
+class FakeRewardStore:
+    """Хранилище наград в памяти."""
+
+    def __init__(self) -> None:
+        self.rewards: list[ReferralReward] = []
+        self.paid_emails: set[str] = set()
+        self.save_calls = 0
+        self.raise_on_add: Exception | None = None
+
+    async def has_earlier_paid(self, email: str, payment_id: UUID) -> bool:
+        return email.lower() in self.paid_emails
+
+    async def reward_exists(self, payment_id: UUID, email: str) -> bool:
+        email_lower = email.lower()
+        return any(
+            r.payment_id == payment_id or r.friend_email.lower() == email_lower
+            for r in self.rewards
+        )
+
+    async def add(self, reward: ReferralReward) -> None:
+        if self.raise_on_add is not None:
+            raise self.raise_on_add
+        self.rewards.append(reward)
+
+    async def granted_in_last_days(
+        self, inviter_username: str, days: int
+    ) -> int:
+        threshold = datetime.now(UTC) - timedelta(days=days)
+        return sum(
+            1
+            for r in self.rewards
+            if r.inviter_username == inviter_username
+            and r.inviter_granted_at is not None
+            and r.inviter_granted_at >= threshold
+        )
+
+    async def due(self, limit: int) -> list[ReferralReward]:
+        return [r for r in self.rewards if r.status == "pending"][:limit]
+
+    async def save(self) -> None:
+        self.save_calls += 1
+
+
+class FakePanelGateway:
+    """Поддельная панель: считает вызовы, не ходит в сеть."""
+
+    def __init__(
+        self,
+        *,
+        by_username: dict[str, dict[str, Any]] | None = None,
+        by_id: dict[int, dict[str, Any]] | None = None,
+        fail_set_expiry_for: set[int] | None = None,
+        raise_on_set_expiry: Exception | None = None,
+    ) -> None:
+        self.by_username = by_username or {}
+        self.by_id = by_id or {}
+        self.fail_set_expiry_for = fail_set_expiry_for or set()
+        self.raise_on_set_expiry = raise_on_set_expiry
+        self.set_expiry_calls: list[int] = []
+
+    async def __aenter__(self) -> "FakePanelGateway":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+    async def get_user_by_username(self, username: str) -> dict[str, Any]:
+        try:
+            return self.by_username[username]
+        except KeyError:
+            raise RemnawaveUserNotFoundError(username) from None
+
+    async def get_user_by_id(self, user_id: int) -> dict[str, Any]:
+        try:
+            return self.by_id[user_id]
+        except KeyError:
+            raise RemnawaveUserNotFoundError(str(user_id)) from None
+
+    async def set_expiry(
+        self, user_id: int, expire_at: datetime, tag: str | None = None
+    ) -> dict[str, Any]:
+        self.set_expiry_calls.append(user_id)
+        if user_id in self.fail_set_expiry_for or self.raise_on_set_expiry:
+            raise self.raise_on_set_expiry or RemnawaveUnavailableError(
+                "панель недоступна"
+            )
+        raw = dict(self.by_id.get(user_id, {}))
+        raw["id"] = user_id
+        raw["expireAt"] = expire_at.isoformat()
+        self.by_id[user_id] = raw
+        return raw
+
+
+class FakeBedolagaGateway:
+    """Поддельный бот продаж: считает вызовы, не ходит в сеть."""
+
+    def __init__(
+        self,
+        *,
+        subscription_by_telegram_id: dict[int, int] | None = None,
+        not_found_ids: set[int] | None = None,
+        fail_extend: bool = False,
+    ) -> None:
+        self.subscription_by_telegram_id = subscription_by_telegram_id or {}
+        self.not_found_ids = not_found_ids or set()
+        self.fail_extend = fail_extend
+        self.extend_calls: list[tuple[int, int]] = []
+
+    async def __aenter__(self) -> "FakeBedolagaGateway":
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        return None
+
+    async def subscription_id_by_telegram_id(self, telegram_id: int) -> int:
+        if telegram_id in self.not_found_ids:
+            raise BedolagaUserNotFoundError(str(telegram_id))
+        return self.subscription_by_telegram_id[telegram_id]
+
+    async def extend(self, subscription_id: int, days: int) -> None:
+        self.extend_calls.append((subscription_id, days))
+        if self.fail_extend:
+            raise BedolagaUnavailableError("бот продаж недоступен")
+
+
+ServiceBundle = tuple[
+    ReferralService, FakeRewardStore, FakePanelGateway, FakeBedolagaGateway
+]
+
+
+def _service(
+    *,
+    settings: Settings | None = None,
+    store: FakeRewardStore | None = None,
+    panel: FakePanelGateway | None = None,
+    bedolaga: FakeBedolagaGateway | None = None,
+) -> ServiceBundle:
+    settings = settings or _settings()
+    store = store if store is not None else FakeRewardStore()
+    panel = panel if panel is not None else FakePanelGateway()
+    bedolaga = bedolaga if bedolaga is not None else FakeBedolagaGateway()
+    service = ReferralService(settings, store, lambda: panel, lambda: bedolaga)
+    return service, store, panel, bedolaga
+
+
+# --- normalize_code ---------------------------------------------------
+
+
+def test_code_pattern_allows_letters_digits_and_a_few_symbols() -> None:
+    assert CODE_RE.match("user_369990765.a-b")
+    assert not CODE_RE.match("два слова")
+
+
+def test_normalize_code_trims_surrounding_whitespace() -> None:
+    assert normalize_code("  Alyona_Tutina  ") == "Alyona_Tutina"
+
+
+def test_normalize_code_keeps_the_original_case() -> None:
+    """Панель ищет учётку по точному имени: обрезать регистр нельзя."""
+    assert normalize_code("Alyona_Tutina") == "Alyona_Tutina"
+
+
+def test_normalize_code_rejects_unfitting_text() -> None:
+    assert normalize_code("два слова") is None
+
+
+def test_normalize_code_rejects_none_and_blank() -> None:
+    assert normalize_code(None) is None
+    assert normalize_code("   ") is None
+
+
+# --- register: базовые отказы ------------------------------------------
+
+
+async def test_disabled_program_returns_none() -> None:
+    disabled = _settings(referral_enabled=False)
+    service, store, _panel, _bedolaga = _service(settings=disabled)
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_missing_code_returns_none() -> None:
+    service, *_ = _service()
+
+    result = await service.register(
+        payment=_payment(referral_code=None),
+        friend_panel_user_id=900,
+        friend_was_paid=False,
+    )
+
+    assert result is None
+
+
+async def test_earlier_successful_payment_blocks_the_reward() -> None:
+    """Друг оплачивал и раньше: это не первая покупка."""
+    store = FakeRewardStore()
+    store.paid_emails.add(FRIEND_EMAIL.lower())
+    service, store, *_ = _service(store=store)
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert result is None
+
+
+async def test_friend_already_had_the_paid_tag_blocks_the_reward() -> None:
+    service, store, *_ = _service()
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=True
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_repeated_register_for_the_same_payment_returns_none() -> None:
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, _panel, _bedolaga = _service(panel=panel)
+    payment = _payment()
+
+    first = await service.register(
+        payment=payment, friend_panel_user_id=900, friend_was_paid=False
+    )
+    second = await service.register(
+        payment=payment, friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert first is not None
+    assert second is None
+    assert len(store.rewards) == 1
+
+
+# --- register: пригласивший -------------------------------------------
+
+
+async def test_unknown_inviter_code_returns_none() -> None:
+    service, store, *_ = _service()
+
+    result = await service.register(
+        payment=_payment(referral_code="nobody_here"),
+        friend_panel_user_id=900,
+        friend_was_paid=False,
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+@pytest.mark.parametrize("tag", ["TRIAL", "UNPAID", None])
+async def test_inviter_without_a_paid_tag_is_rejected(tag: str | None) -> None:
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, tag=tag
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_inactive_inviter_subscription_is_rejected() -> None:
+    """Дни не могут лечь на мёртвую подписку."""
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, status="EXPIRED"
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_sinergiya_account_is_rejected_even_when_paid() -> None:
+    code = "OOO_SINERGIYA_3"
+    panel = FakePanelGateway(
+        by_username={
+            code: _panel_payload(
+                user_id=500, username=code, tag="PAID", status="ACTIVE"
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    result = await service.register(
+        payment=_payment(referral_code=code),
+        friend_panel_user_id=900,
+        friend_was_paid=False,
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_sinergiya_check_is_case_insensitive() -> None:
+    code = "ooo_sinergiya_lowercase"
+    panel = FakePanelGateway(
+        by_username={
+            code: _panel_payload(
+                user_id=500, username=code, tag="PAID", status="ACTIVE"
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    result = await service.register(
+        payment=_payment(referral_code=code),
+        friend_panel_user_id=900,
+        friend_was_paid=False,
+    )
+
+    assert result is None
+
+
+async def test_own_code_is_rejected_as_self_invite() -> None:
+    """Совпадение id пригласившего и друга это приглашение самого себя."""
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=900, username=INVITER_USERNAME
+            )
+        },
+        by_id={900: _panel_payload(user_id=900, username=INVITER_USERNAME)},
+    )
+    service, store, *_ = _service(panel=panel)
+
+    result = await service.register(
+        payment=_payment(),
+        friend_panel_user_id=900,
+        friend_was_paid=False,
+    )
+
+    assert result is None
+    assert store.rewards == []
+
+
+async def test_svoi_tag_rewards_friend_with_zero_inviter_days() -> None:
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, tag="SVOI"
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert reward.inviter_days == 0
+    assert reward.friend_days == 30
+    assert reward.status == "pending"
+
+
+async def test_paid_tag_grants_full_inviter_days() -> None:
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert reward.inviter_days == 30
+    assert reward.inviter_panel_user_id == 500
+    assert reward.status == "pending"
+
+
+async def test_bot_inviter_keeps_the_telegram_id_on_the_reward() -> None:
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, telegram_id=100500
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert reward.inviter_telegram_id == 100500
+
+
+# --- register: потолок --------------------------------------------------
+
+
+async def test_monthly_cap_reached_marks_the_reward_held() -> None:
+    settings = _settings(referral_monthly_cap=1)
+    store = FakeRewardStore()
+    now = datetime.now(UTC)
+    store.rewards.append(
+        _reward(
+            friend_email="earlier-friend@example.test",
+            inviter_username=INVITER_USERNAME,
+            inviter_granted_at=now,
+        )
+    )
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(settings=settings, store=store, panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert reward.status == "held"
+    assert reward.friend_days == 30
+
+
+async def test_svoi_inviter_ignores_the_monthly_cap() -> None:
+    """Пригласившему без дней потолок ни к чему считать."""
+    settings = _settings(referral_monthly_cap=0)
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME, tag="SVOI"
+            )
+        }
+    )
+    service, store, *_ = _service(settings=settings, panel=panel)
+
+    reward = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert reward is not None
+    assert reward.status == "pending"
+
+
+# --- process: выдача другу и пригласившему -----------------------------
+
+
+async def test_process_grants_friend_from_the_later_date() -> None:
+    overdue = date.today() - timedelta(days=5)
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(
+                user_id=900, username="friend_acc", expires_at=overdue
+            ),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, _bedolaga = _service(panel=panel)
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert reward.friend_granted_at is not None
+    friend_calls = [c for c in panel.set_expiry_calls if c == 900]
+    assert friend_calls == [900]
+
+
+async def test_process_extends_from_a_future_expiry_not_from_today() -> None:
+    future = date.today() + timedelta(days=10)
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(
+                user_id=900, username="friend_acc", expires_at=future
+            ),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, _bedolaga = _service(panel=panel)
+    reward = _reward(friend_days=30)
+
+    await service.process(reward)
+
+    saved = panel.by_id[900]
+    new_expiry = datetime.fromisoformat(saved["expireAt"]).date()
+    assert new_expiry == future + timedelta(days=30)
+
+
+async def test_site_inviter_is_granted_through_the_panel() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(inviter_telegram_id=None)
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert 500 in panel.set_expiry_calls
+    assert bedolaga.extend_calls == []
+
+
+async def test_bot_inviter_is_granted_through_bedolaga() -> None:
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga = FakeBedolagaGateway(subscription_by_telegram_id={100500: 777})
+    service, store, panel, bedolaga = _service(panel=panel, bedolaga=bedolaga)
+    reward = _reward(inviter_telegram_id=100500)
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert bedolaga.extend_calls == [(777, 30)]
+    assert 500 not in panel.set_expiry_calls
+
+
+async def test_zero_inviter_days_grants_only_once_friend_is_done() -> None:
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(inviter_days=0)
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert reward.inviter_granted_at is None
+    assert bedolaga.extend_calls == []
+    assert 500 not in panel.set_expiry_calls
+
+
+# --- process: держатель потолка -----------------------------------------
+
+
+async def test_held_reward_grants_only_the_friend() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(status="held")
+
+    await service.process(reward)
+
+    assert reward.status == "held"
+    assert reward.friend_granted_at is not None
+    assert reward.inviter_granted_at is None
+    assert 500 not in panel.set_expiry_calls
+
+
+async def test_releasing_a_held_reward_grants_only_what_is_missing() -> None:
+    """После отметки другу снятие потолка не должно выдать дни второй раз."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    service, store, panel, bedolaga = _service(panel=panel)
+    reward = _reward(status="held")
+    await service.process(reward)
+    assert reward.status == "held"
+
+    reward.status = "pending"
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    friend_calls = [c for c in panel.set_expiry_calls if c == 900]
+    assert friend_calls == [900]
+    assert 500 in panel.set_expiry_calls
+
+
+# --- process: защита от двойной выдачи ----------------------------------
+
+
+async def test_inviter_failure_does_not_regrant_the_friend() -> None:
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga = FakeBedolagaGateway(
+        subscription_by_telegram_id={100500: 777}, fail_extend=True
+    )
+    service, store, panel, bedolaga = _service(panel=panel, bedolaga=bedolaga)
+    reward = _reward(inviter_telegram_id=100500)
+
+    await service.process(reward)
+    assert reward.status == "pending"
+    assert reward.friend_granted_at is not None
+    assert reward.attempts == 1
+    assert reward.last_error
+
+    await service.process(reward)
+
+    assert reward.status == "pending"
+    assert reward.attempts == 2
+    friend_calls = [c for c in panel.set_expiry_calls if c == 900]
+    assert friend_calls == [900]
+
+
+async def test_ten_failures_mark_the_reward_failed() -> None:
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga = FakeBedolagaGateway(
+        subscription_by_telegram_id={100500: 777}, fail_extend=True
+    )
+    service, store, panel, bedolaga = _service(panel=panel, bedolaga=bedolaga)
+    reward = _reward(inviter_telegram_id=100500)
+
+    for _ in range(10):
+        await service.process(reward)
+
+    assert reward.attempts == 10
+    assert reward.status == "failed"
+
+
+async def test_bot_inviter_only_on_trial_does_not_touch_the_panel() -> None:
+    """Триал в боте нельзя продлевать: бот перепишет срок своим."""
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga = FakeBedolagaGateway(not_found_ids={100500})
+    service, store, panel, bedolaga = _service(panel=panel, bedolaga=bedolaga)
+    reward = _reward(inviter_telegram_id=100500)
+
+    await service.process(reward)
+
+    assert reward.status == "pending"
+    assert reward.attempts == 1
+    assert reward.last_error
+    assert 500 not in panel.set_expiry_calls
+    assert bedolaga.extend_calls == []
+
+
+async def test_missing_friend_panel_user_id_is_recorded_as_an_error() -> None:
+    service, store, panel, bedolaga = _service()
+    reward = _reward(friend_panel_user_id=None)
+
+    await service.process(reward)
+
+    assert reward.status == "pending"
+    assert reward.friend_granted_at is None
+    assert reward.attempts == 1
+    assert reward.last_error
+    assert panel.set_expiry_calls == []
+
+
+# --- retry_due ------------------------------------------------------------
+
+
+async def test_retry_due_processes_pending_rewards_and_returns_count() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            901: _panel_payload(user_id=901, username="friend_acc_2"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    store = FakeRewardStore()
+    store.rewards.append(_reward(friend_panel_user_id=900))
+    store.rewards.append(
+        _reward(friend_panel_user_id=901, friend_email="second@example.test")
+    )
+    service, store, panel, _bedolaga = _service(store=store, panel=panel)
+
+    processed = await service.retry_due(limit=20)
+
+    assert processed == 2
+    assert all(r.status == "granted" for r in store.rewards)
+
+
+# --- устойчивость к неожиданным сбоям ------------------------------------
+
+
+async def test_register_never_raises_even_on_a_broken_store() -> None:
+    store = FakeRewardStore()
+    store.raise_on_add = RuntimeError("база недоступна")
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(store=store, panel=panel)
+
+    result = await service.register(
+        payment=_payment(), friend_panel_user_id=900, friend_was_paid=False
+    )
+
+    assert result is None
+
+
+async def test_process_never_raises_on_a_broken_store() -> None:
+    class BrokenStore(FakeRewardStore):
+        async def save(self) -> None:
+            raise RuntimeError("база недоступна")
+
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    service, store, panel, _bedolaga = _service(
+        store=BrokenStore(), panel=panel
+    )
+    reward = _reward()
+
+    await service.process(reward)  # не должно бросить исключение
+
+
+async def test_retry_due_never_raises_when_the_store_is_unavailable() -> None:
+    class BrokenStore(FakeRewardStore):
+        async def due(self, limit: int) -> list[ReferralReward]:
+            raise RuntimeError("база недоступна")
+
+    service, *_ = _service(store=BrokenStore())
+
+    processed = await service.retry_due()
+
+    assert processed == 0
