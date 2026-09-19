@@ -26,17 +26,24 @@ from app.integrations.remnawave.client import (
     RemnawaveUnavailableError,
     RemnawaveUserNotFoundError,
 )
-from app.models.billing import Payment, PaymentPurpose, PaymentStatus
+from app.models.billing import (
+    Payment,
+    PaymentPurpose,
+    PaymentStatus,
+    ReferralReward,
+)
 from app.models.user import User
 from app.schemas.cabinet import PaymentStatusResponse
 from app.services.letters import subscription_ready_letter
 from app.services.mail import Mailer
 from app.services.notify import (
     TelegramNotifier,
+    nagrada_soobshchenie,
     pokupka_soobshchenie,
     sboj_vydachi_soobshchenie,
 )
 from app.services.panel import read_panel_user
+from app.services.referral import ReferralService, normalize_code
 from app.services.shop import (
     ShopCatalogue,
     ShopUnavailableError,
@@ -67,6 +74,18 @@ def panel_username(email: str) -> str:
     return f"{safe}_{tail}"[:USERNAME_LIMIT]
 
 
+def _to_panel_id(value: object) -> int | None:
+    """Привести id учётки панели к числу, если это вообще возможно.
+
+    ``create_user`` отдаёт обычный словарь без гарантий по типам полей.
+    Рефералке нужен именно int, чтобы потом искать эту же учётку по id.
+    """
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 class CheckoutNotConfiguredError(RuntimeError):
     """Касса не настроена."""
 
@@ -88,9 +107,17 @@ class StartedCheckout:
 
 
 class CheckoutService:
-    def __init__(self, session: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        settings: Settings,
+        referral: ReferralService | None = None,
+    ) -> None:
         self._session = session
         self._settings = settings
+        # По умолчанию None: старые вызовы и тесты, которые не знают про
+        # рефералку, продолжают работать в точности как раньше.
+        self._referral = referral
 
     async def start(
         self,
@@ -99,6 +126,7 @@ class CheckoutService:
         tariff_id: int,
         period_days: int,
         payment_method: int | None = None,
+        referral_code: str | None = None,
     ) -> StartedCheckout:
         """Создать платёж и вернуть ссылку на оплату.
 
@@ -133,6 +161,14 @@ class CheckoutService:
             description=f"{name}, {period_days} дн.",
             tariff_id=tariff_id,
             period_days=period_days,
+            # Код пишем только при включённой рефералке: выключенная не
+            # должна менять ни одной колонки платежа. Мусорный код
+            # normalize_code превращает в None, а не в отказ покупки.
+            referral_code=(
+                normalize_code(referral_code)
+                if self._settings.referral_enabled
+                else None
+            ),
         )
         self._session.add(payment)
         await self._session.flush()
@@ -282,9 +318,24 @@ class CheckoutService:
                     self._soobshchit_o_pokupke(
                         payment, expires_at.date(), is_new=True
                     )
+                    # Рефералка — после письма и уведомления о покупке:
+                    # человек должен получить ссылку раньше любых
+                    # наград, а сама награда ставится за оплаченным
+                    # платежом, который уже посчитан выданным.
+                    await self._nachislit_za_priglashenie(
+                        payment,
+                        friend_panel_user_id=_to_panel_id(created.get("id")),
+                        friend_was_paid=False,
+                    )
                     return
 
                 panel_user = read_panel_user(existing)
+                # Тег читаем из ответа панели ДО продления срока: ниже он
+                # ставится в PAID всегда, и после этого узнать, был ли
+                # человек уже платящим, будет нечем.
+                friend_uzhe_platil = (
+                    str(existing.get("tag") or "").upper() == "PAID"
+                )
                 # Продлеваем от даты окончания, если она ещё не прошла:
                 # иначе покупка съедала бы остаток оплаченного срока.
                 today = datetime.now(UTC).date()
@@ -314,6 +365,14 @@ class CheckoutService:
                     payment, expires_at, kabinet_zavedyon=kabinet
                 )
                 self._soobshchit_o_pokupke(payment, expires_at, is_new=False)
+                # См. комментарий у ветки новой учётки выше: рефералка
+                # идёт после письма покупателю и после set_expiry, на
+                # уже продлённый срок.
+                await self._nachislit_za_priglashenie(
+                    payment,
+                    friend_panel_user_id=panel_user.id,
+                    friend_was_paid=friend_uzhe_platil,
+                )
         except CheckoutNotConfiguredError:
             # Сквад не задан: деньги приняты, а выдать нечего.
             self._soobshchit_o_sboe(payment, "не задан сквад в настройках")
@@ -487,6 +546,51 @@ class CheckoutService:
                 email=payment.contact_email or "",
                 amount_kopecks=payment.amount_kopecks,
                 prichina=prichina,
+            )
+        )
+
+    async def _nachislit_za_priglashenie(
+        self,
+        payment: Payment,
+        *,
+        friend_panel_user_id: int | None,
+        friend_was_paid: bool,
+    ) -> None:
+        """Завести и обработать награду за приглашение, если она положена.
+
+        Публичное ядро рефералки (``register``/``process``) само не
+        поднимает исключений, но здесь ещё один слой try/except: этот
+        метод обязан переживать даже поддельный или будущий сервис,
+        который вести себя иначе. Деньги уже приняты и подписка уже
+        выдана — сбой награды не должен ронять ответ вебхуку.
+        """
+        if self._referral is None or not payment.referral_code:
+            return
+        try:
+            reward = await self._referral.register(
+                payment=payment,
+                friend_panel_user_id=friend_panel_user_id,
+                friend_was_paid=friend_was_paid,
+            )
+            if reward is not None:
+                self._soobshchit_o_nagrade(reward)
+                await self._referral.process(reward)
+        except Exception:
+            logger.exception(
+                "Рефералка: начисление за приглашение сорвалось, "
+                "платёж %s",
+                payment.id,
+            )
+
+    def _soobshchit_o_nagrade(self, reward: ReferralReward) -> None:
+        """Рассказать о заведённой награде за приглашение."""
+        if "payment" not in self._settings.alert_events:
+            return
+        TelegramNotifier(self._settings).send_later(
+            nagrada_soobshchenie(
+                friend_email=reward.friend_email,
+                inviter_username=reward.inviter_username,
+                status=reward.status,
             )
         )
 

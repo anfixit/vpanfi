@@ -47,6 +47,7 @@ async def start_checkout(
             tariff_id=payload.tariff_id,
             period_days=payload.period_days,
             payment_method=payload.payment_method,
+            referral_code=payload.ref,
         )
     except CheckoutNotConfiguredError as error:
         raise HTTPException(

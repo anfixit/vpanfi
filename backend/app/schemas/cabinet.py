@@ -131,6 +131,11 @@ class CheckoutRequest(BaseModel):
     payment_method: int | None = Field(
         default=None, gt=0, alias="paymentMethod"
     )
+    # Код приглашения из ссылки ?ref=. Ограничение здесь мягче, чем у
+    # колонки в базе (64 символа): мусорный или слишком длинный код
+    # должен превратиться в None внутри CheckoutService.start, а не в
+    # отказ 422, который заблокировал бы саму покупку.
+    ref: str | None = Field(default=None, max_length=200, alias="ref")
 
 
 class PaymentMethodResponse(BaseModel):

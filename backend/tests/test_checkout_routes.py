@@ -75,3 +75,47 @@ def test_paid_payment_shows_the_subscription_link(
         "paid": True,
         "subscriptionUrl": "https://panel.example/sub/abc",
     }
+
+
+def test_checkout_accepts_a_referral_code(anonymous_client) -> None:
+    """Код приглашения — обычное поле запроса, схема его не отвергает."""
+    answer = anonymous_client.post(
+        CHECKOUT,
+        json={
+            "email": "guest@example.com",
+            "tariffId": 2,
+            "periodDays": 30,
+            "ref": "Alyona_Tutina",
+        },
+    )
+
+    assert answer.status_code != 422
+
+
+def test_checkout_works_without_a_referral_code(anonymous_client) -> None:
+    """Старый фронтенд ref не шлёт вовсе, и запрос должен проходить."""
+    answer = anonymous_client.post(
+        CHECKOUT,
+        json={"email": "guest@example.com", "tariffId": 2, "periodDays": 30},
+    )
+
+    assert answer.status_code != 422
+
+
+def test_checkout_swallows_a_garbage_referral_code(anonymous_client) -> None:
+    """Мусорный код не должен ронять покупку отказом 422.
+
+    normalize_code превращает его в None уже внутри CheckoutService —
+    схема здесь только не даёт очень длинной строке пройти дальше.
+    """
+    answer = anonymous_client.post(
+        CHECKOUT,
+        json={
+            "email": "guest@example.com",
+            "tariffId": 2,
+            "periodDays": 30,
+            "ref": "не похоже на имя учётки!! " * 5,
+        },
+    )
+
+    assert answer.status_code != 422

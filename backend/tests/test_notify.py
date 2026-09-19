@@ -17,6 +17,7 @@ from app.core.config import Settings
 from app.services import notify as notify_module
 from app.services.notify import (
     TelegramNotifier,
+    nagrada_soobshchenie,
     pokupka_soobshchenie,
     registraciya_soobshchenie,
     sboj_vydachi_soobshchenie,
@@ -176,6 +177,32 @@ def test_markup_in_a_name_cannot_break_the_message() -> None:
     assert "&lt;b&gt;" in text
 
 
+def test_reward_message_mentions_the_friend_and_the_inviter() -> None:
+    text = nagrada_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="pending",
+    )
+
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "—" not in text
+
+
+def test_reward_message_explains_a_held_status() -> None:
+    """Held значит: пригласивший выбрал месячный потолок наград."""
+    text = nagrada_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="held",
+    )
+
+    assert "потолок" in text
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "—" not in text
+
+
 def test_registration_and_login_are_wired_in() -> None:
     """Сообщения без вызова из кода бесполезны ровно так же."""
     import inspect
@@ -197,6 +224,16 @@ def test_purchase_and_failure_are_wired_in() -> None:
 
     assert "pokupka_soobshchenie" in source
     assert "sboj_vydachi_soobshchenie" in source
+
+
+def test_reward_message_is_wired_in() -> None:
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService)
+
+    assert "nagrada_soobshchenie" in source
 
 
 def test_failed_delivery_cannot_be_switched_off() -> None:

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "TelegramNotifier",
+    "nagrada_soobshchenie",
     "pokupka_soobshchenie",
     "registraciya_soobshchenie",
     "sboj_vydachi_soobshchenie",
@@ -118,6 +119,32 @@ def sboj_vydachi_soobshchenie(
         "Человек заплатил и ничего не получил. "
         "Выдать доступ вручную в панели и написать ему.",
     ])
+
+
+def nagrada_soobshchenie(
+    *, friend_email: str, inviter_username: str, status: str
+) -> str:
+    """Сообщение о начисленной награде за приглашение.
+
+    Статус held означает, что пригласивший уже выбрал месячный потолок
+    наград: другу дни всё равно ушли, а решение по пригласившему ждёт
+    человека, а не фоновую задачу.
+    """
+    lines = [
+        "🎁 <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ</b>",
+        "",
+        f"👤 Друг: {html.escape(friend_email)}",
+        f"🔗 Пригласил: {html.escape(inviter_username)}",
+    ]
+    if status == "held":
+        lines += [
+            "",
+            "⏳ У пригласившего потолок наград за месяц, награда "
+            "ждёт Вашего решения",
+        ]
+    else:
+        lines += ["", "✅ Награда заведена, дни начисляются"]
+    return "\n".join(lines)
 
 
 class TelegramNotifier:

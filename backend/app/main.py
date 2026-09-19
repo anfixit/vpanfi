@@ -11,6 +11,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
+from app.services.referral_wiring import build_referral_service
 from app.services.reminders import RemindersService
 
 logger = logging.getLogger(__name__)
@@ -49,15 +50,50 @@ async def _napominaniya() -> None:
         await asyncio.sleep(chasy * 3600)
 
 
+async def _nagrady() -> None:
+    """Повторять зависшие награды за приглашение.
+
+    Рефералка выключена по умолчанию, и тогда задача выходит сразу же:
+    пустой обход каждые полчаса не стоит даже строчки в журнале. Ту же
+    сборку сервиса использует и запрос кассы — вынесена в
+    ``referral_wiring``, чтобы этот модуль и ``api/dependencies.py`` не
+    зависели друг от друга.
+    """
+    settings = get_settings()
+    if not settings.referral_enabled:
+        return
+
+    minuty = max(5, settings.referral_retry_minutes)
+    # Та же небольшая задержка на старте, что и у напоминаний.
+    await asyncio.sleep(90)
+    while True:
+        try:
+            async with async_session_factory() as session:
+                service = build_referral_service(session, settings)
+                obrabotano = await service.retry_due()
+            if obrabotano:
+                logger.info(
+                    "Рефералка: повторных попыток выдачи сделано: %s",
+                    obrabotano,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Рефералка: обход повторов сорвался")
+        await asyncio.sleep(minuty * 60)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Database, Redis and SDK clients will be initialized here when the
     # persistence layer is connected.
     zadacha = asyncio.create_task(_napominaniya())
+    nagrady_zadacha = asyncio.create_task(_nagrady())
     try:
         yield
     finally:
         zadacha.cancel()
+        nagrady_zadacha.cancel()
 
 
 def create_app() -> FastAPI:
