@@ -10,6 +10,7 @@ __all__ = [
     "AdminUserResponse",
     "ExtendSubscriptionRequest",
     "GrantTrialRequest",
+    "ReferralRewardAdminResponse",
 ]
 
 MIN_EXTENSION_DAYS = 1
@@ -47,6 +48,21 @@ class AdminOverviewResponse(AdminSchema):
     admins: int
     registered_last_30_days: int = Field(
         serialization_alias="registeredLast30Days"
+    )
+
+
+class ReferralRewardAdminResponse(AdminSchema):
+    """Компактная строка списка наград: достаточно, чтобы найти id."""
+
+    id: UUID
+    friend_email: EmailStr = Field(serialization_alias="friendEmail")
+    inviter_username: str = Field(serialization_alias="inviterUsername")
+    status: str
+    friend_days: int = Field(serialization_alias="friendDays")
+    inviter_days: int = Field(serialization_alias="inviterDays")
+    created_at: datetime = Field(serialization_alias="createdAt")
+    last_error: str | None = Field(
+        default=None, serialization_alias="lastError"
     )
 
 

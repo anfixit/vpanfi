@@ -14,6 +14,7 @@
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,10 @@ from app.core.config import Settings, get_settings
 from app.db.session import async_session_factory
 from app.integrations.bedolaga.client import BedolagaGateway
 from app.integrations.remnawave.client import RemnawaveGateway
+from app.services.notify import (
+    TelegramNotifier,
+    sovpadenie_ustrojstv_soobshchenie,
+)
 from app.services.referral import ReferralService, SqlRewardStore
 
 logger = logging.getLogger(__name__)
@@ -30,8 +35,13 @@ __all__ = [
     "build_referral_service",
     "obojti_ozhidayushchie",
     "obrabotat_nagradu",
+    "sverit_ustrojstva",
     "zapustit_obrabotku",
 ]
+
+# Окно сверки устройств: сутки, за которые бегает фоновая задача, плюс
+# запас в час на случай перезапуска приложения между двумя обходами.
+_DEVICE_CHECK_WINDOW = timedelta(hours=25)
 
 
 def build_referral_service(
@@ -115,3 +125,40 @@ async def obojti_ozhidayushchie(limit: int = 20) -> int:
     for reward_id in ids:
         await obrabotat_nagradu(reward_id)
     return len(ids)
+
+
+async def sverit_ustrojstva() -> int:
+    """Сверить устройства друга и пригласившего по свежим наградам.
+
+    Своя сессия, как и у остальных фоновых задач: главный цикл
+    ``app.main._nagrady`` зовёт эту функцию раз в сутки, и ей нельзя
+    делить сессию с чем-то ещё в этом же процессе. Ни одно совпадение
+    не наказывается само: сообщение уходит человеку, а решение
+    (``release``/``reject``) остаётся за ним.
+
+    Исключений не поднимает: сама сверка (``device_overlaps``) уже не
+    падает, а открытие сессии и отправка в телеграм здесь всё равно
+    завёрнуты дополнительно, чтобы сбой периодической задачи не
+    прервал цикл в ``main.py``.
+    """
+    settings = get_settings()
+    try:
+        async with async_session_factory() as session:
+            service = build_referral_service(session, settings)
+            since = datetime.now(UTC) - _DEVICE_CHECK_WINDOW
+            hits = await service.device_overlaps(since)
+
+        notifier = TelegramNotifier(settings)
+        for reward, common in hits:
+            notifier.send_later(
+                sovpadenie_ustrojstv_soobshchenie(
+                    friend_email=reward.friend_email,
+                    inviter_username=reward.inviter_username,
+                    common=common,
+                    status=reward.status,
+                )
+            )
+        return len(hits)
+    except Exception:
+        logger.exception("Рефералка: сверка устройств сорвалась")
+        return 0

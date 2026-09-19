@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
@@ -28,11 +29,14 @@ __all__ = [
     "CurrentAdmin",
     "CurrentUser",
     "DatabaseSession",
+    "ReferralScheduler",
     "get_admin_service",
     "get_auth_service",
     "get_cabinet_service",
     "get_current_user",
     "get_oauth_service",
+    "get_referral_scheduler",
+    "get_reward_store",
     "get_subscription_service",
     "get_support_service",
     "require_admin",
@@ -167,10 +171,24 @@ def get_support_service(
 
 
 def get_reward_store(session: DatabaseSession) -> RewardStore:
-    """Хранилище наград рефералки для кабинета.
+    """Хранилище наград рефералки для кабинета и административного раздела.
 
     Отдельная зависимость, а не сборка внутри маршрута: тестам счётчиков
     базы не досталось, и подделка хранилища через неё не заводит
     настоящую сессию.
     """
     return SqlRewardStore(session)
+
+
+ReferralScheduler = Callable[[UUID], None]
+
+
+def get_referral_scheduler() -> ReferralScheduler:
+    """Функция, которая ставит обработку награды в фон.
+
+    Отдельная зависимость, а не прямой вызов ``zapustit_obrabotku`` из
+    маршрута ``release``: тесту нужно подставить свою функцию и
+    проверить, что она вызвана, не поднимая настоящую фоновую задачу
+    с сетевыми походами.
+    """
+    return zapustit_obrabotku

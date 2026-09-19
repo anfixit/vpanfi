@@ -188,6 +188,34 @@ class RewardStore(Protocol):
         """
         ...
 
+    async def recent(self, since: datetime) -> list[ReferralReward]:
+        """Награды, заведённые начиная с указанного момента.
+
+        Отклонённые (``rejected``) не идут в сверку устройств: решение
+        по ним уже принято человеком, поднимать их снова незачем.
+        Записи без ``friend_panel_user_id`` тоже не идут: без него
+        нечьи устройства друга смотреть.
+
+        Отдельной отметки "уведомление уже отправлено" нет намеренно:
+        сверка идёт раз в сутки, а окно здесь на час шире, чем сутки
+        (25 часов), чтобы перезапуск приложения не пропустил награду,
+        заведённую прямо перед прошлым обходом. Ценой такой простоты
+        одно и то же совпадение после перезапуска может прийти во
+        второй раз, но не чаще.
+        """
+        ...
+
+    async def list_recent(
+        self, status: str | None, limit: int
+    ) -> list[ReferralReward]:
+        """Последние по времени награды, при нужде только одного статуса.
+
+        Единственный способ найти id награды для ``release``/``reject``
+        из административного раздела: без него решать по придержанной
+        награде можно было бы только глядя в базу напрямую.
+        """
+        ...
+
 
 class SqlRewardStore(RewardStore):
     """Хранилище наград поверх обычной сессии SQLAlchemy.
@@ -283,6 +311,26 @@ class SqlRewardStore(RewardStore):
         friends = int(await self._session.scalar(friends_stmt) or 0)
         days_earned = int(await self._session.scalar(days_stmt) or 0)
         return friends, days_earned
+
+    async def recent(self, since: datetime) -> list[ReferralReward]:
+        stmt = select(ReferralReward).where(
+            ReferralReward.created_at >= since,
+            ReferralReward.status != "rejected",
+            ReferralReward.friend_panel_user_id.is_not(None),
+        )
+        return list(await self._session.scalars(stmt))
+
+    async def list_recent(
+        self, status: str | None, limit: int
+    ) -> list[ReferralReward]:
+        stmt = (
+            select(ReferralReward)
+            .order_by(ReferralReward.created_at.desc())
+            .limit(limit)
+        )
+        if status is not None:
+            stmt = stmt.where(ReferralReward.status == status)
+        return list(await self._session.scalars(stmt))
 
 
 def _inviter_days(raw: Mapping[str, Any], settings: Settings) -> int | None:
@@ -499,6 +547,93 @@ class ReferralService:
             finally:
                 if reward.status in _TERMINAL_STATUSES:
                     _release_lock(reward.id)
+
+    async def device_overlaps(
+        self, since: datetime
+    ) -> list[tuple[ReferralReward, int]]:
+        """Найти среди свежих наград совпадающие по устройствам.
+
+        Совпадение никого не наказывает само: список идёт человеку,
+        а решение (``release``/``reject`` в административном разделе)
+        остаётся за ним. Один и тот же пригласивший часто встречается
+        в нескольких наградах сразу, и его устройства запрашиваются в
+        панели один раз на весь обход, а не на каждую награду.
+
+        Сбой панели по одной награде не должен ронять весь обход:
+        такая награда просто пропускается, а метод целиком исключений
+        не поднимает (его зовёт фоновая задача, которой падать нельзя).
+        """
+        try:
+            rewards = await self._store.recent(since)
+        except Exception:
+            logger.exception("Рефералка: не удалось получить свежие награды")
+            return []
+
+        hits: list[tuple[ReferralReward, int]] = []
+        if not rewards:
+            return hits
+
+        inviter_cache: dict[int, frozenset[str] | None] = {}
+        try:
+            async with self._panel_factory() as panel:
+                for reward in rewards:
+                    if reward.friend_panel_user_id is None:
+                        continue
+
+                    friend_hwids = await self._safe_hwids(
+                        panel,
+                        reward.friend_panel_user_id,
+                        reward.id,
+                        "друга",
+                    )
+                    if friend_hwids is None:
+                        continue
+
+                    inviter_id = reward.inviter_panel_user_id
+                    if inviter_id not in inviter_cache:
+                        inviter_cache[inviter_id] = await self._safe_hwids(
+                            panel, inviter_id, reward.id, "пригласившего"
+                        )
+                    inviter_hwids = inviter_cache[inviter_id]
+                    if inviter_hwids is None:
+                        continue
+
+                    common = friend_hwids & inviter_hwids
+                    if common:
+                        hits.append((reward, len(common)))
+        except Exception:
+            logger.exception("Рефералка: сверка устройств сорвалась")
+            return []
+        return hits
+
+    async def _safe_hwids(
+        self,
+        panel: Any,
+        user_id: int,
+        reward_id: UUID,
+        kto: str,
+    ) -> frozenset[str] | None:
+        """Устройства пользователя панели, либо None при сбое похода.
+
+        None отличается от пустого множества: сбой панели должен
+        пропустить награду целиком, а настоящее отсутствие устройств
+        (человек просто не подключился) пропускать её не должно.
+        """
+        try:
+            devices = await panel.list_devices(user_id)
+        except Exception:
+            logger.exception(
+                "Рефералка: не удалось получить устройства %s по "
+                "награде %s",
+                kto,
+                reward_id,
+            )
+            return None
+        return frozenset(
+            device.get("hwid")
+            for device in devices
+            if isinstance(device.get("hwid"), str) and device.get("hwid")
+        )
 
     async def _grant_friend(self, reward: ReferralReward) -> bool:
         """Продлить подписку друга в панели. True значит: выдано или уже было.

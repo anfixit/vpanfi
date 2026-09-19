@@ -26,6 +26,7 @@ __all__ = [
     "pokupka_soobshchenie",
     "registraciya_soobshchenie",
     "sboj_vydachi_soobshchenie",
+    "sovpadenie_ustrojstv_soobshchenie",
     "vhod_soobshchenie",
 ]
 
@@ -144,6 +145,47 @@ def nagrada_soobshchenie(
         ]
     else:
         lines += ["", "✅ Награда заведена, дни начисляются"]
+    return "\n".join(lines)
+
+
+def _ustrojstva_slovo(n: int) -> str:
+    """Форма слова «устройство» после числительного n.
+
+    Обычное русское правило: 11-14 и оканчивающиеся на них всегда
+    «устройств», иначе по последней цифре: 1 это «устройство», 2-4
+    это «устройства», остальное «устройств».
+    """
+    if 11 <= n % 100 <= 14:
+        return "устройств"
+    last_digit = n % 10
+    if last_digit == 1:
+        return "устройство"
+    if 2 <= last_digit <= 4:
+        return "устройства"
+    return "устройств"
+
+
+def sovpadenie_ustrojstv_soobshchenie(
+    *, friend_email: str, inviter_username: str, common: int, status: str
+) -> str:
+    """Сообщение о совпадении устройств у друга и пригласившего.
+
+    Совпадение само по себе ничего не решает: строка только
+    предупреждает человека, а решение (release или reject) он
+    принимает через административный раздел сам.
+    """
+    lines = [
+        "⚠️ <b>СОВПАДЕНИЕ УСТРОЙСТВ</b>",
+        "",
+        f"👤 Друг: {html.escape(friend_email)}",
+        f"🔗 Пригласил: {html.escape(inviter_username)}",
+        f"📱 Совпадает: {common} {_ustrojstva_slovo(common)}",
+        f"📌 Статус награды: {html.escape(status)}",
+        "",
+        "Ничего не изменено автоматически. Найти запись можно через "
+        "GET /admin/referral-rewards?status=held, отклонить через "
+        "POST /admin/referral-rewards/{id}/reject.",
+    ]
     return "\n".join(lines)
 
 

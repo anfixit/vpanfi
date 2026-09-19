@@ -104,6 +104,7 @@ def _reward(
     inviter_granted_at: datetime | None = None,
     attempts: int = 0,
     last_error: str | None = None,
+    created_at: datetime | None = None,
 ) -> ReferralReward:
     return ReferralReward(
         id=uuid4(),
@@ -120,6 +121,7 @@ def _reward(
         inviter_granted_at=inviter_granted_at,
         attempts=attempts,
         last_error=last_error,
+        created_at=created_at or datetime.now(UTC),
     )
 
 
@@ -141,6 +143,8 @@ class FakeRewardStore:
         # Порядок вызовов add()/save(): проверяет, что запись
         # коммитится раньше, чем register() вернёт её вызывающему.
         self.call_order: list[str] = []
+        # Сбой самого чтения свежих наград для device_overlaps.
+        self.raise_on_recent: Exception | None = None
 
     async def has_earlier_paid(self, email: str, payment_id: UUID) -> bool:
         return email.lower() in self.paid_emails
@@ -192,6 +196,18 @@ class FakeRewardStore:
         if self.refresh_hook is not None:
             self.refresh_hook(reward)
 
+    async def recent(self, since: datetime) -> list[ReferralReward]:
+        if self.raise_on_recent is not None:
+            raise self.raise_on_recent
+        return [
+            r
+            for r in self.rewards
+            if r.created_at is not None
+            and r.created_at >= since
+            and r.status != "rejected"
+            and r.friend_panel_user_id is not None
+        ]
+
 
 class FakePanelGateway:
     """Поддельная панель: считает вызовы, не ходит в сеть."""
@@ -204,6 +220,8 @@ class FakePanelGateway:
         fail_set_expiry_for: set[int] | None = None,
         raise_on_set_expiry: Exception | None = None,
         sleep_before_set_expiry: bool = False,
+        devices_by_id: dict[int, list[dict[str, Any]]] | None = None,
+        fail_list_devices_for: set[int] | None = None,
     ) -> None:
         self.by_username = by_username or {}
         self.by_id = by_id or {}
@@ -214,6 +232,9 @@ class FakePanelGateway:
         # без замка, и гонку было бы нечем проверить.
         self.sleep_before_set_expiry = sleep_before_set_expiry
         self.set_expiry_calls: list[int] = []
+        self.devices_by_id = devices_by_id or {}
+        self.fail_list_devices_for = fail_list_devices_for or set()
+        self.list_devices_calls: list[int] = []
 
     async def __aenter__(self) -> "FakePanelGateway":
         return self
@@ -232,6 +253,12 @@ class FakePanelGateway:
             return self.by_id[user_id]
         except KeyError:
             raise RemnawaveUserNotFoundError(str(user_id)) from None
+
+    async def list_devices(self, user_id: int) -> list[dict[str, Any]]:
+        self.list_devices_calls.append(user_id)
+        if user_id in self.fail_list_devices_for:
+            raise RemnawaveUnavailableError("панель недоступна")
+        return self.devices_by_id.get(user_id, [])
 
     async def set_expiry(
         self, user_id: int, expire_at: datetime, tag: str | None = None
@@ -1129,3 +1156,123 @@ async def test_register_commits_the_reward_before_returning() -> None:
     assert reward is not None
     assert store.call_order == ["add", "save"]
     assert store.save_calls == 1
+
+
+# --- device_overlaps ---------------------------------------------------
+
+
+async def test_device_overlaps_finds_a_shared_hwid() -> None:
+    reward = _reward(friend_panel_user_id=900, inviter_panel_user_id=500)
+    store = FakeRewardStore()
+    store.rewards.append(reward)
+    panel = FakePanelGateway(
+        devices_by_id={
+            900: [{"hwid": "aaa"}, {"hwid": "bbb"}],
+            500: [{"hwid": "bbb"}, {"hwid": "ccc"}],
+        }
+    )
+    service, *_ = _service(store=store, panel=panel)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == [(reward, 1)]
+
+
+async def test_device_overlaps_finds_nothing_without_shared_devices() -> None:
+    reward = _reward(friend_panel_user_id=900, inviter_panel_user_id=500)
+    store = FakeRewardStore()
+    store.rewards.append(reward)
+    panel = FakePanelGateway(
+        devices_by_id={
+            900: [{"hwid": "aaa"}],
+            500: [{"hwid": "ccc"}],
+        }
+    )
+    service, *_ = _service(store=store, panel=panel)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == []
+
+
+async def test_device_overlaps_ignores_empty_and_missing_hwid() -> None:
+    """Пустая строка и отсутствующий hwid не должны считаться совпадением."""
+    reward = _reward(friend_panel_user_id=900, inviter_panel_user_id=500)
+    store = FakeRewardStore()
+    store.rewards.append(reward)
+    panel = FakePanelGateway(
+        devices_by_id={
+            900: [{"hwid": ""}, {"platform": "ios"}],
+            500: [{"hwid": ""}, {"platform": "ios"}],
+        }
+    )
+    service, *_ = _service(store=store, panel=panel)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == []
+
+
+async def test_device_overlaps_skips_a_reward_when_the_panel_fails() -> None:
+    """Сбой панели по одной награде не должен ронять весь обход."""
+    broken = _reward(
+        payment_id=uuid4(), friend_panel_user_id=901, inviter_panel_user_id=500
+    )
+    ok = _reward(
+        payment_id=uuid4(), friend_panel_user_id=902, inviter_panel_user_id=501
+    )
+    store = FakeRewardStore()
+    store.rewards.extend([broken, ok])
+    panel = FakePanelGateway(
+        devices_by_id={
+            902: [{"hwid": "zzz"}],
+            501: [{"hwid": "zzz"}],
+        },
+        fail_list_devices_for={901},
+    )
+    service, *_ = _service(store=store, panel=panel)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == [(ok, 1)]
+
+
+async def test_device_overlaps_never_raises_when_recent_fails() -> None:
+    store = FakeRewardStore()
+    store.raise_on_recent = RuntimeError("база недоступна")
+    service, *_ = _service(store=store)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == []
+
+
+async def test_device_overlaps_fetches_the_shared_inviter_once() -> None:
+    """Тот же пригласивший в двух наградах не должен спросить панель дважды."""
+    first = _reward(
+        payment_id=uuid4(),
+        friend_email="one@example.test",
+        friend_panel_user_id=901,
+        inviter_panel_user_id=500,
+    )
+    second = _reward(
+        payment_id=uuid4(),
+        friend_email="two@example.test",
+        friend_panel_user_id=902,
+        inviter_panel_user_id=500,
+    )
+    store = FakeRewardStore()
+    store.rewards.extend([first, second])
+    panel = FakePanelGateway(
+        devices_by_id={
+            901: [{"hwid": "aaa"}],
+            902: [{"hwid": "bbb"}],
+            500: [{"hwid": "ccc"}],
+        }
+    )
+    service, *_ = _service(store=store, panel=panel)
+
+    hits = await service.device_overlaps(datetime.now(UTC) - timedelta(days=1))
+
+    assert hits == []
+    assert panel.list_devices_calls.count(500) == 1

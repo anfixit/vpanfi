@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 
 from fastapi import FastAPI
@@ -11,7 +12,10 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
-from app.services.referral_wiring import obojti_ozhidayushchie
+from app.services.referral_wiring import (
+    obojti_ozhidayushchie,
+    sverit_ustrojstva,
+)
 from app.services.reminders import RemindersService
 
 logger = logging.getLogger(__name__)
@@ -50,8 +54,12 @@ async def _napominaniya() -> None:
         await asyncio.sleep(chasy * 3600)
 
 
+_PERVAYA_SVERKA_USTROJSTV = timedelta(minutes=10)
+_SVERKA_USTROJSTV_KAZHDYE = timedelta(hours=24)
+
+
 async def _nagrady() -> None:
-    """Повторять зависшие награды за приглашение.
+    """Повторять зависшие награды и раз в сутки сверять устройства.
 
     Рефералка выключена по умолчанию, и тогда задача выходит сразу же:
     пустой обход каждые полчаса не стоит даже строчки в журнале. Сама
@@ -59,6 +67,14 @@ async def _nagrady() -> None:
     ``referral_wiring.obojti_ozhidayushchie``): здесь только регулярный
     запуск, чтобы этот модуль и ``api/dependencies.py`` не зависели
     друг от друга напрямую.
+
+    Сверка устройств (``sverit_ustrojstva``) живёт в этом же цикле, а
+    не в отдельной задаче: третья фоновая задача ради обхода раз в
+    сутки не стоила бы своего кода, когда рядом уже крутится цикл с
+    подходящей частотой. Отметка времени последней сверки хранится
+    прямо в этой функции и переживает только её собственные пробуждения,
+    а первый запуск сдвинут на 10 минут от старта, чтобы частый
+    перезапуск при деплое не заваливал Анфису уведомлениями.
     """
     settings = get_settings()
     if not settings.referral_enabled:
@@ -67,6 +83,7 @@ async def _nagrady() -> None:
     minuty = max(5, settings.referral_retry_minutes)
     # Та же небольшая задержка на старте, что и у напоминаний.
     await asyncio.sleep(90)
+    sleduyushchaya_sverka = datetime.now(UTC) + _PERVAYA_SVERKA_USTROJSTV
     while True:
         try:
             obrabotano = await obojti_ozhidayushchie()
@@ -79,6 +96,23 @@ async def _nagrady() -> None:
             raise
         except Exception:
             logger.exception("Рефералка: обход повторов сорвался")
+
+        if datetime.now(UTC) >= sleduyushchaya_sverka:
+            try:
+                sovpadenij = await sverit_ustrojstva()
+                if sovpadenij:
+                    logger.info(
+                        "Рефералка: найдено совпадений устройств: %s",
+                        sovpadenij,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Рефералка: сверка устройств сорвалась")
+            sleduyushchaya_sverka = (
+                datetime.now(UTC) + _SVERKA_USTROJSTV_KAZHDYE
+            )
+
         await asyncio.sleep(minuty * 60)
 
 

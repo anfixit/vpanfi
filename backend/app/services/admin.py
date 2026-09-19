@@ -14,18 +14,44 @@ from app.integrations.remnawave.client import (
     RemnawaveUnavailableError,
     RemnawaveUserNotFoundError,
 )
+from app.models.billing import ReferralReward
 from app.models.user import User
 from app.schemas.admin import AdminOverviewResponse, AdminUserResponse
 from app.services.panel import read_panel_user
+from app.services.referral import RewardStore
 from app.services.subscription import (
     PanelUnavailableError,
     SubscriptionNotFoundError,
 )
 
-__all__ = ["AdminService", "UsernameAlreadyTakenError"]
+__all__ = [
+    "AdminService",
+    "ReferralRewardNotFoundError",
+    "ReferralRewardStatusError",
+    "UsernameAlreadyTakenError",
+    "list_referral_rewards",
+    "reject_referral_reward",
+    "release_referral_reward",
+]
 
 RECENT_WINDOW_DAYS = 30
 USERS_PAGE_SIZE = 50
+
+# Из held можно только освободить награду в обработку: любой другой
+# статус означает, что решение по ней уже принято (автоматикой или
+# человеком), и повторный перевод в pending исказил бы историю.
+_RELEASABLE_STATUSES = frozenset({"held"})
+# Отклонить можно то, что ещё не выдано целиком и не отклонено уже:
+# granted и rejected это конечные состояния, трогать их незачем.
+_REJECTABLE_STATUSES = frozenset({"held", "pending", "failed"})
+
+
+class ReferralRewardNotFoundError(LookupError):
+    """Награда за приглашение с таким id не найдена."""
+
+
+class ReferralRewardStatusError(ValueError):
+    """Награда сейчас не в статусе, из которого разрешено это действие."""
 
 
 class UsernameAlreadyTakenError(ValueError):
@@ -224,3 +250,64 @@ class AdminService:
             expires_at=expires_at,
             days_left=days_left,
         )
+
+
+async def list_referral_rewards(
+    store: RewardStore, *, status: str | None, limit: int
+) -> list[ReferralReward]:
+    """Последние награды за приглашение, при нужде только одного статуса.
+
+    Свободная функция, а не метод ``AdminService``: ей нужно только
+    хранилище наград, которое приходит своей же зависимостью
+    (``get_reward_store``), и заводить для неё сессию и настройки
+    ``AdminService`` было бы лишним.
+    """
+    return await store.list_recent(status, limit)
+
+
+async def release_referral_reward(
+    store: RewardStore, reward_id: UUID
+) -> ReferralReward:
+    """Перевести придержанную (``held``) награду в обработку.
+
+    Сама выдача сюда не входит: обработку в фон ставит вызывающий
+    (маршрут) сразу после того, как эта функция сохранит новый статус.
+    Запрос администратора не должен ждать похода в панель и в бота
+    продаж.
+
+    Raises:
+        ReferralRewardNotFoundError: Нет записи с таким id.
+        ReferralRewardStatusError: Награда не в статусе ``held``.
+    """
+    reward = await store.get(reward_id)
+    if reward is None:
+        raise ReferralRewardNotFoundError(str(reward_id))
+    if reward.status not in _RELEASABLE_STATUSES:
+        raise ReferralRewardStatusError(reward.status)
+    reward.status = "pending"
+    await store.save()
+    return reward
+
+
+async def reject_referral_reward(
+    store: RewardStore, reward_id: UUID
+) -> ReferralReward:
+    """Отклонить награду за приглашение.
+
+    Разрешено из ``held``, ``pending`` и ``failed``. Дни, которые уже
+    выданы, назад не забираются: это ручное действие в панели, а не
+    то, что делает эта функция.
+
+    Raises:
+        ReferralRewardNotFoundError: Нет записи с таким id.
+        ReferralRewardStatusError: Награда уже ``granted`` или
+            ``rejected``.
+    """
+    reward = await store.get(reward_id)
+    if reward is None:
+        raise ReferralRewardNotFoundError(str(reward_id))
+    if reward.status not in _REJECTABLE_STATUSES:
+        raise ReferralRewardStatusError(reward.status)
+    reward.status = "rejected"
+    await store.save()
+    return reward
