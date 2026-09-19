@@ -40,6 +40,7 @@ from app.services.mail import Mailer
 from app.services.notify import (
     TelegramNotifier,
     nagrada_soobshchenie,
+    otmena_oplaty_soobshchenie,
     pokupka_soobshchenie,
     sboj_vydachi_soobshchenie,
 )
@@ -238,6 +239,13 @@ class CheckoutService:
             if payment.status is PaymentStatus.PENDING:
                 payment.status = PaymentStatus.FAILED
                 await self._session.commit()
+            elif payment.status is PaymentStatus.SUCCEEDED:
+                # Провайдер развернул или отменил то, что мы уже
+                # выдали. Ничего не меняем автоматически: доверять
+                # такому статусу и откатывать выдачу самим было бы
+                # рискованнее, чем оставить деньги как есть и
+                # позвать человека проверить платёж глазами.
+                self._soobshchit_ob_otmene(payment, status_name)
             return False
 
         if payment.status is not PaymentStatus.PENDING:
@@ -542,6 +550,25 @@ class CheckoutService:
                 expires_at=expires_at,
                 is_new=is_new,
                 subscription_url=payment.subscription_url,
+            )
+        )
+
+    def _soobshchit_ob_otmene(
+        self, payment: Payment, status_name: str
+    ) -> None:
+        """Рассказать о статусе, пришедшем после уже выданного платежа.
+
+        Уходит независимо от alert_events, как и ``_soobshchit_o_sboe``:
+        это провайдер сообщает об отмене или развороте уже выданной
+        оплаты, и заметить такое надо всегда, даже если события покупок
+        выключены.
+        """
+        TelegramNotifier(self._settings).send_later(
+            otmena_oplaty_soobshchenie(
+                email=payment.contact_email or "",
+                amount_kopecks=payment.amount_kopecks,
+                status_name=status_name,
+                referral_code=payment.referral_code,
             )
         )
 

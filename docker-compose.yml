@@ -37,6 +37,11 @@ services:
     image: vpanfi-api:local
     container_name: vpanfi-api
     restart: unless-stopped
+    # Рефералка держит блокировку от двойной выдачи награды в памяти
+    # процесса (_LOCKS в backend/app/services/referral.py), а не в
+    # базе. Это работает только пока api это ОДИН процесс uvicorn в
+    # ОДНОМ контейнере: не добавлять сюда --workers и не поднимать
+    # вторую реплику этого сервиса без переноса блокировки в базу.
     environment:
       VPANFI_ENVIRONMENT: ${VPANFI_ENVIRONMENT:-development}
       VPANFI_FRONTEND_ORIGIN: ${VPANFI_FRONTEND_ORIGIN:-http://localhost:8080}

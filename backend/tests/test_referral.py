@@ -168,16 +168,21 @@ class FakeRewardStore:
                 return r
         return None
 
-    async def granted_in_last_days(
+    async def counted_in_last_days(
         self, inviter_username: str, days: int
     ) -> int:
+        # created_at заполняется server_default'ом в настоящей базе, а
+        # у только что созданного в памяти ReferralReward (как в
+        # register()) его ещё нет: тут это то же самое, что "прямо
+        # сейчас", и такая запись обязана считаться.
         threshold = datetime.now(UTC) - timedelta(days=days)
         return sum(
             1
             for r in self.rewards
             if r.inviter_username == inviter_username
-            and r.inviter_granted_at is not None
-            and r.inviter_granted_at >= threshold
+            and r.inviter_days > 0
+            and r.status in ("pending", "granted", "failed")
+            and (r.created_at is None or r.created_at >= threshold)
         )
 
     async def due_ids(self, limit: int) -> list[UUID]:
@@ -320,12 +325,15 @@ def _service(
     store: FakeRewardStore | None = None,
     panel: FakePanelGateway | None = None,
     bedolaga: FakeBedolagaGateway | None = None,
+    on_terminal: Any = None,
 ) -> ServiceBundle:
     settings = settings or _settings()
     store = store if store is not None else FakeRewardStore()
     panel = panel if panel is not None else FakePanelGateway()
     bedolaga = bedolaga if bedolaga is not None else FakeBedolagaGateway()
-    service = ReferralService(settings, store, lambda: panel, lambda: bedolaga)
+    service = ReferralService(
+        settings, store, lambda: panel, lambda: bedolaga, on_terminal
+    )
     return service, store, panel, bedolaga
 
 
@@ -634,6 +642,39 @@ async def test_monthly_cap_reached_marks_the_reward_held() -> None:
     assert reward is not None
     assert reward.status == "held"
     assert reward.friend_days == 30
+
+
+async def test_six_registrations_in_a_row_hold_the_sixth() -> None:
+    """Без process() между вызовами шестая награда всё равно уходит в held.
+
+    Старый granted_in_last_days считал только уже выданное
+    (inviter_granted_at): шесть register() подряд без единого process()
+    между ними видели бы там везде ноль, и потолок пробивала бы целая
+    пачка одновременных оплат. counted_in_last_days считает заведённое
+    (pending/granted/failed), и пятый вызов уже видит пять предыдущих.
+    """
+    panel = FakePanelGateway(
+        by_username={
+            INVITER_USERNAME: _panel_payload(
+                user_id=500, username=INVITER_USERNAME
+            )
+        }
+    )
+    service, store, *_ = _service(panel=panel)
+
+    rewards = [
+        await service.register(
+            payment=_payment(email=f"friend{i}@example.test"),
+            friend_panel_user_id=900 + i,
+            friend_was_paid=False,
+        )
+        for i in range(6)
+    ]
+
+    assert all(reward is not None for reward in rewards)
+    statuses = [reward.status for reward in rewards if reward is not None]
+    assert statuses[:5] == ["pending"] * 5
+    assert statuses[5] == "held"
 
 
 async def test_svoi_inviter_ignores_the_monthly_cap() -> None:
@@ -1001,6 +1042,132 @@ async def test_lock_registry_drops_entries_for_terminal_rewards() -> None:
 
     assert granted_reward.id not in referral_module._LOCKS
     assert failing_reward.id not in referral_module._LOCKS
+
+
+# --- process: итоговое уведомление (on_terminal) ------------------------
+
+
+async def test_on_terminal_fires_once_when_the_reward_is_granted() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        panel=panel, on_terminal=seen.append
+    )
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "granted"
+    assert len(seen) == 1
+    assert seen[0] is reward
+
+
+async def test_on_terminal_fires_once_after_ten_failures() -> None:
+    panel = FakePanelGateway(
+        by_id={900: _panel_payload(user_id=900, username="friend_acc")}
+    )
+    bedolaga = FakeBedolagaGateway(
+        subscription_by_telegram_id={100500: 777}, fail_extend=True
+    )
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        panel=panel, bedolaga=bedolaga, on_terminal=seen.append
+    )
+    reward = _reward(inviter_telegram_id=100500)
+
+    for _ in range(referral_module._MAX_ATTEMPTS):
+        await service.process(reward)
+
+    assert reward.status == "failed"
+    assert len(seen) == 1
+
+
+async def test_on_terminal_fires_once_after_save_fails_post_grant() -> None:
+    """save() падает после выдачи: это тоже переход в failed, а не ошибка."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    store = FakeRewardStore()
+    store.fail_on_save_call = 1
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        store=store, panel=panel, on_terminal=seen.append
+    )
+    reward = _reward()
+
+    await service.process(reward)
+
+    assert reward.status == "failed"
+    assert len(seen) == 1
+
+
+async def test_on_terminal_does_not_fire_again_on_a_second_process() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        panel=panel, on_terminal=seen.append
+    )
+    reward = _reward()
+
+    await service.process(reward)
+    assert reward.status == "granted"
+    await service.process(reward)
+
+    assert len(seen) == 1
+
+
+async def test_on_terminal_exception_does_not_affect_the_status() -> None:
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+
+    def broken_callback(_reward: ReferralReward) -> None:
+        raise RuntimeError("телеграм недоступен")
+
+    service, store, panel, bedolaga = _service(
+        panel=panel, on_terminal=broken_callback
+    )
+    reward = _reward()
+
+    await service.process(reward)  # не должно бросить исключение
+
+    assert reward.status == "granted"
+
+
+async def test_on_terminal_does_not_fire_while_held() -> None:
+    """held это не терминальный статус: уведомление тут ещё не к месту."""
+    panel = FakePanelGateway(
+        by_id={
+            900: _panel_payload(user_id=900, username="friend_acc"),
+            500: _panel_payload(user_id=500, username=INVITER_USERNAME),
+        }
+    )
+    seen: list[ReferralReward] = []
+    service, store, panel, bedolaga = _service(
+        panel=panel, on_terminal=seen.append
+    )
+    reward = _reward(status="held")
+
+    await service.process(reward)
+
+    assert reward.status == "held"
+    assert seen == []
 
 
 # --- process_by_id ---------------------------------------------------------

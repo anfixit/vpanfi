@@ -120,6 +120,10 @@ Optional repository **variables**:
 
 They travel inside the SSH channel rather than on the remote command line, so they never appear in the server's process list or in a workflow log.
 
+The referral program's guarantee that a reward is never granted twice rests on a lock kept in the `api` process's own memory (`_LOCKS` in `backend/app/services/referral.py`), not in the database. That holds only while `api` runs as a single uvicorn process in a single container, which is how `docker-compose.yml` runs it today; do not add `--workers` or a second replica of that service without moving the lock into the database first (for example a `SELECT ... FOR UPDATE` on the reward row).
+
+A related, smaller limitation: extending a panel subscription is read-then-set (read the current expiry, add days, write it back), both for an ordinary purchase and for a referral reward. If a purchase and a reward land on the same panel account within the same second, one of the two reads can miss the other's write, and one increment is lost. This undercounts the account's days; it never grants extra days that were not earned.
+
 The web service binds only to `127.0.0.1:8080`. The public domain is served by the Caddy instance already running on the server; VPaNfi never touches ports 80 or 443 itself.
 
 ### Publishing a domain

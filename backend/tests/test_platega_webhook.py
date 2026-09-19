@@ -1,6 +1,9 @@
+import pytest
+
 from app.core.config import get_settings
 from app.models.billing import Payment, PaymentPurpose, PaymentStatus
 from app.services.checkout import CheckoutService
+from app.services.notify import TelegramNotifier
 
 WEBHOOK = "/api/v1/payments/platega/webhook"
 
@@ -19,7 +22,9 @@ class FakeSession:
         self.commits += 1
 
 
-def _payment(status: PaymentStatus) -> Payment:
+def _payment(
+    status: PaymentStatus, *, referral_code: str | None = None
+) -> Payment:
     return Payment(
         user_id=None,
         contact_email="guest@example.com",
@@ -31,6 +36,7 @@ def _payment(status: PaymentStatus) -> Payment:
         description="30 дней",
         tariff_id=2,
         period_days=30,
+        referral_code=referral_code,
     )
 
 
@@ -102,6 +108,69 @@ async def test_failed_status_marks_the_payment() -> None:
 
     assert paid is False
     assert payment.status is PaymentStatus.FAILED
+
+
+async def test_reversal_of_a_delivered_payment_notifies_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Провайдер прислал отмену по уже выданному платежу: одно уведомление."""
+    sent: list[str] = []
+    monkeypatch.setattr(
+        TelegramNotifier,
+        "send_later",
+        lambda self, text: sent.append(text),
+    )
+    payment = _payment(PaymentStatus.SUCCEEDED, referral_code="Alyona_Tutina")
+    session = FakeSession(payment)
+    service = _service(session, get_settings())
+
+    paid = await service.confirm(
+        provider_payment_id="tx-1", status_name="CANCELED"
+    )
+
+    assert paid is False
+    assert payment.status is PaymentStatus.SUCCEEDED
+    assert session.commits == 0
+    assert len(sent) == 1
+    assert "referral-rewards" in sent[0]
+    assert chr(0x2014) not in sent[0]
+
+
+async def test_reversal_of_a_delivered_payment_without_a_referral_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Без кода приглашения сообщение не должно упоминать награду."""
+    sent: list[str] = []
+    monkeypatch.setattr(
+        TelegramNotifier,
+        "send_later",
+        lambda self, text: sent.append(text),
+    )
+    payment = _payment(PaymentStatus.SUCCEEDED)
+    service = _service(FakeSession(payment), get_settings())
+
+    await service.confirm(provider_payment_id="tx-1", status_name="CANCELED")
+
+    assert len(sent) == 1
+    assert "referral-rewards" not in sent[0]
+
+
+async def test_pending_payment_reversal_does_not_notify(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ещё не выдано - это обычный неуспех, а не разворот выдачи."""
+    sent: list[str] = []
+    monkeypatch.setattr(
+        TelegramNotifier,
+        "send_later",
+        lambda self, text: sent.append(text),
+    )
+    payment = _payment(PaymentStatus.PENDING)
+    service = _service(FakeSession(payment), get_settings())
+
+    await service.confirm(provider_payment_id="tx-1", status_name="CANCELED")
+
+    assert sent == []
 
 
 async def test_unknown_payment_is_ignored() -> None:

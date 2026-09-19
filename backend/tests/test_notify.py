@@ -17,7 +17,9 @@ from app.core.config import Settings
 from app.services import notify as notify_module
 from app.services.notify import (
     TelegramNotifier,
+    nagrada_itog_soobshchenie,
     nagrada_soobshchenie,
+    otmena_oplaty_soobshchenie,
     pokupka_soobshchenie,
     registraciya_soobshchenie,
     sboj_vydachi_soobshchenie,
@@ -203,6 +205,88 @@ def test_reward_message_explains_a_held_status() -> None:
     assert "—" not in text
 
 
+def test_reward_outcome_message_for_a_grant_shows_both_day_counts() -> None:
+    text = nagrada_itog_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="granted",
+        friend_granted=True,
+        inviter_granted=True,
+        friend_days=30,
+        inviter_days=30,
+        last_error=None,
+    )
+
+    assert "ВЫДАНА" in text
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "30" in text
+    assert "—" not in text
+
+
+def test_reward_outcome_message_for_a_failure_names_what_is_missing() -> None:
+    text = nagrada_itog_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="failed",
+        friend_granted=True,
+        inviter_granted=False,
+        friend_days=30,
+        inviter_days=30,
+        last_error="панель не отвечает",
+    )
+
+    assert "НЕ ВЫДАНА" in text
+    assert "friend@example.test" in text
+    assert "Alyona_Tutina" in text
+    assert "панель не отвечает" in text
+    assert "вручную" in text
+    assert "referral-rewards" in text
+    assert "—" not in text
+
+
+def test_reward_outcome_message_escapes_html_in_the_error() -> None:
+    """last_error не от человека, но экранировать лучше и его."""
+    text = nagrada_itog_soobshchenie(
+        friend_email="friend@example.test",
+        inviter_username="Alyona_Tutina",
+        status="failed",
+        friend_granted=False,
+        inviter_granted=False,
+        friend_days=30,
+        inviter_days=30,
+        last_error="<script>бум</script>",
+    )
+
+    assert "<script>" not in text
+    assert "&lt;script&gt;" in text
+
+
+def test_cancellation_message_mentions_the_referral_check() -> None:
+    text = otmena_oplaty_soobshchenie(
+        email="guest@example.com",
+        amount_kopecks=30000,
+        status_name="CANCELED",
+        referral_code="Alyona_Tutina",
+    )
+
+    assert "guest@example.com" in text
+    assert "CANCELED" in text
+    assert "referral-rewards" in text
+    assert "—" not in text
+
+
+def test_cancellation_message_omits_the_referral_hint_without_a_code() -> None:
+    text = otmena_oplaty_soobshchenie(
+        email="guest@example.com",
+        amount_kopecks=30000,
+        status_name="CANCELED",
+        referral_code=None,
+    )
+
+    assert "referral-rewards" not in text
+
+
 def test_registration_and_login_are_wired_in() -> None:
     """Сообщения без вызова из кода бесполезны ровно так же."""
     import inspect
@@ -234,6 +318,27 @@ def test_reward_message_is_wired_in() -> None:
     source = inspect.getsource(checkout.CheckoutService)
 
     assert "nagrada_soobshchenie" in source
+
+
+def test_reward_outcome_message_is_wired_in() -> None:
+    import inspect
+
+    from app.services import referral_wiring
+
+    source = inspect.getsource(referral_wiring)
+
+    assert "nagrada_itog_soobshchenie" in source
+    assert "on_terminal" in source
+
+
+def test_cancellation_message_is_wired_in() -> None:
+    import inspect
+
+    from app.services import checkout
+
+    source = inspect.getsource(checkout.CheckoutService)
+
+    assert "otmena_oplaty_soobshchenie" in source
 
 
 def test_failed_delivery_cannot_be_switched_off() -> None:

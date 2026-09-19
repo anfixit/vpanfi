@@ -23,8 +23,10 @@ from app.core.config import Settings, get_settings
 from app.db.session import async_session_factory
 from app.integrations.bedolaga.client import BedolagaGateway
 from app.integrations.remnawave.client import RemnawaveGateway
+from app.models.billing import ReferralReward
 from app.services.notify import (
     TelegramNotifier,
+    nagrada_itog_soobshchenie,
     sovpadenie_ustrojstv_soobshchenie,
 )
 from app.services.referral import ReferralService, SqlRewardStore
@@ -44,6 +46,28 @@ __all__ = [
 _DEVICE_CHECK_WINDOW = timedelta(hours=25)
 
 
+def _soobshchit_ob_itoge(settings: Settings, reward: ReferralReward) -> None:
+    """Собрать текст об итоге награды и отправить его в фоне.
+
+    Отдельная функция, а не лямбда прямо в build_referral_service:
+    ReferralService зовёт этот callback синхронно внутри своего
+    try/except, и здесь не должно быть ничего, что само поднимает
+    исключение мимо этого except.
+    """
+    TelegramNotifier(settings).send_later(
+        nagrada_itog_soobshchenie(
+            friend_email=reward.friend_email,
+            inviter_username=reward.inviter_username,
+            status=reward.status,
+            friend_granted=reward.friend_granted_at is not None,
+            inviter_granted=reward.inviter_granted_at is not None,
+            friend_days=reward.friend_days,
+            inviter_days=reward.inviter_days,
+            last_error=reward.last_error,
+        )
+    )
+
+
 def build_referral_service(
     session: AsyncSession, settings: Settings
 ) -> ReferralService:
@@ -58,6 +82,7 @@ def build_referral_service(
         SqlRewardStore(session),
         lambda: RemnawaveGateway(settings),
         lambda: BedolagaGateway(settings),
+        on_terminal=lambda reward: _soobshchit_ob_itoge(settings, reward),
     )
 
 

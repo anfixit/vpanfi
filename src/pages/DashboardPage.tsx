@@ -89,7 +89,7 @@ function ReferralCard() {
   };
 
   return (
-    <CabinetCard title="Пригласите друга" icon="sparkle" className="referral-card">
+    <CabinetCard title="Пригласите друга" icon="sparkle">
       <p className="muted">
         Друг оплатит подписку по Вашей ссылке, и каждый из Вас получит по 30
         дней.

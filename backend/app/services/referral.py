@@ -71,6 +71,14 @@ GatewayFactory = Callable[[], AbstractAsyncContextManager[Any]]
 # периодический обход читают одну и ту же запись каждый из своей
 # сессии, и оба должны видеть одну и ту же блокировку, а не свою
 # локальную.
+#
+# Гарантия «выдано не более одного раза» держится только на том, что
+# это словарь в памяти ОДНОГО процесса. Если api когда-нибудь поднимут
+# с --workers > 1 или несколькими репликами контейнера, у каждого будет
+# свой отдельный словарь _LOCKS, и два процесса не увидят замок друг
+# друга: оба смогут одновременно решить, что награда ещё не выдана, и
+# выдать её дважды. Перед этим замок нужно перенести в базу (например
+# SELECT ... FOR UPDATE на строке награды).
 _LOCKS: dict[UUID, asyncio.Lock] = {}
 
 # Статусы, после которых с наградой больше никто не будет работать
@@ -136,10 +144,23 @@ class RewardStore(Protocol):
         """Найти запись награды по id, если она ещё существует."""
         ...
 
-    async def granted_in_last_days(
+    async def counted_in_last_days(
         self, inviter_username: str, days: int
     ) -> int:
-        """Сколько раз пригласившему уже выдали награду за окно дней."""
+        """Сколько наград этого пригласившего съедает потолок за окно дней.
+
+        Считает по моменту заведения записи (``created_at``), а не по
+        моменту выдачи: несколько ``register`` подряд заводят по
+        записи каждый, и до первого ``process`` у всех
+        ``inviter_granted_at`` пусто. Считать только выданное позволяло
+        бы очереди из pending-наград обойти потолок целиком, пока
+        фоновая задача не успела дойти ни до одной из них.
+
+        В счёт идут только ``pending``, ``granted`` и ``failed`` с
+        ненулевыми днями пригласившему: ``held`` и ``rejected`` потолок
+        не расходуют, потому что ``held`` сама и есть последствие
+        потолка, а ``rejected`` человек уже отменил.
+        """
         ...
 
     async def due_ids(self, limit: int) -> list[UUID]:
@@ -258,14 +279,15 @@ class SqlRewardStore(RewardStore):
     async def get(self, reward_id: UUID) -> ReferralReward | None:
         return await self._session.get(ReferralReward, reward_id)
 
-    async def granted_in_last_days(
+    async def counted_in_last_days(
         self, inviter_username: str, days: int
     ) -> int:
         threshold = datetime.now(UTC) - timedelta(days=days)
         stmt = select(func.count()).where(
             ReferralReward.inviter_username == inviter_username,
-            ReferralReward.inviter_granted_at.is_not(None),
-            ReferralReward.inviter_granted_at >= threshold,
+            ReferralReward.inviter_days > 0,
+            ReferralReward.status.in_(("pending", "granted", "failed")),
+            ReferralReward.created_at >= threshold,
         )
         return int(await self._session.scalar(stmt) or 0)
 
@@ -376,11 +398,17 @@ class ReferralService:
         store: RewardStore,
         panel_factory: GatewayFactory,
         bedolaga_factory: GatewayFactory,
+        on_terminal: Callable[[ReferralReward], None] | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
         self._panel_factory = panel_factory
         self._bedolaga_factory = bedolaga_factory
+        # По умолчанию None: тесты ядра рефералки телеграм не знают
+        # вовсе, а сборка для прода (referral_wiring.py) подставляет
+        # функцию, которая шлёт сообщение через TelegramNotifier. Так
+        # ReferralService не зависит от телеграма напрямую.
+        self._on_terminal = on_terminal
 
     async def register(
         self,
@@ -446,10 +474,23 @@ class ReferralService:
 
             status = "pending"
             if inviter_days > 0:
-                granted = await self._store.granted_in_last_days(
+                # Считаем заведённые (pending/granted/failed), а не
+                # выданные: несколько оплат подряд видели бы в старом
+                # granted_in_last_days один и тот же ноль, потому что
+                # ни один process() ещё не успел отработать, и пачка
+                # платежей в одну секунду пробивала бы потолок целиком.
+                #
+                # Остаточная гонка: два по-настоящему одновременных
+                # register() всё равно могут прочитать один и тот же
+                # counted до того, как второй из них вставит свою
+                # запись, и оба пройдут потолок. Для одного процесса
+                # uvicorn это редкое совпадение в пределах одного
+                # event loop, а цена ошибки, одна лишняя награда сверх
+                # потолка, а не потерянная защита, приемлема.
+                counted = await self._store.counted_in_last_days(
                     inviter_user.username or code, _CAP_WINDOW_DAYS
                 )
-                if granted >= self._settings.referral_monthly_cap:
+                if counted >= self._settings.referral_monthly_cap:
                     # Шестая и дальше ждут одобрения, но другу дни
                     # всё равно причитаются: process выдаст их сразу.
                     status = "held"
@@ -508,14 +549,23 @@ class ReferralService:
         всё время обработки и первым делом перечитываем состояние
         записи, чтобы второй обработчик увидел, что первый уже успел
         сделать.
+
+        Уведомление об итоге (``on_terminal``) уходит ровно один раз,
+        на самом переходе в granted или failed. ``entered`` держит,
+        дошла ли эта обработка до самой работы: если запись уже была
+        терминальной, ранний возврат ниже сработает раньше, чем
+        ``entered`` станет True, и повторный ``process`` на готовой
+        награде ничего не пошлёт.
         """
         lock = _lock_for(reward.id)
+        entered = False
         async with lock:
             try:
                 await self._store.refresh(reward)
 
                 if reward.status not in ("pending", "held"):
                     return
+                entered = True
 
                 if reward.friend_granted_at is None:
                     granted = await self._grant_friend(reward)
@@ -545,8 +595,28 @@ class ReferralService:
                     "Рефералка: сбой обработки награды %s", reward.id
                 )
             finally:
+                if entered and reward.status in _TERMINAL_STATUSES:
+                    self._notify_terminal(reward)
                 if reward.status in _TERMINAL_STATUSES:
                     _release_lock(reward.id)
+
+    def _notify_terminal(self, reward: ReferralReward) -> None:
+        """Позвать внешний callback об итоге, не давая ему испортить награду.
+
+        Свой try/except: сбой похода в телеграм (или любой другой
+        callback, который подставит сборка) не должен менять статус
+        награды и не должен подняться выше ``process``.
+        """
+        if self._on_terminal is None:
+            return
+        try:
+            self._on_terminal(reward)
+        except Exception:
+            logger.exception(
+                "Рефералка: обработчик итогового уведомления упал по "
+                "награде %s",
+                reward.id,
+            )
 
     async def device_overlaps(
         self, since: datetime

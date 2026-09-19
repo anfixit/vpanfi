@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "TelegramNotifier",
+    "nagrada_itog_soobshchenie",
     "nagrada_soobshchenie",
+    "otmena_oplaty_soobshchenie",
     "pokupka_soobshchenie",
     "registraciya_soobshchenie",
     "sboj_vydachi_soobshchenie",
@@ -145,6 +147,83 @@ def nagrada_soobshchenie(
         ]
     else:
         lines += ["", "✅ Награда заведена, дни начисляются"]
+    return "\n".join(lines)
+
+
+def nagrada_itog_soobshchenie(
+    *,
+    friend_email: str,
+    inviter_username: str,
+    status: str,
+    friend_granted: bool,
+    inviter_granted: bool,
+    friend_days: int,
+    inviter_days: int,
+    last_error: str | None,
+) -> str:
+    """Сообщение об итоге обработки награды: выдана или сдалась.
+
+    Зовётся ровно на переходе в granted или failed, поэтому status
+    здесь всегда один из этих двух и других вариантов не разбирает.
+    """
+    if status == "granted":
+        return "\n".join([
+            "✅ <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ ВЫДАНА</b>",
+            "",
+            f"👤 Друг: {html.escape(friend_email)}, {friend_days} дн.",
+            f"🔗 Пригласил: {html.escape(inviter_username)}, "
+            f"{inviter_days} дн.",
+        ])
+
+    friend_hint = "выдано" if friend_granted else "не выдано"
+    inviter_hint = "выдано" if inviter_granted else "не выдано"
+    lines = [
+        "🔴 <b>НАГРАДА ЗА ПРИГЛАШЕНИЕ НЕ ВЫДАНА</b>",
+        "",
+        f"👤 Друг: {html.escape(friend_email)}, {friend_hint}",
+        f"🔗 Пригласил: {html.escape(inviter_username)}, {inviter_hint}",
+    ]
+    if last_error:
+        lines += ["", f"<b>Последняя ошибка.</b> {html.escape(last_error)}"]
+    lines += [
+        "",
+        "Десять попыток кончились. Недостающие дни нужно добавить "
+        "вручную в панели или в боте продаж, а после этого награду "
+        "можно отклонить через POST /admin/referral-rewards/{id}/reject "
+        "либо оставить как есть.",
+    ]
+    return "\n".join(lines)
+
+
+def otmena_oplaty_soobshchenie(
+    *,
+    email: str,
+    amount_kopecks: int,
+    status_name: str,
+    referral_code: str | None,
+) -> str:
+    """Сообщение о статусе, пришедшем после того, как платёж уже выдан.
+
+    Ничего не меняет само: подписка уже выдана и остаётся выданной,
+    сообщение только просит проверить платёж и, если есть код
+    приглашения, награду по нему глазами.
+    """
+    lines = [
+        "⚠️ <b>СТАТУС ПОСЛЕ УЖЕ ВЫДАННОЙ ОПЛАТЫ</b>",
+        "",
+        f"👤 {html.escape(email)}",
+        f"💵 {_rub(amount_kopecks)} ₽",
+        f"📡 Провайдер прислал статус: {html.escape(status_name)}",
+        "",
+        "Платёж уже был доставлен раньше, ничего не изменено "
+        "автоматически. Стоит проверить платёж вручную.",
+    ]
+    if referral_code:
+        lines += [
+            "",
+            "У платежа есть код приглашения, награду за него тоже "
+            "стоит проверить через GET /admin/referral-rewards.",
+        ]
     return "\n".join(lines)
 
 
