@@ -100,3 +100,47 @@ def test_empty_platega_values_are_treated_as_unset() -> None:
     assert settings.platega_merchant_id is None
     assert settings.platega_secret is None
     assert settings.is_platega_configured is False
+
+
+def test_referral_defaults_are_off_and_thirty_days() -> None:
+    """Рефералка молчит, пока её не включат явно.
+
+    Тридцать дней тому и другому, потолок пять человек в месяц и
+    получасовой повтор для фоновой задачи: числа из замысла программы.
+    """
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_enabled is False
+    assert settings.referral_friend_days == 30
+    assert settings.referral_inviter_days == 30
+    assert settings.referral_monthly_cap == 5
+    assert settings.referral_retry_minutes == 30
+    assert settings.bedolaga_api_url == "https://vpanfibot.ru/api"
+    assert settings.bedolaga_api_token is None
+    assert settings.is_bedolaga_configured is False
+
+
+def test_referral_enabled_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VPANFI_REFERRAL_ENABLED", "true")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_enabled is True
+
+
+def test_bedolaga_is_configured_only_with_a_token() -> None:
+    settings = Settings(
+        _env_file=None, bedolaga_api_token=SecretStr("secret")
+    )
+
+    assert settings.is_bedolaga_configured is True
+
+
+def test_empty_bedolaga_token_is_treated_as_unset() -> None:
+    """Секрет из GitHub может прийти пустым: пустая строка это не ключ."""
+    settings = Settings(_env_file=None, bedolaga_api_token="")
+
+    assert settings.bedolaga_api_token is None
+    assert settings.is_bedolaga_configured is False

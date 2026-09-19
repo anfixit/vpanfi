@@ -38,6 +38,10 @@ VPANFI_REMNAWAVE_API_TOKEN=
 VPANFI_REMNAWAVE_SQUAD_UUID=
 VPANFI_TELEGRAM_ALERT_BOT_TOKEN=
 VPANFI_TELEGRAM_ALERT_CHAT_ID=
+# Рефералка выключена, пока её не включат отдельно: без этого код
+# приглашения не сохранялся бы, а награды не заводились.
+VPANFI_REFERRAL_ENABLED=false
+VPANFI_BEDOLAGA_API_TOKEN=
 # Поддержка — живой человек. Бот продаж на вопрос не ответит:
 # человек попадёт в меню покупки и решит, что писать некуда.
 VITE_TELEGRAM_SUPPORT_URL=https://t.me/Anfikus
@@ -79,6 +83,8 @@ apply_panel_credentials() {
   set_env_value VPANFI_TELEGRAM_ALERT_CHAT_ID "${VPANFI_TELEGRAM_ALERT_CHAT_ID:-}"
   set_env_value VPANFI_PLATEGA_MERCHANT_ID "${VPANFI_PLATEGA_MERCHANT_ID:-}"
   set_env_value VPANFI_PLATEGA_SECRET "${VPANFI_PLATEGA_SECRET:-}"
+  set_env_value VPANFI_REFERRAL_ENABLED "${VPANFI_REFERRAL_ENABLED:-}"
+  set_env_value VPANFI_BEDOLAGA_API_TOKEN "${VPANFI_BEDOLAGA_API_TOKEN:-}"
   set_env_value VPANFI_SMTP_HOST "${VPANFI_SMTP_HOST:-}"
   set_env_value VPANFI_SMTP_PORT "${VPANFI_SMTP_PORT:-}"
   set_env_value VPANFI_SMTP_USER "${VPANFI_SMTP_USER:-}"

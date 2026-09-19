@@ -3,6 +3,7 @@ from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     Enum,
@@ -107,5 +108,74 @@ class Payment(TimestampMixin, Base):
     notified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True)
     )
+    # Код приглашения из ссылки: имя учётки пригласившего в панели.
+    # Живёт у платежа, а не у пользователя: гость на момент оплаты может
+    # ещё не иметь кабинета, а код должен дожить до выдачи подписки.
+    referral_code: Mapped[str | None] = mapped_column(
+        String(64), index=True
+    )
 
     user: Mapped[User | None] = relationship()
+
+
+class ReferralReward(TimestampMixin, Base):
+    """Награда за приглашение: по дню обеим сторонам за первую оплату.
+
+    Заводится после того, как другу выдана подписка, и живёт своей
+    жизнью: сбой панели или бота продаж не должен ронять ответ вебхуку,
+    поэтому обработчик наград работает отдельно и умеет повторять
+    попытку.
+    """
+
+    __tablename__ = "referral_rewards"
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_id", name="uq_referral_rewards_payment_id"
+        ),
+        UniqueConstraint(
+            "friend_email", name="uq_referral_rewards_friend_email"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    payment_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("payments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Почта друга: вторая защита от повторной выдачи, если платежей у
+    # него окажется несколько до того, как первый успеет обработаться.
+    friend_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    friend_panel_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    inviter_username: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True
+    )
+    inviter_panel_user_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False
+    )
+    # Заполнено только у клиентов бота продаж: им продление идёт через
+    # Bedolaga, а не через панель.
+    inviter_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    friend_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    inviter_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Строкой, а не перечислением Postgres: новое значение статуса не
+    # потребует миграции типа.
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending"
+    )
+    friend_granted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    inviter_granted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    last_error: Mapped[str | None] = mapped_column(String(500))
+
+    payment: Mapped[Payment] = relationship()

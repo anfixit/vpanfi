@@ -19,6 +19,12 @@ staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
+# .venv расшарен между основным чекаутом и ворктри (символьная ссылка),
+# и его editable-установка указывает на backend основного чекаута. Без
+# этой строки хук в ворктри тихо проверяет чужой код: 19.09.2026 коммит
+# с новой моделью падал на импорте, которого не было в чужом billing.py.
+export PYTHONPATH="backend${PYTHONPATH:+:$PYTHONPATH}"
+
 python="python3"
 [ -x .venv/bin/python ] && python=".venv/bin/python"
 

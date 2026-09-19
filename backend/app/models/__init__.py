@@ -1,4 +1,4 @@
-from app.models.billing import BillingAccount, Payment
+from app.models.billing import BillingAccount, Payment, ReferralReward
 from app.models.reminder import SubscriptionReminder
 from app.models.session import RefreshSession
 from app.models.support import SupportMessage, SupportTicket
@@ -9,6 +9,7 @@ __all__ = [
     "ExternalIdentity",
     "Payment",
     "RefreshSession",
+    "ReferralReward",
     "SubscriptionReminder",
     "SupportMessage",
     "SupportTicket",

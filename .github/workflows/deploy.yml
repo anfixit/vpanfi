@@ -73,6 +73,8 @@ jobs:
           VPANFI_TELEGRAM_ALERT_CHAT_ID: ${{ secrets.VPANFI_TELEGRAM_ALERT_CHAT_ID }}
           VPANFI_PLATEGA_MERCHANT_ID: ${{ secrets.VPANFI_PLATEGA_MERCHANT_ID }}
           VPANFI_PLATEGA_SECRET: ${{ secrets.VPANFI_PLATEGA_SECRET }}
+          VPANFI_REFERRAL_ENABLED: ${{ vars.VPANFI_REFERRAL_ENABLED }}
+          VPANFI_BEDOLAGA_API_TOKEN: ${{ secrets.VPANFI_BEDOLAGA_API_TOKEN }}
           VPANFI_SMTP_HOST: ${{ secrets.VPANFI_SMTP_HOST }}
           VPANFI_SMTP_PORT: ${{ vars.VPANFI_SMTP_PORT }}
           VPANFI_SMTP_USER: ${{ secrets.VPANFI_SMTP_USER }}
@@ -110,6 +112,10 @@ jobs:
               "${VPANFI_PLATEGA_MERCHANT_ID:-}"
             printf 'export VPANFI_PLATEGA_SECRET=%q\n' \
               "${VPANFI_PLATEGA_SECRET:-}"
+            printf 'export VPANFI_REFERRAL_ENABLED=%q\n' \
+              "${VPANFI_REFERRAL_ENABLED:-}"
+            printf 'export VPANFI_BEDOLAGA_API_TOKEN=%q\n' \
+              "${VPANFI_BEDOLAGA_API_TOKEN:-}"
             printf 'export VPANFI_SMTP_HOST=%q\n' "${VPANFI_SMTP_HOST:-}"
             printf 'export VPANFI_SMTP_PORT=%q\n' "${VPANFI_SMTP_PORT:-}"
             printf 'export VPANFI_SMTP_USER=%q\n' "${VPANFI_SMTP_USER:-}"

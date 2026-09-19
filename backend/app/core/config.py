@@ -135,6 +135,24 @@ class Settings(BaseSettings):
     yandex_client_secret: SecretStr | None = None
     oauth_redirect_url: AnyHttpUrl | None = None
 
+    # Рефералка. Выключена по умолчанию: пока флаг ложный, сайт ведёт
+    # себя как прежде, код в оплате не сохраняется и награды не выдаются.
+    referral_enabled: bool = False
+    # Дни, которые получает друг и пригласивший за первую оплату друга.
+    referral_friend_days: int = 30
+    referral_inviter_days: int = 30
+    # Потолок наград одному пригласившему за 30 дней. Сверх него другу
+    # дни всё равно выдаются, а награда пригласившему ждёт своей очереди.
+    referral_monthly_cap: int = 5
+    # Как часто фоновая задача повторяет зависшие выдачи.
+    referral_retry_minutes: int = 30
+
+    # Бот продаж хранит подписки телеграм-клиентов и умеет продлевать их
+    # сам. Пустой ключ значит, что до него не дотянуться: наградам
+    # пригласившим из бота тогда неоткуда взяться.
+    bedolaga_api_url: str = "https://vpanfibot.ru/api"
+    bedolaga_api_token: SecretStr | None = None
+
     @field_validator(
         "remnawave_base_url",
         "remnawave_api_token",
@@ -154,6 +172,7 @@ class Settings(BaseSettings):
         "yandex_client_id",
         "yandex_client_secret",
         "oauth_redirect_url",
+        "bedolaga_api_token",
         mode="before",
     )
     @classmethod
@@ -234,6 +253,11 @@ class Settings(BaseSettings):
         в отказ авторизации уже после того, как человек нажал «оплатить».
         """
         return bool(self.platega_merchant_id and self.platega_secret)
+
+    @property
+    def is_bedolaga_configured(self) -> bool:
+        """Наградам пригласившим через бота нужен рабочий ключ."""
+        return bool(self.bedolaga_api_token)
 
     @property
     def reminder_days_list(self) -> list[int]:

@@ -106,15 +106,17 @@ Optional secrets, applied to `/opt/vpanfi/.env` on every deploy. Leave them unse
 - `VPANFI_REMNAWAVE_API_TOKEN` — panel API token
 - `VPANFI_PLATEGA_MERCHANT_ID` — the site's own Platega merchant, separate from the bot's
 - `VPANFI_PLATEGA_SECRET` — its API key
+- `VPANFI_BEDOLAGA_API_TOKEN`: key for the sales bot's API, used to extend an inviter's subscription there; may be left empty, which the app treats as not configured
 
 The site sells through its own cash desk: the bot has a different merchant,
 and mixing them would send the money to the wrong account. Platega delivers
 its notifications to `https://<domain>/api/v1/payments/platega/webhook`, and
 the address is registered in the Platega dashboard, not in this repository.
 
-Optional repository **variable**:
+Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected
+- `VPANFI_REFERRAL_ENABLED`: set to `true` to turn on the referral program; defaults to `false`, which keeps the site behaving exactly as before
 
 They travel inside the SSH channel rather than on the remote command line, so they never appear in the server's process list or in a workflow log.
 
