@@ -72,7 +72,7 @@ function ReferralCard() {
     return null;
   }
 
-  const { link, friends, daysEarned } = referral.data;
+  const { link, friends, daysEarned, friendDays, inviterDays } = referral.data;
 
   const copyLink = async () => {
     if (!link) return;
@@ -91,8 +91,11 @@ function ReferralCard() {
   return (
     <CabinetCard title="Пригласите друга" icon="sparkle">
       <p className="muted">
-        Друг оплатит подписку по Вашей ссылке, и каждый из Вас получит по 30
-        дней.
+        {/* Числа приходят с сервера: размер награды задаётся настройкой,
+            и карточка не должна обещать больше, чем реально начислится. */}
+        {friendDays === inviterDays
+          ? `Друг оплатит подписку по Вашей ссылке, и каждый из Вас получит по ${inviterDays} ${pluralizeRu(inviterDays, "дню", "дня", "дней")}.`
+          : `Друг оплатит подписку по Вашей ссылке: Вам добавится ${inviterDays} ${pluralizeRu(inviterDays, "день", "дня", "дней")}, другу ${friendDays} ${pluralizeRu(friendDays, "день", "дня", "дней")}.`}
       </p>
 
       {link ? (

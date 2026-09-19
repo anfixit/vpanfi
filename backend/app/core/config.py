@@ -139,11 +139,11 @@ class Settings(BaseSettings):
     # себя как прежде, код в оплате не сохраняется и награды не выдаются.
     referral_enabled: bool = False
     # Дни, которые получает друг и пригласивший за первую оплату друга.
-    # Число 30 зашито и в клиентские тексты: src/pages/BuyPage.tsx,
+    # Размер награды зашит и в клиентские тексты: src/pages/BuyPage.tsx,
     # src/pages/DashboardPage.tsx и база знаний бота поддержки. Смена
     # этих настроек без правки тех же текстов оставит их врущими.
-    referral_friend_days: int = 30
-    referral_inviter_days: int = 30
+    referral_friend_days: int = 15
+    referral_inviter_days: int = 15
     # Потолок наград одному пригласившему за 30 дней. Сверх него другу
     # дни всё равно выдаются, а награда пригласившему ждёт своей очереди.
     referral_monthly_cap: int = 5

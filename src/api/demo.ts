@@ -203,7 +203,7 @@ export const demoReferral: ReferralInfo = {
   enabled: true,
   link: "https://vpanfi.su/?ref=demo_user",
   friends: 2,
-  daysEarned: 60,
-  friendDays: 30,
-  inviterDays: 30,
+  daysEarned: 30,
+  friendDays: 15,
+  inviterDays: 15,
 };

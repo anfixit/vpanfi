@@ -89,8 +89,8 @@ def test_disabled_program_gives_no_link_and_skips_the_store(
         "link": None,
         "friends": 0,
         "daysEarned": 0,
-        "friendDays": 30,
-        "inviterDays": 30,
+        "friendDays": 15,
+        "inviterDays": 15,
     }
     assert store.calls == []
 

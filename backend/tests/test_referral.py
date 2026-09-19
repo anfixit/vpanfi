@@ -43,6 +43,10 @@ def _settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "_env_file": None,
         "referral_enabled": True,
+        # Размер награды закреплён явно: тесты проверяют правила, а не
+        # значение по умолчанию, которое владелец меняет по ситуации.
+        "referral_friend_days": 30,
+        "referral_inviter_days": 30,
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]
