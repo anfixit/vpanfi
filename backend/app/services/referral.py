@@ -24,6 +24,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -63,6 +64,13 @@ _MAX_ERROR_LENGTH = 500
 # нужна не раньше, чем эта задача успеет провалиться и записать сбой
 # в базу.
 _DUE_MIN_AGE = timedelta(minutes=10)
+
+# Обход клиентов бота продаж постранично. Тот же приём, что и у
+# MAX_PURCHASE_PAGES в bedolaga.client: неверный total на стороне бота
+# не должен превратить обход в вечный цикл.
+_MAX_BOT_SYNC_PAGES = 50
+# Размер страницы /users бота продаж за один запрос.
+_BOT_SYNC_PAGE_SIZE = 200
 
 GatewayFactory = Callable[[], AbstractAsyncContextManager[Any]]
 
@@ -173,6 +181,20 @@ class RewardStore(Protocol):
         рэйс на "первое продление" здесь не важен: как только запись
         появилась, все следующие покупки друга снова обычное продление
         без награды.
+        """
+        ...
+
+    async def bot_reward_exists(self, transaction_id: int) -> bool:
+        """Награда за эту транзакцию бота продаж уже заведена, любого статуса.
+
+        У наград из бота продаж нет своего payment_id сайта, и
+        ``bot_transaction_id`` служит той же самой цели, что и
+        ``payment_id`` в ``reward_exists``: без него повторный обход
+        одного и того же прохода по покупкам завёл бы вторую награду
+        на ту же самую покупку. Проверяется без учёта статуса
+        намеренно: отклонённая (``rejected``) награда блокирует так же
+        навсегда, как и на сайте, потому что transaction_id этой
+        покупки больше никогда не появится ни у какой другой.
         """
         ...
 
@@ -356,6 +378,14 @@ class SqlRewardStore(RewardStore):
         )
         return await self._session.scalar(stmt) is not None
 
+    async def bot_reward_exists(self, transaction_id: int) -> bool:
+        stmt = (
+            select(ReferralReward.id)
+            .where(ReferralReward.bot_transaction_id == transaction_id)
+            .limit(1)
+        )
+        return await self._session.scalar(stmt) is not None
+
     async def add(self, reward: ReferralReward) -> None:
         self._session.add(reward)
 
@@ -487,6 +517,27 @@ def _as_aware_utc(moment: datetime) -> datetime:
     return moment
 
 
+def _validate_inviter_payload(
+    inviter_raw: Mapping[str, Any], days_if_paid: int
+) -> tuple[Mapping[str, Any], Any, int] | None:
+    """Проверить уже полученного пригласившего по общим правилам приёма.
+
+    Общий код для всех путей начисления: первой покупки на сайте,
+    продления на сайте и обхода бота продаж. Каждый из них ищет
+    пригласившего своим способом (по имени учётки, по телеграм-id), а
+    решение принять его или нет одно и то же везде и живёт только
+    здесь, а не в каждом пути по отдельности.
+
+    Returns:
+        Кортеж (сырой ответ панели, разобранный пользователь, дни
+        пригласившему), либо None, если пригласившего не приняли.
+    """
+    inviter_days = _inviter_days(inviter_raw, days_if_paid)
+    if inviter_days is None:
+        return None
+    return inviter_raw, read_panel_user(inviter_raw), inviter_days
+
+
 def _read_telegram_id(raw: Mapping[str, Any]) -> int | None:
     value = raw.get("telegramId")
     if isinstance(value, bool):
@@ -507,6 +558,7 @@ class ReferralService:
         panel_factory: GatewayFactory,
         bedolaga_factory: GatewayFactory,
         on_terminal: Callable[[ReferralReward], None] | None = None,
+        on_registered: Callable[[ReferralReward], None] | None = None,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -517,6 +569,13 @@ class ReferralService:
         # функцию, которая шлёт сообщение через TelegramNotifier. Так
         # ReferralService не зависит от телеграма напрямую.
         self._on_terminal = on_terminal
+        # register() заводит награду прямо из вебхука Platega, и
+        # уведомление владельцу о ней шлёт checkout, увидев результат
+        # register() своими глазами. sync_bot() заводит награду сама,
+        # без какого-либо вызывающего снаружи, которому можно отдать
+        # результат, и ей нужен свой способ позвать то же самое
+        # уведомление: этот callback, а не правка checkout.py.
+        self._on_registered = on_registered
 
     async def register(
         self,
@@ -585,10 +644,7 @@ class ReferralService:
             inviter_raw = await panel.get_user_by_username(username)
         except RemnawaveUserNotFoundError:
             return None
-        inviter_days = _inviter_days(inviter_raw, days_if_paid)
-        if inviter_days is None:
-            return None
-        return inviter_raw, read_panel_user(inviter_raw), inviter_days
+        return _validate_inviter_payload(inviter_raw, days_if_paid)
 
     async def _cap_status(
         self, inviter_username: str, inviter_days: int
@@ -694,8 +750,17 @@ class ReferralService:
         await self._store.save()
         return reward
 
-    def _renewal_gap_is_satisfied(self, first_created_at: datetime) -> bool:
+    def _renewal_gap_is_satisfied(
+        self, first_created_at: datetime, *, moment: datetime | None = None
+    ) -> bool:
         """Прошло ли достаточно дней от первой покупки для продления.
+
+        ``moment`` это момент, с которым сравнивается разрыв. По
+        умолчанию берётся "сейчас": сайт узнаёт о втором платеже прямо
+        в момент вебхука. Обход бота продаж передаёт время самой
+        покупки (``completed_at``), потому что синхронизация с ботом
+        случается заметно позже неё, и сравнение с "сейчас" посчитало
+        бы разрыв больше, чем он был на самом деле в момент покупки.
 
         Ноль в настройке отключает проверку вовсе: значит, разделять
         вторую оплату того же вечера от настоящего продления через
@@ -704,7 +769,10 @@ class ReferralService:
         gap_days = self._settings.referral_renewal_min_gap_days
         if gap_days <= 0:
             return True
-        elapsed = datetime.now(UTC) - _as_aware_utc(first_created_at)
+        reference = (
+            _as_aware_utc(moment) if moment is not None else datetime.now(UTC)
+        )
+        elapsed = reference - _as_aware_utc(first_created_at)
         return elapsed >= timedelta(days=gap_days)
 
     async def _register_renewal(
@@ -789,6 +857,311 @@ class ReferralService:
 
         await self._store.add(reward)
         await self._store.save()
+        return reward
+
+    async def sync_bot(
+        self, schedule: Callable[[UUID], None] | None = None
+    ) -> int:
+        """Обойти клиентов бота продаж и завести награды по общим правилам.
+
+        Друг может прийти по ссылке не на сайт, а прямо в бота продаж:
+        бот сам записывает ``referred_by_id`` при регистрации нового
+        человека, и сайт узнаёт об этом только отсюда, периодическим
+        обходом, а не вебхуком, как у покупки на сайте. Правила
+        награды при этом ровно те же самые: приём пригласившего
+        (``_validate_inviter_payload``), потолок (``_cap_status``) и
+        разрыв дат для продления (``_renewal_gap_is_satisfied``) общие
+        с ``register``, а не переизобретены здесь.
+
+        Ничего не бросает наружу и не прерывает обход из-за одного
+        сломанного кандидата: их за один проход может быть много, и
+        сбой сети на одном из них не должен стоить наград всем
+        остальным. Возвращает число заведённых наград.
+        """
+        if not (
+            self._settings.referral_enabled
+            and self._settings.referral_bot_enabled
+            and self._settings.is_bedolaga_configured
+        ):
+            # Выключенный мост не должен сходить в бота продаж ни
+            # разу: даже одно list_users() уже было бы лишним сетевым
+            # походом при погашенной настройке.
+            return 0
+
+        created = 0
+        try:
+            async with (
+                self._bedolaga_factory() as bedolaga,
+                self._panel_factory() as panel,
+            ):
+                offset = 0
+                for _ in range(_MAX_BOT_SYNC_PAGES):
+                    users, total = await bedolaga.list_users(
+                        limit=_BOT_SYNC_PAGE_SIZE, offset=offset
+                    )
+                    if not users:
+                        break
+
+                    for user in users:
+                        if not (
+                            user.referred_by_id is not None
+                            and user.has_had_paid_subscription
+                            and user.telegram_id is not None
+                        ):
+                            continue
+                        reward = await self._sync_bot_candidate(
+                            bedolaga, panel, user
+                        )
+                        if reward is None:
+                            continue
+                        created += 1
+                        self._notify_registered(reward)
+                        if schedule is not None:
+                            schedule(reward.id)
+
+                    offset += len(users)
+                    if offset >= total:
+                        break
+        except Exception:
+            logger.exception("Рефералка: обход бота продаж сорвался")
+        return created
+
+    async def _sync_bot_candidate(
+        self, bedolaga: Any, panel: Any, user: Any
+    ) -> ReferralReward | None:
+        """Разобрать одного кандидата, не роняя весь обход при его сбое.
+
+        Свой try/except на кандидата: обход бота продаж должен дойти
+        до последнего кандидата даже если сеть подвела на середине
+        списка, и сломанный кандидат не должен унести с собой награды
+        всем, кто идёт после него в той же странице.
+        """
+        try:
+            return await self._sync_one_candidate(bedolaga, panel, user)
+        except Exception:
+            logger.exception(
+                "Рефералка: обход клиента %s бота продаж сорвался",
+                user.id,
+            )
+            await self._otkatit_bezopasno()
+            return None
+
+    async def _sync_one_candidate(
+        self, bedolaga: Any, panel: Any, user: Any
+    ) -> ReferralReward | None:
+        """Завести не больше одной награды за друга из бота продаж.
+
+        За один проход у одного и того же друга появляется либо
+        награда за первую покупку, либо за продление, никогда обе
+        сразу: продление ждёт своего прохода после того, как первая
+        покупка отработает до ``granted``/``held`` (этим занимается
+        ``process``, а не обход).
+        """
+        friend_telegram_id = user.telegram_id
+        friend_key = f"tg:{friend_telegram_id}"
+
+        purchases = await bedolaga.purchases(user.id)
+        if not purchases:
+            # Только пополнял баланс, подписку в боте не покупал:
+            # пополнение баланса наградой не является.
+            return None
+
+        first = await self._store.first_reward_for(friend_key)
+        if first is None:
+            if await self._store.bot_reward_exists(purchases[0].id):
+                # Награда за эту же самую покупку уже где-то заведена
+                # (pending, failed или rejected): у этой транзакции
+                # id не изменится, и повторная попытка ничего нового
+                # не принесёт. Отклонённая награда блокирует ровно так
+                # же навсегда, как и на сайте.
+                return None
+            return await self._create_bot_first_reward(
+                bedolaga, panel, user, purchases[0], friend_key,
+                friend_telegram_id,
+            )
+
+        # first.status гарантированно granted или held: это условие
+        # ``first_reward_for`` по контракту протокола.
+        if self._settings.referral_renewal_days <= 0:
+            return None
+        if await self._store.renewal_exists(friend_key):
+            return None
+
+        renewal_purchase = next(
+            (
+                purchase
+                for purchase in purchases
+                if purchase.id != first.bot_transaction_id
+                and self._renewal_gap_is_satisfied(
+                    first.created_at, moment=purchase.completed_at
+                )
+            ),
+            None,
+        )
+        if renewal_purchase is None:
+            # Ни одна покупка (кроме самой первой) ещё не отстоит от
+            # первой на нужный разрыв: настоящее продление придёт
+            # позже, следующим проходом обхода.
+            return None
+
+        return await self._create_bot_renewal_reward(
+            bedolaga, panel, user, first, renewal_purchase, friend_key,
+            friend_telegram_id,
+        )
+
+    async def _resolve_bot_inviter(
+        self,
+        bedolaga: Any,
+        panel: Any,
+        *,
+        referred_by_id: int,
+        friend_telegram_id: int,
+        days_if_paid: int,
+    ) -> tuple[Mapping[str, Any], Any, int] | None:
+        """Найти и проверить пригласившего из бота продаж.
+
+        Пригласивший известен боту только числовым id
+        (``referred_by_id``): у него может не быть телеграм-id вовсе
+        (тогда награду некому отдать) или учётки в панели (тогда его
+        и на сайте нет). Правила приёма после этого те же самые, что
+        и у пригласившего с сайта (``_validate_inviter_payload``).
+        """
+        try:
+            inviter_bot = await bedolaga.user_by_id(referred_by_id)
+        except BedolagaUserNotFoundError:
+            return None
+        if inviter_bot.telegram_id is None:
+            return None
+        if inviter_bot.telegram_id == friend_telegram_id:
+            # Пригласивший и друг это один и тот же человек в боте.
+            return None
+        try:
+            inviter_raw = await panel.get_user_by_telegram_id(
+                inviter_bot.telegram_id
+            )
+        except RemnawaveUserNotFoundError:
+            return None
+        return _validate_inviter_payload(inviter_raw, days_if_paid)
+
+    async def _create_bot_first_reward(
+        self,
+        bedolaga: Any,
+        panel: Any,
+        user: Any,
+        purchase: Any,
+        friend_key: str,
+        friend_telegram_id: int,
+    ) -> ReferralReward | None:
+        """Завести награду за первую покупку друга, пришедшего в бота."""
+        validated = await self._resolve_bot_inviter(
+            bedolaga,
+            panel,
+            referred_by_id=user.referred_by_id,
+            friend_telegram_id=friend_telegram_id,
+            days_if_paid=self._settings.referral_inviter_days,
+        )
+        if validated is None:
+            return None
+        inviter_raw, inviter_user, inviter_days = validated
+        inviter_username = inviter_user.username or str(inviter_user.id)
+
+        status = await self._cap_status(inviter_username, inviter_days)
+
+        reward = ReferralReward(
+            payment_id=None,
+            source="bot",
+            friend_email=friend_key,
+            friend_panel_user_id=None,
+            friend_telegram_id=friend_telegram_id,
+            inviter_username=inviter_username,
+            inviter_panel_user_id=inviter_user.id,
+            inviter_telegram_id=_read_telegram_id(inviter_raw),
+            bot_transaction_id=purchase.id,
+            friend_days=self._settings.referral_friend_days,
+            inviter_days=inviter_days,
+            kind="first",
+            status=status,
+            friend_granted_at=None,
+            inviter_granted_at=None,
+            attempts=0,
+            last_error=None,
+        )
+        return await self._save_bot_reward(reward)
+
+    async def _create_bot_renewal_reward(
+        self,
+        bedolaga: Any,
+        panel: Any,
+        user: Any,
+        first: ReferralReward,
+        purchase: Any,
+        friend_key: str,
+        friend_telegram_id: int,
+    ) -> ReferralReward | None:
+        """Завести награду за продление друга, пришедшего в бота продаж."""
+        validated = await self._resolve_bot_inviter(
+            bedolaga,
+            panel,
+            referred_by_id=user.referred_by_id,
+            friend_telegram_id=friend_telegram_id,
+            days_if_paid=self._settings.referral_renewal_days,
+        )
+        if validated is None:
+            return None
+        inviter_raw, inviter_user, inviter_days = validated
+
+        if inviter_days == 0:
+            # SVOI: пригласившему дни не положены вовсе, а другу на
+            # продлении и так не бывает бонуса сверху. Заводить пустую
+            # запись, которая никому ничего не даст, незачем, как и на
+            # сайте.
+            return None
+
+        inviter_username = inviter_user.username or first.inviter_username
+        status = await self._cap_status(inviter_username, inviter_days)
+
+        reward = ReferralReward(
+            payment_id=None,
+            source="bot",
+            friend_email=friend_key,
+            friend_panel_user_id=None,
+            friend_telegram_id=friend_telegram_id,
+            inviter_username=inviter_username,
+            inviter_panel_user_id=inviter_user.id,
+            inviter_telegram_id=_read_telegram_id(inviter_raw),
+            bot_transaction_id=purchase.id,
+            friend_days=0,
+            inviter_days=inviter_days,
+            kind="renewal",
+            status=status,
+            friend_granted_at=None,
+            inviter_granted_at=None,
+            attempts=0,
+            last_error=None,
+        )
+        return await self._save_bot_reward(reward)
+
+    async def _save_bot_reward(
+        self, reward: ReferralReward
+    ) -> ReferralReward | None:
+        """Сохранить новую награду из обхода бота продаж.
+
+        Один и тот же transaction_id может попасться дважды, если два
+        прохода обхода наложились друг на друга: unique-индекс базы
+        отбивает вторую вставку сам, и это штатный случай, о котором
+        достаточно короткой строки в лог, а не трассы исключения.
+        """
+        await self._store.add(reward)
+        try:
+            await self._store.save()
+        except IntegrityError:
+            logger.info(
+                "Рефералка: награда за транзакцию %s из бота продаж "
+                "уже заведена другим проходом обхода",
+                reward.bot_transaction_id,
+            )
+            await self._store.rollback()
+            return None
         return reward
 
     async def process_by_id(self, reward_id: UUID) -> None:
@@ -896,6 +1269,23 @@ class ReferralService:
                 reward.id,
             )
 
+    def _notify_registered(self, reward: ReferralReward) -> None:
+        """Позвать внешний callback о новой награде из бота продаж.
+
+        Свой try/except, тем же приёмом, что и у ``_notify_terminal``:
+        сбой похода в телеграм не должен прервать обход бота продаж,
+        у которого впереди могут быть ещё десятки кандидатов.
+        """
+        if self._on_registered is None:
+            return
+        try:
+            self._on_registered(reward)
+        except Exception:
+            logger.exception(
+                "Рефералка: обработчик новой награды упал по награде %s",
+                reward.id,
+            )
+
     async def device_overlaps(
         self, since: datetime
     ) -> list[tuple[ReferralReward, int]]:
@@ -984,11 +1374,19 @@ class ReferralService:
         )
 
     async def _grant_friend(self, reward: ReferralReward) -> bool:
-        """Продлить подписку друга в панели. True значит: выдано или уже было.
+        """Продлить подписку друга. True значит: выдано или уже было.
 
-        Друг всегда клиент сайта: подписка у него только в панели, ни
-        Bedolaga тут ни при чём.
+        Друг с сайта живёт только в панели, и продление идёт напрямую
+        ниже. Друг, пришедший в бота продаж (``source == "bot"``),
+        живёт своей подпиской в самом боте, и ему сюда дороги нет:
+        ``_grant_friend_via_bot`` продлевает его через Bedolaga, а
+        панель не трогает вовсе, потому что бот сам синхронизирует
+        срок с панелью и переписал бы любое прямое продление панели
+        своим же сроком при следующей сверке.
         """
+        if reward.source == "bot":
+            return await self._grant_friend_via_bot(reward)
+
         if reward.friend_panel_user_id is None:
             # Идентификатор учётки друга обязан прийти с самого начала
             # (Task 4 передаёт его всегда); выводить имя из почты здесь
@@ -1017,6 +1415,53 @@ class ReferralService:
         except Exception as error:
             logger.exception(
                 "Рефералка: не удалось выдать дни другу по награде %s",
+                reward.id,
+            )
+            await self._record_failure(reward, f"не выдано другу: {error}")
+            return False
+
+        reward.friend_granted_at = datetime.now(UTC)
+        try:
+            await self._store.save()
+        except Exception:
+            await self._mark_unrecoverable(reward, "friend")
+            return False
+        return True
+
+    async def _grant_friend_via_bot(self, reward: ReferralReward) -> bool:
+        """Продлить подписку друга из бота продаж через сам бот.
+
+        Отсутствие ``friend_panel_user_id`` тут нормально, а не сбой:
+        друг из бота продаж мог никогда не заходить на сайт и вовсе
+        не иметь учётки в панели. ``BedolagaUserNotFoundError`` значит,
+        что у друга в боте только пробный период (там оплаченной
+        подписки не бывает): продлевать нечего, и падать в панель
+        нельзя, потому что бот перепишет срок своим при следующей
+        сверке.
+        """
+        try:
+            async with self._bedolaga_factory() as bedolaga:
+                try:
+                    subscription_id = (
+                        await bedolaga.subscription_id_by_telegram_id(
+                            reward.friend_telegram_id
+                        )
+                    )
+                except BedolagaUserNotFoundError as error:
+                    logger.warning(
+                        "Рефералка: у друга по награде %s в боте "
+                        "только триал",
+                        reward.id,
+                    )
+                    await self._record_failure(
+                        reward, f"у друга в боте только триал: {error}"
+                    )
+                    return False
+                await bedolaga.extend(subscription_id, reward.friend_days)
+        except Exception as error:
+            logger.exception(
+                "Рефералка: не удалось выдать дни другу из бота продаж "
+                "по награде %s",
                 reward.id,
             )
             await self._record_failure(reward, f"не выдано другу: {error}")
