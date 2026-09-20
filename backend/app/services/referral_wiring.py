@@ -27,6 +27,7 @@ from app.models.billing import ReferralReward
 from app.services.notify import (
     TelegramNotifier,
     nagrada_itog_soobshchenie,
+    nagrada_soobshchenie,
     sovpadenie_ustrojstv_soobshchenie,
 )
 from app.services.referral import ReferralService, SqlRewardStore
@@ -34,9 +35,12 @@ from app.services.referral import ReferralService, SqlRewardStore
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "bot_sync_next_run",
+    "bot_sync_period",
     "build_referral_service",
     "obojti_ozhidayushchie",
     "obrabotat_nagradu",
+    "sinhronizirovat_bota",
     "sverit_ustrojstva",
     "zapustit_obrabotku",
 ]
@@ -44,6 +48,15 @@ __all__ = [
 # Окно сверки устройств: сутки, за которые бегает фоновая задача, плюс
 # запас в час на случай перезапуска приложения между двумя обходами.
 _DEVICE_CHECK_WINDOW = timedelta(hours=25)
+
+# Первый обход бота продаж сдвинут от старта приложения на 3 минуты:
+# короче, чем у сверки устройств (10 минут), потому что здесь нет
+# похода в телеграм по каждому пользователю, а только по новым
+# наградам, и частый перезапуск при деплое не грозит завалить Анфису.
+_BOT_SYNC_PERVYJ_ZAPUSK = timedelta(minutes=3)
+# Не короче пяти минут даже если в настройках стоит меньше: панель и
+# бот продаж не должны получать обход чаще, чем раз в пять минут.
+_BOT_SYNC_MIN_MINUT = 5
 
 
 def _soobshchit_ob_itoge(settings: Settings, reward: ReferralReward) -> None:
@@ -69,6 +82,32 @@ def _soobshchit_ob_itoge(settings: Settings, reward: ReferralReward) -> None:
     )
 
 
+def _soobshchit_o_novoj_nagrade(
+    settings: Settings, reward: ReferralReward
+) -> None:
+    """Рассказать о награде, заведённой обходом бота продаж.
+
+    Награда за покупку на сайте объявляется прямо из checkout.py, сразу
+    после ``register()``, потому что там есть кому отдать результат.
+    ``sync_bot()`` заводит награду сама, без вызывающего снаружи, и это
+    единственное место, откуда за неё можно позвать то же самое
+    сообщение владельцу. Проверка ``alert_events`` та же, что и у
+    checkout.py: одна настройка решает, слать ли уведомление о любой
+    новой награде, независимо от того, где она заведена.
+    """
+    if "payment" not in settings.alert_events:
+        return
+    TelegramNotifier(settings).send_later(
+        nagrada_soobshchenie(
+            friend_email=reward.friend_email,
+            inviter_username=reward.inviter_username,
+            status=reward.status,
+            kind=reward.kind,
+            source="bot",
+        )
+    )
+
+
 def build_referral_service(
     session: AsyncSession, settings: Settings
 ) -> ReferralService:
@@ -84,6 +123,9 @@ def build_referral_service(
         lambda: RemnawaveGateway(settings),
         lambda: BedolagaGateway(settings),
         on_terminal=lambda reward: _soobshchit_ob_itoge(settings, reward),
+        on_registered=lambda reward: _soobshchit_o_novoj_nagrade(
+            settings, reward
+        ),
     )
 
 
@@ -188,3 +230,56 @@ async def sverit_ustrojstva() -> int:
     except Exception:
         logger.exception("Рефералка: сверка устройств сорвалась")
         return 0
+
+
+async def sinhronizirovat_bota() -> int:
+    """Обойти бота продаж и завести награды за друзей, купивших там.
+
+    Своя сессия, как и у ``sverit_ustrojstva``: главный цикл
+    ``app.main._nagrady`` не должен делить сессию ни с чем другим.
+    ``ReferralService.sync_bot`` сама не бросает исключений и сама же
+    ничего не делает, пока мост выключен настройками, но открытие
+    сессии здесь всё равно завёрнуто отдельно: сбой до входа в
+    ``sync_bot`` не должен прервать цикл в ``main.py``.
+    """
+    settings = get_settings()
+    try:
+        async with async_session_factory() as session:
+            service = build_referral_service(session, settings)
+            return await service.sync_bot(schedule=zapustit_obrabotku)
+    except Exception:
+        logger.exception(
+            "Рефералка: не удалось открыть сессию для обхода бота"
+        )
+        return 0
+
+
+def bot_sync_period(settings: Settings) -> timedelta:
+    """Период фонового обхода бота продаж, не короче пяти минут.
+
+    Чистая функция, а не выражение внутри цикла ``_nagrady``: сам цикл
+    засыпает настоящими минутами и тестам не подходит, а это правило
+    (не короче пяти минут даже при более частой настройке) проверяется
+    без ожидания.
+    """
+    return timedelta(
+        minutes=max(_BOT_SYNC_MIN_MINUT, settings.referral_bot_sync_minutes)
+    )
+
+
+def bot_sync_next_run(
+    *, poslednij_zapusk: datetime | None, seichas: datetime, period: timedelta
+) -> datetime:
+    """Момент следующего обхода бота продаж.
+
+    Без предыдущего запуска (только что поднялось приложение) первый
+    обход назначается через ``_BOT_SYNC_PERVYJ_ZAPUSK`` от текущего
+    момента, а не через полный период: это короче, и деплой не должен
+    ждать целых 30 минут (значение по умолчанию), чтобы заметить, что
+    мост включён. Дальше каждый следующий обход считается от предыдущего
+    запуска, а не от "сейчас", чтобы дрожание цикла ``_nagrady`` (он сам
+    может проснуться чуть позже своего сна) не растягивало период.
+    """
+    if poslednij_zapusk is None:
+        return seichas + _BOT_SYNC_PERVYJ_ZAPUSK
+    return poslednij_zapusk + period

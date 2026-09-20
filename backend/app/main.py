@@ -13,7 +13,10 @@ from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
 from app.services.referral_wiring import (
+    bot_sync_next_run,
+    bot_sync_period,
     obojti_ozhidayushchie,
+    sinhronizirovat_bota,
     sverit_ustrojstva,
 )
 from app.services.reminders import RemindersService
@@ -75,15 +78,28 @@ async def _nagrady() -> None:
     прямо в этой функции и переживает только её собственные пробуждения,
     а первый запуск сдвинут на 10 минут от старта, чтобы частый
     перезапуск при деплое не заваливал Анфису уведомлениями.
+
+    Обход бота продаж (``sinhronizirovat_bota``) по той же причине
+    живёт здесь же, а не в четвёртой задаче: у самого цикла период
+    ``referral_retry_minutes`` (по умолчанию 30 минут), а у обхода
+    бота свой период ``referral_bot_sync_minutes`` (тоже 30 по
+    умолчанию, но настраивается отдельно). Если период обхода бота
+    когда-нибудь окажется короче периода самого цикла, обход просто
+    будет запускаться на каждом пробуждении цикла, не чаще: своего
+    таймера у него нет, только отметка "пора" на очередном сне.
     """
     settings = get_settings()
     if not settings.referral_enabled:
         return
 
     minuty = max(5, settings.referral_retry_minutes)
+    period_bota = bot_sync_period(settings)
     # Та же небольшая задержка на старте, что и у напоминаний.
     await asyncio.sleep(90)
     sleduyushchaya_sverka = datetime.now(UTC) + _PERVAYA_SVERKA_USTROJSTV
+    sleduyushchij_zapusk_bota = bot_sync_next_run(
+        poslednij_zapusk=None, seichas=datetime.now(UTC), period=period_bota
+    )
     while True:
         try:
             obrabotano = await obojti_ozhidayushchie()
@@ -111,6 +127,27 @@ async def _nagrady() -> None:
                 logger.exception("Рефералка: сверка устройств сорвалась")
             sleduyushchaya_sverka = (
                 datetime.now(UTC) + _SVERKA_USTROJSTV_KAZHDYE
+            )
+
+        if (
+            settings.referral_bot_enabled
+            and datetime.now(UTC) >= sleduyushchij_zapusk_bota
+        ):
+            try:
+                zavedeno = await sinhronizirovat_bota()
+                if zavedeno:
+                    logger.info(
+                        "Рефералка: наград из бота продаж заведено: %s",
+                        zavedeno,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Рефералка: обход бота продаж сорвался")
+            sleduyushchij_zapusk_bota = bot_sync_next_run(
+                poslednij_zapusk=datetime.now(UTC),
+                seichas=datetime.now(UTC),
+                period=period_bota,
             )
 
         await asyncio.sleep(minuty * 60)

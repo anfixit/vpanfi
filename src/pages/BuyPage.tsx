@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { shop, ShopRequestError } from "../api/shop";
+import { fetchInviteTelegramUrl, shop, ShopRequestError } from "../api/shop";
 import type { GuestPurchaseStatus, ShopTariff } from "../api/contracts";
 import { navigate, routes } from "../app/navigation";
 import { Brand } from "../components/Brand";
@@ -200,6 +200,30 @@ export function BuyPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * Ссылка на бота продаж для пришедшего по приглашению: тот же друг
+   * может купить подписку не на сайте, а прямо в боте, и награда всё
+   * равно достанется пригласившему. Спрашиваем один раз при заходе на
+   * страницу, а не на каждый ре-рендер: код приглашения за время жизни
+   * страницы не меняется.
+   */
+  const referralCode = currentReferral();
+  const [telegramInviteUrl, setTelegramInviteUrl] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (referralCode === null) return;
+
+    let cancelled = false;
+    fetchInviteTelegramUrl(referralCode).then((url) => {
+      if (!cancelled) setTelegramInviteUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [referralCode]);
+
   /* Возврат из платёжки: токен в адресе означает, что покупка уже создана. */
   const token = new URLSearchParams(window.location.search).get("token");
 
@@ -281,10 +305,35 @@ export function BuyPage({
               Ссылку на подписку покажем сразу после оплаты.
             </p>
 
-            {currentReferral() !== null && (
-              <p className="buy-note">
-                Вы пришли по приглашению. К первой покупке добавится 15 дней.
-              </p>
+            {referralCode !== null && (
+              <>
+                <p className="buy-note">
+                  Вы пришли по приглашению. К первой покупке добавится 15
+                  дней.
+                </p>
+                {/*
+                 * Кнопка появляется только когда ссылка нашлась: без неё
+                 * пригласивший может быть не привязан к боту продаж, и
+                 * тогда основной путь покупки на сайте остаётся один,
+                 * без второй кнопки рядом.
+                 */}
+                {telegramInviteUrl !== null && (
+                  <>
+                    <a
+                      className="button button-ghost"
+                      href={telegramInviteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Купить в Telegram
+                    </a>
+                    <p className="muted">
+                      Для Telegram нужен работающий VPN. Награда придёт и
+                      там.
+                    </p>
+                  </>
+                )}
+              </>
             )}
 
             {config.loading && <p className="muted">Загружаем тарифы…</p>}

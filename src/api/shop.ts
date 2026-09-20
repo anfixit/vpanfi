@@ -11,6 +11,7 @@
  * проксирует /shop/ дальше (см. nginx.conf).
  */
 
+import { api } from "./client";
 import { currentReferral } from "../referral";
 import type {
   CheckoutPaymentMethod,
@@ -242,3 +243,31 @@ export const shop = {
 };
   },
 };
+
+/*
+ * Ссылка на бота продаж для друга, пришедшего по чужому приглашению.
+ *
+ * Открытый маршрут сам никогда не отдаёт ошибку (см. backend), но сеть
+ * между браузером и сайтом всё равно может подвести, и здесь тот же
+ * принцип: любой сбой превращается в null, а не в исключение, которое
+ * пришлось бы обрабатывать на странице покупки.
+ */
+export async function fetchInviteTelegramUrl(
+  code: string,
+): Promise<string | null> {
+  if (api.isDemoMode) {
+    return "https://t.me/VPaNfi_bot?start=demo";
+  }
+
+  try {
+    const response = await fetch(
+      `/api/v1/referral/invite?ref=${encodeURIComponent(code)}`,
+    );
+    if (!response.ok) return null;
+
+    const raw = (await response.json()) as { telegramUrl?: string | null };
+    return raw.telegramUrl ?? null;
+  } catch {
+    return null;
+  }
+}

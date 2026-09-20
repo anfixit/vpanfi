@@ -18,6 +18,7 @@ from app.services.cabinet import CabinetService
 from app.services.checkout import CheckoutService
 from app.services.oauth import OAuthService
 from app.services.referral import RewardStore, SqlRewardStore
+from app.services.referral_invite import InviteResolver
 from app.services.referral_wiring import (
     build_referral_service,
     zapustit_obrabotku,
@@ -29,11 +30,13 @@ __all__ = [
     "CurrentAdmin",
     "CurrentUser",
     "DatabaseSession",
+    "InviteResolverDep",
     "ReferralScheduler",
     "get_admin_service",
     "get_auth_service",
     "get_cabinet_service",
     "get_current_user",
+    "get_invite_resolver",
     "get_oauth_service",
     "get_referral_scheduler",
     "get_reward_store",
@@ -55,6 +58,21 @@ BearerCredentials = Annotated[
 @lru_cache
 def get_cabinet_service() -> CabinetService:
     return CabinetService()
+
+
+@lru_cache
+def get_invite_resolver() -> InviteResolver:
+    """Один резолвер ссылки на бота продаж на весь процесс.
+
+    Кэш ссылок живёт внутри резолвера (см. ``referral_invite.py``), и
+    его смысл только в том, чтобы жить дольше одного запроса. Новый
+    экземпляр на каждый вызов маршрута обнулял бы кэш на каждый же
+    показ страницы покупки.
+    """
+    return InviteResolver()
+
+
+InviteResolverDep = Annotated[InviteResolver, Depends(get_invite_resolver)]
 
 
 def get_auth_service(session: DatabaseSession) -> AuthService:
