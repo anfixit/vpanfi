@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import SecretStr, ValidationError
 
@@ -165,3 +167,30 @@ def test_referral_bot_enabled_is_read_from_the_environment(
     settings = Settings(_env_file=None)
 
     assert settings.referral_bot_enabled is True
+
+
+def test_referral_bot_since_defaults_to_unset() -> None:
+    """Пусто значит: защита от наград задним числом выключена."""
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_bot_since is None
+
+
+def test_referral_bot_since_is_parsed_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VPANFI_REFERRAL_BOT_SINCE", "2026-01-01T00:00:00")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.referral_bot_since == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_referral_bot_since_normalizes_a_naive_value_to_utc() -> None:
+    """Наивное значение (без смещения) считается UTC, а не падает."""
+    settings = Settings(
+        _env_file=None, referral_bot_since=datetime(2026, 1, 1)
+    )
+
+    assert settings.referral_bot_since == datetime(2026, 1, 1, tzinfo=UTC)
+    assert settings.referral_bot_since.tzinfo is not None

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -180,6 +181,31 @@ class Settings(BaseSettings):
     # пригласившим из бота тогда неоткуда взяться.
     bedolaga_api_url: str = "https://vpanfibot.ru/api"
     bedolaga_api_token: SecretStr | None = None
+
+    # Защита от награды задним числом: покупки, завершённые до этого
+    # момента, никогда не превращаются в награду. Сегодня бот всегда
+    # ставит referred_by_id только новому человеку, но если он когда-
+    # нибудь научится привязывать пригласившего к уже существующему
+    # покупателю, старая покупка не должна вдруг стать наградой. Пусто
+    # выключает защиту целиком, как было раньше. Только для конфига,
+    # без деплойных секретов и переменных workflow.
+    referral_bot_since: datetime | None = None
+
+    @field_validator("referral_bot_since", mode="after")
+    @classmethod
+    def normalize_referral_bot_since_to_utc(
+        cls, value: datetime | None
+    ) -> datetime | None:
+        """Достроить зону там, где в переменной окружения её не было.
+
+        ``purchases[].completed_at`` от бота продаж всегда осведомлён о
+        зоне (UTC), и сравнение с наивным значением упало бы прямо на
+        первом сравнении. Наивное здесь может значить только UTC: весь
+        проект и так работает в нём.
+        """
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
     @field_validator(
         "remnawave_base_url",

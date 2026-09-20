@@ -173,6 +173,14 @@ class FakeStore:
                 return reward
         return None
 
+    async def first_reward_exists(self, email: str) -> bool:
+        email_lower = email.lower()
+        return any(
+            reward.friend_email.lower() == email_lower
+            and reward.kind == "first"
+            for reward in self.rewards
+        )
+
     async def renewal_exists(self, email: str) -> bool:
         email_lower = email.lower()
         return any(
@@ -742,6 +750,167 @@ async def test_one_reward_per_candidate_per_pass() -> None:
     assert len(store.rewards) == 1
 
 
+# --- sync_bot: хранилище смотрим раньше, чем идём в бота продаж ------------
+
+
+async def test_settled_friend_with_a_renewal_skips_the_remote_call() -> None:
+    """Первая покупка выдана, продление уже заведено: за этим другом
+    в бота продаж больше не ходим ни разу."""
+    now = datetime.now(UTC)
+    first_created = now - timedelta(days=60)
+    store = FakeStore()
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1001,
+            status="granted",
+            created_at=first_created,
+        )
+    )
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1002,
+            kind="renewal",
+            friend_days=0,
+            status="granted",
+            created_at=first_created + timedelta(days=25),
+        )
+    )
+    service, store, panel, bedolaga = _service(
+        store=store,
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[]),
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert bedolaga.purchases_calls == []
+
+
+async def test_settled_friend_with_no_renewal_setting_skips_the_call() -> (
+    None
+):
+    """Продление выключено настройкой: за уже выданной первой покупкой
+    в бота продаж тоже больше не ходим."""
+    now = datetime.now(UTC)
+    first_created = now - timedelta(days=60)
+    store = FakeStore()
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1001,
+            status="granted",
+            created_at=first_created,
+        )
+    )
+    settings = _settings(referral_renewal_days=0)
+    service, store, panel, bedolaga = _service(
+        settings=settings,
+        store=store,
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[]),
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert bedolaga.purchases_calls == []
+
+
+async def test_rejected_first_reward_skips_the_remote_call() -> None:
+    """Отклонённая первая покупка блокирует навсегда, без похода в бота."""
+    now = datetime.now(UTC)
+    first_created = now - timedelta(days=60)
+    store = FakeStore()
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1001,
+            status="rejected",
+            created_at=first_created,
+        )
+    )
+    service, store, panel, bedolaga = _service(
+        store=store,
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[]),
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert bedolaga.purchases_calls == []
+
+
+async def test_pending_first_reward_skips_the_remote_call() -> None:
+    """Первая покупка ещё не отработала: обход подождёт без похода в бота."""
+    now = datetime.now(UTC)
+    first_created = now - timedelta(days=60)
+    store = FakeStore()
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1001,
+            status="pending",
+            created_at=first_created,
+        )
+    )
+    service, store, panel, bedolaga = _service(
+        store=store,
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[]),
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert len(store.rewards) == 1
+    assert bedolaga.purchases_calls == []
+
+
+async def test_granted_first_without_a_renewal_calls_the_remote() -> None:
+    """Продление ещё не заведено, а настройка его разрешает: бота продаж
+    всё же спрашиваем, вдруг там уже есть покупка на нужном разрыве."""
+    now = datetime.now(UTC)
+    first_created = now - timedelta(days=60)
+    store = FakeStore()
+    store.rewards.append(
+        _bot_reward(
+            friend_key=f"tg:{FRIEND_TELEGRAM_ID}",
+            bot_transaction_id=1001,
+            status="granted",
+            created_at=first_created,
+        )
+    )
+    bedolaga = _default_bedolaga(purchase_ids=[])
+    bedolaga.purchases_by_user[FRIEND_BOT_ID] = [
+        _purchase(1001, completed_at=first_created),
+    ]
+    service, store, panel, bedolaga = _service(
+        store=store, panel=_default_panel(), bedolaga=bedolaga
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert bedolaga.purchases_calls == [FRIEND_BOT_ID]
+
+
+async def test_brand_new_friend_calls_the_remote() -> None:
+    """У друга ещё вовсе нет first-награды: без похода в бота её не завести."""
+    service, store, panel, bedolaga = _service(
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[1001]),
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 1
+    assert bedolaga.purchases_calls == [FRIEND_BOT_ID]
+
+
 # --- sync_bot: приём пригласившего -----------------------------------------
 
 
@@ -1054,6 +1223,58 @@ async def test_unique_violation_on_save_continues_the_walk() -> None:
     assert store.rollback_calls == 1
     assert len(store.rewards) == 1
     assert store.rewards[0].friend_telegram_id == 888
+
+
+# --- sync_bot: защита от наград задним числом (referral_bot_since) ---------
+
+
+async def test_purchase_before_referral_bot_since_creates_nothing() -> None:
+    """Покупка старше момента защиты никогда не становится наградой."""
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+    settings = _settings(referral_bot_since=since)
+    bedolaga = _default_bedolaga(purchase_ids=[])
+    bedolaga.purchases_by_user[FRIEND_BOT_ID] = [
+        _purchase(1001, completed_at=since - timedelta(days=1)),
+    ]
+    service, store, panel, bedolaga = _service(
+        settings=settings, panel=_default_panel(), bedolaga=bedolaga
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 0
+    assert store.rewards == []
+
+
+async def test_purchase_after_referral_bot_since_creates_a_reward() -> None:
+    """Покупка позже момента защиты работает как и раньше."""
+    since = datetime(2026, 1, 1, tzinfo=UTC)
+    settings = _settings(referral_bot_since=since)
+    bedolaga = _default_bedolaga(purchase_ids=[])
+    bedolaga.purchases_by_user[FRIEND_BOT_ID] = [
+        _purchase(1001, completed_at=since + timedelta(days=1)),
+    ]
+    service, store, panel, bedolaga = _service(
+        settings=settings, panel=_default_panel(), bedolaga=bedolaga
+    )
+
+    created = await service.sync_bot()
+
+    assert created == 1
+    assert store.rewards[0].kind == "first"
+
+
+async def test_unset_referral_bot_since_creates_a_reward_as_before() -> None:
+    """Настройка не задана: защита выключена, поведение как раньше."""
+    service, store, panel, bedolaga = _service(
+        panel=_default_panel(),
+        bedolaga=_default_bedolaga(purchase_ids=[1001]),
+    )
+    assert service._settings.referral_bot_since is None
+
+    created = await service.sync_bot()
+
+    assert created == 1
 
 
 # --- process: друг и пригласивший из бота продаж ---------------------------

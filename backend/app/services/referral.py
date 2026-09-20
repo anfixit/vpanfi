@@ -163,6 +163,18 @@ class RewardStore(Protocol):
         """
         ...
 
+    async def first_reward_exists(self, email: str) -> bool:
+        """У этой почты уже есть награда за первую покупку, любого статуса.
+
+        В отличие от ``first_reward_for``, не смотрит на статус вовсе:
+        обходу бота продаж перед сетевым походом за покупками нужно
+        знать только то, что запись уже завелась, а не то, дошла ли
+        она до выдачи. На сайте от второй ``first``-награды бережёт
+        ``reward_exists``, но там проверка увязана с payment_id, а у
+        друга из бота продаж своего платежа сайта нет вовсе.
+        """
+        ...
+
     async def renewal_for(self, email: str) -> ReferralReward | None:
         """Награда за продление этого друга, если она есть, любого статуса.
 
@@ -355,6 +367,17 @@ class SqlRewardStore(RewardStore):
             .limit(1)
         )
         return await self._session.scalar(stmt)
+
+    async def first_reward_exists(self, email: str) -> bool:
+        stmt = (
+            select(ReferralReward.id)
+            .where(
+                func.lower(ReferralReward.friend_email) == email.lower(),
+                ReferralReward.kind == "first",
+            )
+            .limit(1)
+        )
+        return await self._session.scalar(stmt) is not None
 
     async def renewal_for(self, email: str) -> ReferralReward | None:
         stmt = (
@@ -956,9 +979,38 @@ class ReferralService:
         сразу: продление ждёт своего прохода после того, как первая
         покупка отработает до ``granted``/``held`` (этим занимается
         ``process``, а не обход).
+
+        Хранилище смотрим первым, до ``bedolaga.purchases``: обход идёт
+        каждые полчаса вечно, и звать бота продаж за покупками друга,
+        для которого на этом проходе всё равно ничего не изменится,
+        значило бы платить сетевым походом за заведомо пустой результат.
+        Пропускаем поход в бота продаж в двух случаях:
+
+        - первая покупка уже выдана (``granted``/``held``), и либо
+          продление выключено настройкой, либо оно уже заведено;
+        - первая покупка есть, но не в ``granted``/``held``:
+          ``rejected`` закрыт навсегда, а ``pending``/``failed`` просто
+          не готовы дать начало продлению прямо сейчас (это решает
+          ``process``, а не обход) и будут перепроверены следующим
+          проходом.
         """
         friend_telegram_id = user.telegram_id
         friend_key = f"tg:{friend_telegram_id}"
+
+        first = await self._store.first_reward_for(friend_key)
+        if first is not None:
+            # first.status гарантированно granted или held: это условие
+            # ``first_reward_for`` по контракту протокола.
+            if self._settings.referral_renewal_days <= 0:
+                return None
+            if await self._store.renewal_exists(friend_key):
+                return None
+        elif await self._store.first_reward_exists(friend_key):
+            # Первая покупка уже где-то заведена, но не дошла до
+            # granted/held: rejected никогда не продлится, а
+            # pending/failed ещё не готовы к этому. В обоих случаях
+            # сейчас в бота продаж идти незачем.
+            return None
 
         purchases = await bedolaga.purchases(user.id)
         if not purchases:
@@ -966,7 +1018,6 @@ class ReferralService:
             # пополнение баланса наградой не является.
             return None
 
-        first = await self._store.first_reward_for(friend_key)
         if first is None:
             if await self._store.bot_reward_exists(purchases[0].id):
                 # Награда за эту же самую покупку уже где-то заведена
@@ -975,17 +1026,22 @@ class ReferralService:
                 # не принесёт. Отклонённая награда блокирует ровно так
                 # же навсегда, как и на сайте.
                 return None
+            if (
+                self._settings.referral_bot_since is not None
+                and purchases[0].completed_at
+                < self._settings.referral_bot_since
+            ):
+                # Покупка случилась до момента защиты: если бот
+                # когда-нибудь привяжет пригласившего к уже
+                # существующему покупателю, эта старая покупка не
+                # должна вдруг стать наградой. Без first-награды нет и
+                # почвы для продления этого же друга, поэтому дальше
+                # для него вовсе нечего заводить.
+                return None
             return await self._create_bot_first_reward(
                 bedolaga, panel, user, purchases[0], friend_key,
                 friend_telegram_id,
             )
-
-        # first.status гарантированно granted или held: это условие
-        # ``first_reward_for`` по контракту протокола.
-        if self._settings.referral_renewal_days <= 0:
-            return None
-        if await self._store.renewal_exists(friend_key):
-            return None
 
         renewal_purchase = next(
             (
