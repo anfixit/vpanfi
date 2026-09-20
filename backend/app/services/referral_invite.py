@@ -18,7 +18,7 @@
 import logging
 import re
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from typing import Any
@@ -47,6 +47,14 @@ _CACHE_TTL_SECONDS = 600.0
 # Больше 500 разных кодов в кэше не держим: это не то место, где стоит
 # копить память без предела ради кода, который никто больше не покажет.
 _CACHE_MAX_ENTRIES = 500
+
+# Маршрут открыт всем, а каждый промах кэша это запрос в панель и, возможно,
+# в бота продаж. Перебором разных кодов кэш обходится, поэтому походы наружу
+# ограничены на весь процесс: сверх лимита ответ пустой и в кэш не пишется,
+# чтобы настоящая ссылка заработала, как только окно освободится. Заодно это
+# тормозит перебор имён учёток через этот маршрут.
+_LOOKUPS_PER_WINDOW = 30
+_LOOKUP_WINDOW_SECONDS = 60.0
 
 _SINERGIYA_RE = re.compile(r"^OOO_SINERGIYA_", re.IGNORECASE)
 
@@ -120,6 +128,8 @@ class InviteResolver:
         self._cache: OrderedDict[str, tuple[float, str | None]] = (
             OrderedDict()
         )
+        # Моменты последних походов наружу, для ограничителя выше.
+        self._lookups: deque[float] = deque()
 
     async def resolve(
         self, raw_code: str | None, settings: Settings
@@ -156,9 +166,24 @@ class InviteResolver:
         if cached is not _MISS:
             return cached
 
+        if not self._lookup_allowed():
+            logger.warning("Слишком много запросов ссылки приглашения")
+            return None
+
         url = await self._lookup(code, settings)
         self._store(code, url)
         return url
+
+    def _lookup_allowed(self) -> bool:
+        """Пустить поход наружу, если в текущем окне ещё есть место."""
+        now = self._clock()
+        window_start = now - _LOOKUP_WINDOW_SECONDS
+        while self._lookups and self._lookups[0] <= window_start:
+            self._lookups.popleft()
+        if len(self._lookups) >= _LOOKUPS_PER_WINDOW:
+            return False
+        self._lookups.append(now)
+        return True
 
     async def _lookup(self, code: str, settings: Settings) -> str | None:
         """Сходить в панель и в бота продаж за ссылкой одного кода.

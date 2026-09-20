@@ -309,7 +309,14 @@ async def test_cache_expires_after_its_ttl_using_an_injected_clock() -> None:
 
 
 async def test_cache_evicts_the_oldest_entry_past_500() -> None:
-    resolver, _, _ = _resolver(panel=FakePanel())
+    # Часы идут вперёд на каждом обращении: иначе 501 поход за одно
+    # мгновение упёрся бы в ограничитель походов наружу, а тест про кэш.
+    ticks = iter(range(10**9))
+    resolver = InviteResolver(
+        panel_factory=_CountingFactory(FakePanel()),
+        bedolaga_factory=_CountingFactory(FakeBedolaga()),
+        clock=lambda: next(ticks) * 1.5,
+    )
     settings = _settings()
 
     for i in range(500):
@@ -322,3 +329,33 @@ async def test_cache_evicts_the_oldest_entry_past_500() -> None:
     assert len(resolver._cache) == 500
     assert "user0" not in resolver._cache
     assert "user500" in resolver._cache
+
+
+async def test_lookups_are_capped_per_minute_and_recover_afterwards() -> None:
+    """Перебор кодов не должен заваливать панель и бота запросами.
+
+    Сверх лимита ответ пустой, наружу никто не ходит и в кэш пустота
+    не пишется: настоящая ссылка заработает, как только окно освободится.
+    """
+    now = [1000.0]
+    panel = FakePanel({INVITER_USERNAME: _panel_payload()})
+    bedolaga = FakeBedolaga({INVITER_TELEGRAM_ID: _bot_user()})
+    resolver = InviteResolver(
+        panel_factory=_CountingFactory(panel),
+        bedolaga_factory=_CountingFactory(bedolaga),
+        clock=lambda: now[0],
+    )
+    settings = _settings()
+
+    for index in range(30):
+        assert await resolver.resolve(f"stranger_{index}", settings) is None
+    assert len(panel.calls) == 30
+
+    assert await resolver.resolve(INVITER_USERNAME, settings) is None
+    assert len(panel.calls) == 30
+
+    now[0] += 61.0
+    url = await resolver.resolve(INVITER_USERNAME, settings)
+
+    assert url is not None
+    assert len(panel.calls) == 31
