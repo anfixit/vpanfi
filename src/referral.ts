@@ -74,3 +74,22 @@ export function clearReferral(): void {
     /* Нечего стирать, если хранилище недоступно. */
   }
 }
+
+/*
+ * Имя учётки из адреса страницы поддержки. Приложение открывает её по
+ * кнопке поддержки, а панель подставляет в адрес имя владельца подписки:
+ * так человек получает свою ссылку приглашения нажимаемой, а не строкой
+ * в приложении, которую нельзя ни нажать, ни скопировать.
+ */
+export function inviterFromUrl(): string | null {
+  try {
+    const raw = new URLSearchParams(window.location.search).get("u");
+    return raw && CODE_RE.test(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function inviteLink(username: string): string {
+  return `${window.location.origin}/?ref=${encodeURIComponent(username)}`;
+}
