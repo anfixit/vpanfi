@@ -6,6 +6,7 @@ import { Mascot } from "../components/Mascot";
 import { EmptyState, ErrorState, LoadingState } from "../components/ResourceState";
 import { QrCode } from "../components/QrCode";
 import { platforms } from "../data";
+import { appDeepLink, detectPlatform } from "../platform";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 
 const COPIED_HINT_MS = 2400;
@@ -14,7 +15,10 @@ export function ConnectPage() {
   const clients = useAsyncResource(api.getConnectionClients);
   const subscriptionLink = useAsyncResource(api.getSubscription);
   const { explain } = useDemoNotice();
-  const [selectedPlatform, setSelectedPlatform] = useState("Android");
+  // Устройство угадываем сами: человек с айфона не должен начинать с Google Play.
+  const [selectedPlatform, setSelectedPlatform] = useState(
+    () => detectPlatform() ?? "Android",
+  );
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -26,6 +30,11 @@ export function ConnectPage() {
   const alternatives = platformClients.filter((client) => client.id !== recommended?.id);
 
   const connectionKey = subscriptionLink.data?.subscriptionUrl ?? null;
+  // Сервер ссылку для кнопки не присылает, собираем её здесь из адреса
+  // подписки: без неё после установки приложения человеку нечего нажать.
+  const deepLink = recommended
+    ? (recommended.deepLink ?? appDeepLink(recommended.id, connectionKey))
+    : null;
 
   const copyKey = async () => {
     if (!connectionKey) return;
@@ -170,13 +179,15 @@ export function ConnectPage() {
             <div>
               <h3>Добавьте подключение</h3>
               <p className="muted">
-                Откройте приложение по кнопке или отсканируйте QR-код другим устройством.
+                Приложение уже установлено? Нажмите кнопку ниже, подписка добавится сама.
+                Если кнопка не сработала, скопируйте ключ, откройте приложение и вставьте
+                его из буфера обмена (значок «+»). QR-код нужен для другого устройства.
               </p>
             </div>
           </div>
           <div className="connection-methods">
-            {recommended?.deepLink && (
-              <a className="button button-primary button-large" href={recommended.deepLink}>
+            {deepLink && (
+              <a className="button button-primary button-large" href={deepLink}>
                 Открыть в приложении
               </a>
             )}
