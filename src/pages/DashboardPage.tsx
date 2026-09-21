@@ -90,6 +90,12 @@ function ReferralCard() {
 
   return (
     <CabinetCard title="Пригласите друга" icon="sparkle">
+      {/* Это была единственная ссылка с кнопкой «Скопировать» на главной, и её
+          принимали за ссылку для подключения. Говорим прямо, для чего она. */}
+      <p className="referral-not-a-key">
+        Эта ссылка для друга. Для подключения VPN она не подходит: свой ключ берите в
+        разделе «Подключение».
+      </p>
       <p className="muted">
         {/* Числа приходят с сервера: размер награды задаётся настройкой,
             и карточка не должна обещать больше, чем реально начислится. */}
@@ -294,7 +300,9 @@ export function DashboardPage() {
         </section>
 
         <aside className="cabinet-side-column">
-          <ReferralCard />
+          {/* 21.09.2026: карточка снята с главной. Она была единственной ссылкой с
+              кнопкой «Скопировать», и новички принимали её за ключ подключения.
+              Вернётся только для платящих клиентов и отдельно от подключения. */}
 
           <CabinetCard title="Поддержка" icon="support" className="cabinet-support">
             <Mascot variant="support" className="card-mascot" decorative />

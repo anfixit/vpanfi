@@ -6,7 +6,7 @@ import { Mascot } from "../components/Mascot";
 import { EmptyState, ErrorState, LoadingState } from "../components/ResourceState";
 import { QrCode } from "../components/QrCode";
 import { platforms } from "../data";
-import { appDeepLink, detectPlatform } from "../platform";
+import { appDeepLink, detectPlatform, lacksGooglePlay } from "../platform";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 
 const COPIED_HINT_MS = 2400;
@@ -21,12 +21,19 @@ export function ConnectPage() {
   );
   const [showAlternatives, setShowAlternatives] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [appDidNotOpen, setAppDidNotOpen] = useState(false);
 
   const platformClients = useMemo(
     () => (clients.data ?? []).filter((client) => client.platform === selectedPlatform),
     [clients.data, selectedPlatform],
   );
-  const recommended = platformClients.find((client) => client.recommended) ?? platformClients[0];
+  // Телефону без Google Play первым показываем файл APK, иначе «Установить»
+  // уведёт его в магазин, которого на нём нет.
+  const apkFirst = selectedPlatform === "Android" && lacksGooglePlay();
+  const recommended =
+    (apkFirst ? platformClients.find((client) => client.id.endsWith("-apk")) : undefined) ??
+    platformClients.find((client) => client.recommended) ??
+    platformClients[0];
   const alternatives = platformClients.filter((client) => client.id !== recommended?.id);
 
   const connectionKey = subscriptionLink.data?.subscriptionUrl ?? null;
@@ -187,7 +194,18 @@ export function ConnectPage() {
           </div>
           <div className="connection-methods">
             {deepLink && (
-              <a className="button button-primary button-large" href={deepLink}>
+              <a
+                className="button button-primary button-large"
+                href={deepLink}
+                onClick={() => {
+                  // Если приложения нет, ссылка не делает ничего и молчит.
+                  // Когда приложение открылось, страница уходит в фон, и
+                  // подсказка не появляется.
+                  window.setTimeout(() => {
+                    if (document.visibilityState === "visible") setAppDidNotOpen(true);
+                  }, 1800);
+                }}
+              >
                 Открыть в приложении
               </a>
             )}
@@ -200,6 +218,12 @@ export function ConnectPage() {
               {copied ? "Ключ скопирован" : "Скопировать ключ"}
             </button>
           </div>
+          {appDidNotOpen && (
+            <p className="connection-hint" role="status">
+              Приложение не открылось? Значит, оно ещё не установлено: вернитесь к шагу 2,
+              нажмите «Установить», дождитесь установки и нажмите эту кнопку ещё раз.
+            </p>
+          )}
           {!connectionKey && (
             <p className="muted">
               Ключ появится, как только Вы добавите подписку на главной

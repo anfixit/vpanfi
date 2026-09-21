@@ -1486,3 +1486,14 @@
   background: var(--surface);
   font: inherit;
 }
+
+.connection-hint,
+.referral-not-a-key {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary-soft) 60%, transparent);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}

@@ -38,3 +38,16 @@ export function appDeepLink(clientId: string, subscriptionUrl: string | null): s
   if (clientId.startsWith("incy")) return `incy://add/${subscriptionUrl}`;
   return null;
 }
+
+/*
+ * Телефоны Huawei и Honor продаются без Google Play: кнопка «Установить»
+ * из магазина Google на них ведёт в никуда. 21.09.2026 так застряла
+ * проверочная регистрация с Huawei. Таким телефонам первым показываем APK.
+ */
+export function lacksGooglePlay(): boolean {
+  try {
+    return /HUAWEI|HONOR|HMSCore|HarmonyOS|HuaweiBrowser/i.test(navigator.userAgent);
+  } catch {
+    return false;
+  }
+}
