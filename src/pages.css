@@ -392,6 +392,11 @@
   background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface-strong));
 }
 
+/* Карточка-подсказка под тремя каналами: во всю ширину, чтобы не висела одна в ряду. */
+.support-channel.is-wide {
+  grid-column: 1 / -1;
+}
+
 .support-channel > strong,
 .support-channel > button,
 .support-channel > .coming-soon {

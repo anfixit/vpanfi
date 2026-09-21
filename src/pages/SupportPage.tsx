@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiRequestError } from "../api/client";
 import type { SupportCategory } from "../api/contracts";
-import { maxSupportUrl, supportEmail, telegramSupportUrl } from "../config";
+import { supportEmail } from "../config";
 import { Icon } from "../components/Icon";
 import { Mascot } from "../components/Mascot";
+import { SupportChannels } from "../components/SupportChannels";
 
 const MESSAGE_ROWS = 7;
 
@@ -74,79 +75,16 @@ export function SupportPage() {
           <span className="cabinet-kicker">Отвечаем по-человечески</span>
           <h2>Поддержка</h2>
           <p className="muted">
-            Начните с короткого описания проблемы. Анфиса поможет найти решение или передаст
-            обращение человеку.
+            Отвечает Артём, помощник поддержки. Сложные вопросы и всё, что связано с деньгами,
+            он передаёт Анфисе.
           </p>
         </div>
         <Mascot variant="support" className="page-intro-mascot" decorative />
       </section>
 
       <section className="support-channel-grid">
-        <a
-          className="cabinet-card support-channel is-primary"
-          href={`mailto:${supportEmail}?subject=${encodeURIComponent(
-            "VPaNfi — вопрос по подписке",
-          )}`}
-        >
-          <span className="support-channel-icon">
-            <Icon name="mail" />
-          </span>
-          <div>
-            <h3>Почта</h3>
-            <p>Работает, даже когда VPN не подключается.</p>
-          </div>
-          <strong>
-            {supportEmail}
-            <Icon name="arrow-right" />
-          </strong>
-        </a>
-        <a
-          className="cabinet-card support-channel"
-          href={maxSupportUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="support-channel-icon">
-            <Icon name="message" />
-          </span>
-          <div>
-            <h3>MAX</h3>
-            <p>Мессенджер, который открывается без VPN.</p>
-          </div>
-          <strong>
-            Написать
-            <Icon name="arrow-right" />
-          </strong>
-        </a>
-        <a
-          className="cabinet-card support-channel"
-          href={telegramSupportUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <span className="support-channel-icon">
-            <Icon name="telegram" />
-          </span>
-          <div>
-            <h3>Telegram</h3>
-            <p>Быстрее всего, но нужен включённый VPN.</p>
-          </div>
-          <strong>
-            Открыть
-            <Icon name="arrow-right" />
-          </strong>
-        </a>
-        <article className="cabinet-card support-channel">
-          <span className="support-channel-icon">
-            <Icon name="sparkle" />
-          </span>
-          <div>
-            <h3>Умный чат</h3>
-            <p>Появится после подключения AI-помощника через API.</p>
-          </div>
-          <span className="coming-soon">Скоро</span>
-        </article>
-        <article className="cabinet-card support-channel">
+        <SupportChannels />
+        <article className="cabinet-card support-channel is-wide">
           <span className="support-channel-icon">
             <Icon name="question" />
           </span>
