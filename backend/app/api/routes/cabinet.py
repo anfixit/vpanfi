@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from urllib.parse import quote
 
@@ -5,12 +6,20 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.dependencies import (
     CurrentUser,
+    PanelGatewayFactory,
     SettingsDep,
     get_cabinet_service,
+    get_panel_gateway_factory,
     get_reward_store,
     get_subscription_service,
     get_support_service,
 )
+from app.core.config import Settings
+from app.integrations.remnawave.client import (
+    RemnawaveError,
+    RemnawaveUserNotFoundError,
+)
+from app.models.user import User
 from app.schemas.cabinet import (
     ConnectionClientResponse,
     CountryResponse,
@@ -36,6 +45,8 @@ from app.services.subscription import (
 )
 from app.services.support import SupportService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/cabinet", tags=["cabinet"])
 CabinetServiceDep = Annotated[CabinetService, Depends(get_cabinet_service)]
 
@@ -46,6 +57,15 @@ SubscriptionServiceDep = Annotated[
 SupportServiceDep = Annotated[SupportService, Depends(get_support_service)]
 
 RewardStoreDep = Annotated[RewardStore, Depends(get_reward_store)]
+
+PanelGatewayFactoryDep = Annotated[
+    PanelGatewayFactory, Depends(get_panel_gateway_factory)
+]
+
+# Показывать карточку «Пригласите друга» только тем, кто по правилам
+# программы вообще может получить награду: пробнику или отключённому
+# аккаунту она только мешает, выглядя как ссылка на подписку.
+ELIGIBLE_INVITER_TAGS = frozenset({"PAID", "SVOI"})
 
 UNAUTHORIZED_RESPONSE = {401: {"description": "Требуется вход в кабинет"}}
 
@@ -297,6 +317,55 @@ async def create_support_ticket(
     return await service.create(user, request)
 
 
+def _referral_disabled(settings: Settings) -> ReferralResponse:
+    return ReferralResponse(
+        enabled=False,
+        friend_days=settings.referral_friend_days,
+        inviter_days=settings.referral_inviter_days,
+    )
+
+
+async def _may_invite(
+    user: User,
+    settings: Settings,
+    panel_gateway_factory: PanelGatewayFactory,
+) -> bool:
+    """Проверить в панели, вправе ли пользователь приглашать друзей.
+
+    По правилам программы награду получает только платящий: пробник
+    или отключённая учётка не в счёт, даже если у неё есть привязанное
+    имя в панели. Любая накладка с панелью (нет пользователя, панель
+    недоступна, что угодно ещё) трактуется как «нет», а не как повод
+    уронить страницу кабинета.
+    """
+    try:
+        async with panel_gateway_factory(settings) as gateway:
+            if user.remnawave_user_id is not None:
+                payload = await gateway.get_user_by_id(
+                    user.remnawave_user_id
+                )
+            else:
+                payload = await gateway.get_user_by_username(
+                    user.remnawave_username
+                )
+    except RemnawaveUserNotFoundError:
+        return False
+    except RemnawaveError:
+        return False
+    except Exception:  # noqa: BLE001
+        # Неожиданная поломка не должна класть кабинет: без карточки
+        # приглашения он всё равно работает, а причину смотрим в логах.
+        logger.warning(
+            "Не удалось проверить право приглашать в рефералке",
+            exc_info=True,
+        )
+        return False
+
+    status_ok = str(payload.get("status", "")).upper() == "ACTIVE"
+    tag_ok = str(payload.get("tag") or "").upper() in ELIGIBLE_INVITER_TAGS
+    return status_ok and tag_ok
+
+
 @router.get(
     "/referral",
     response_model=ReferralResponse,
@@ -312,13 +381,10 @@ async def get_referral(
     user: CurrentUser,
     store: RewardStoreDep,
     settings: SettingsDep,
+    panel_gateway_factory: PanelGatewayFactoryDep,
 ) -> ReferralResponse:
     if not settings.referral_enabled:
-        return ReferralResponse(
-            enabled=False,
-            friend_days=settings.referral_friend_days,
-            inviter_days=settings.referral_inviter_days,
-        )
+        return _referral_disabled(settings)
 
     username = user.remnawave_username
     if username is None:
@@ -330,6 +396,13 @@ async def get_referral(
             friend_days=settings.referral_friend_days,
             inviter_days=settings.referral_inviter_days,
         )
+
+    if not await _may_invite(user, settings, panel_gateway_factory):
+        # Новичок на пробном периоде видит ту же карточку, что и
+        # выключенная программа: по правилам награду всё равно не
+        # получить, а копируемая ссылка на неё только сбивает с толку,
+        # притворяясь ссылкой на подписку.
+        return _referral_disabled(settings)
 
     origin = (
         settings.allowed_origins[0] if settings.allowed_origins else ""

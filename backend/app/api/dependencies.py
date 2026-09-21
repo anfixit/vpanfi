@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.security import InvalidTokenError, decode_token
 from app.db.session import get_db_session
+from app.integrations.remnawave.client import RemnawaveGateway
 from app.models.user import User
 from app.repositories.users import UserRepository
 from app.services.admin import AdminService
@@ -38,6 +40,7 @@ __all__ = [
     "get_current_user",
     "get_invite_resolver",
     "get_oauth_service",
+    "get_panel_gateway_factory",
     "get_referral_scheduler",
     "get_reward_store",
     "get_subscription_service",
@@ -196,6 +199,21 @@ def get_reward_store(session: DatabaseSession) -> RewardStore:
     настоящую сессию.
     """
     return SqlRewardStore(session)
+
+
+PanelGatewayFactory = Callable[
+    [Settings], AbstractAsyncContextManager[RemnawaveGateway]
+]
+
+
+def get_panel_gateway_factory() -> PanelGatewayFactory:
+    """Фабрика доступа к панели для маршрутов кабинета.
+
+    Сам маршрут не создаёт шлюз напрямую: тестам карточки рефералки
+    нужен поддельный ответ панели без похода в сеть, а подделать
+    зависимость проще, чем сам класс шлюза.
+    """
+    return lambda settings: RemnawaveGateway(settings)
 
 
 ReferralScheduler = Callable[[UUID], None]

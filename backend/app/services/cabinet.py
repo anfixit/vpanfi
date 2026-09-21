@@ -125,6 +125,17 @@ class CabinetService:
                 install_url="https://play.google.com/store/apps/details?id=com.happproxy",
             ),
             ConnectionClientResponse(
+                id="happ-android-apk",
+                name="HAPP (файл APK)",
+                platform="Android",
+                recommended=False,
+                description=(
+                    "Для телефонов без Google Play: Huawei, Honor и "
+                    "других. Скачайте файл и разрешите установку."
+                ),
+                install_url="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk",
+            ),
+            ConnectionClientResponse(
                 id="incy-ios",
                 name="INCY",
                 platform="iPhone / iPad",
