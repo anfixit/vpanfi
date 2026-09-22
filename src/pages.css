@@ -1497,3 +1497,27 @@
   font-size: 0.95rem;
   line-height: 1.5;
 }
+
+.connection-key-block {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: color-mix(in srgb, var(--primary-soft) 45%, var(--surface-strong));
+}
+
+.connection-key-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: var(--primary-strong);
+}
+
+.connection-key-block .buy-subscription-link {
+  margin: 0 0 12px;
+}
+
+.connection-key-hint {
+  margin: 12px 0 0;
+  font-size: 0.92rem;
+}

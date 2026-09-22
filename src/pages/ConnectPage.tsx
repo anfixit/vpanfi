@@ -74,9 +74,25 @@ export function ConnectPage() {
           <span className="cabinet-kicker">Один экран, один следующий шаг</span>
           <h2>Подключите устройство</h2>
           <p className="muted">
-            Сначала выберите устройство. Мы покажем одно рекомендуемое приложение и короткую
-            инструкцию.
+            VPN работает через отдельное приложение. Ниже Ваша ссылка для подключения: её нужно
+            вставить в это приложение. Сама по себе в браузере она ничего не включает.
           </p>
+          {connectionKey && (
+            <div className="connection-key-block">
+              <span className="connection-key-label">Ваша ссылка для подключения</span>
+              <p className="buy-subscription-link">
+                <code>{connectionKey}</code>
+              </p>
+              <button className="button button-secondary" type="button" onClick={copyKey}>
+                {copied ? "Скопировано" : "Скопировать ссылку"}
+              </button>
+              <p className="muted connection-key-hint">
+                Как использовать: шаг 1 выберите устройство, шаг 2 установите приложение, шаг 3
+                нажмите «Открыть в приложении» или вставьте скопированную ссылку в приложение
+                через значок «+».
+              </p>
+            </div>
+          )}
         </div>
         <Mascot variant="phone" className="page-intro-mascot" decorative />
       </section>
