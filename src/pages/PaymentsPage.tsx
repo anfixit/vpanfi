@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
+import { shop, ShopRequestError } from "../api/shop";
+import type { ShopTariff } from "../api/contracts";
+import { useAuth } from "../auth/AuthContext";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Mascot } from "../components/Mascot";
 import { EmptyState, ErrorState, LoadingState } from "../components/ResourceState";
-import { EXTRA_DEVICE_PRICE_RUB, tariffs } from "../data";
+import { EXTRA_DEVICE_PRICE_RUB } from "../data";
 import { useAsyncResource } from "../hooks/useAsyncResource";
 import { formatRubles } from "../utils/format";
-
-const DEFAULT_TARIFF = "3 месяца";
 
 const paymentStatusLabels: Record<string, string> = {
   succeeded: "Оплачено",
@@ -17,29 +18,125 @@ const paymentStatusLabels: Record<string, string> = {
   cancelled: "Отменён",
 };
 
+const CHECKOUT_ERROR = "Не получилось создать платёж. Попробуйте ещё раз.";
+
+/*
+ * Один выбор человека: тариф и срок вместе. В витрине «30 дней»,
+ * «90 дней» и «180 дней» — это три отдельных тарифа с одним периодом
+ * каждый, поэтому раскладываем их в плоский список вариантов.
+ */
+type PeriodOption = {
+  key: string;
+  tariffId: number;
+  periodDays: number;
+  name: string;
+  priceLabel: string;
+  deviceLimit: number;
+  trafficLimitGb: number;
+};
+
+function toOptions(tariffs: ShopTariff[]): PeriodOption[] {
+  return tariffs.flatMap((tariff) =>
+    tariff.periods.map((period) => ({
+      key: `${tariff.id}:${period.days}`,
+      tariffId: tariff.id,
+      periodDays: period.days,
+      name: tariff.name,
+      priceLabel: period.priceLabel,
+      deviceLimit: tariff.deviceLimit,
+      trafficLimitGb: tariff.trafficLimitGb,
+    })),
+  );
+}
+
+function describeOption(option: PeriodOption): string {
+  const devices = `${option.deviceLimit} ${
+    option.deviceLimit === 1 ? "устройство" : "устройства"
+  }`;
+  const traffic =
+    option.trafficLimitGb === 0
+      ? "без лимита трафика"
+      : `${option.trafficLimitGb} ГБ трафика`;
+  return `${devices} · ${traffic}`;
+}
+
 export function PaymentsPage() {
   const payments = useAsyncResource(api.getPayments);
-  const { isDemoMode, explain } = useDemoNotice();
-  const [selectedTariff, setSelectedTariff] = useState(DEFAULT_TARIFF);
-  const [autoRenew, setAutoRenew] = useState(true);
+  const config = useAsyncResource(shop.getConfig);
+  const methods = useAsyncResource(shop.getPaymentMethods);
+  const { profile } = useAuth();
+  const { isDemoMode } = useDemoNotice();
+
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [demoReceiptShown, setDemoReceiptShown] = useState(false);
 
-  const startPayment = () => {
-    if (!isDemoMode) {
-      /*
-       * Оплата подключена, но продление и покупка — разные вещи. Покупка
-       * заводит нового человека, а продление обязано попасть в уже
-       * существующего. Сопоставить их можно только по почте, а у тех, кто
-       * пришёл из Telegram, её в базе бота нет: продление через покупку
-       * создало бы им второй аккаунт и вторую подписку вместо продления.
-       * Поэтому до связки аккаунтов продлевать отправляем в бота.
-       */
-      explain(
-        "Продление пока проходит в боте — там подписка продлится, а не заведётся заново.",
-      );
+  const options = useMemo(
+    () => toOptions(config.data?.tariffs ?? []),
+    [config.data],
+  );
+  const selected =
+    options.find((option) => option.key === selectedKey) ?? options[0] ?? null;
+  const paymentMethods = methods.data ?? [];
+
+  /* Первый вариант выбран заранее: продление в один шаг, без лишних решений. */
+  useEffect(() => {
+    if (selectedKey === null && options.length > 0) {
+      setSelectedKey(options[0].key);
+    }
+  }, [selectedKey, options]);
+
+  useEffect(() => {
+    if (selectedMethod === null && paymentMethods.length > 0) {
+      setSelectedMethod(paymentMethods[0].code);
+    }
+  }, [selectedMethod, paymentMethods]);
+
+  /*
+   * Продление идёт той же кассой и той же ручкой, что и покупка с витрины.
+   * Второй подписки это не создаёт: сервер сначала ищет учётку панели,
+   * привязанную к кабинету этой почты, и продлевает её от даты окончания —
+   * остаток оплаченного срока не теряется. Учётки нет вовсе только у того,
+   * кто на сайте не заводился, а в кабинете такого быть не может.
+   *
+   * Раньше здесь стояла заметка «продление пока проходит в боте»: связать
+   * подписку из бота с кабинетом было нечем, и продление через покупку
+   * завело бы человеку вторую учётку. С появлением привязки по ссылке
+   * («Профиль» → «Подписка из бота») причина ушла, а заметка осталась и
+   * отправляла платящих людей в бота с рабочей страницы оплаты.
+   */
+  const startPayment = async () => {
+    if (isDemoMode) {
+      setDemoReceiptShown(true);
       return;
     }
-    setDemoReceiptShown(true);
+    if (busy || !selected || !profile) return;
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      const purchase = await shop.createPurchase({
+        tariffId: selected.tariffId,
+        periodDays: selected.periodDays,
+        email: profile.email,
+        paymentMethod: selectedMethod,
+      });
+
+      if (purchase.paymentUrl) {
+        window.location.href = purchase.paymentUrl;
+        return;
+      }
+
+      /* Платёж создан, а ссылки нет — платить негде, молчать об этом нельзя. */
+      setError(CHECKOUT_ERROR);
+    } catch (reason: unknown) {
+      setError(reason instanceof ShopRequestError ? reason.message : CHECKOUT_ERROR);
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (payments.loading && !payments.data) {
@@ -73,8 +170,8 @@ export function PaymentsPage() {
           <span className="demo-badge">Демонстрация</span>
           <h2>Так выглядит успешная оплата</h2>
           <p className="muted">
-            Это предпросмотр экрана. Деньги не списывались и платёж не создавался: провайдер СБП
-            ещё не подключён.
+            Это предпросмотр экрана. Деньги не списывались и платёж не создавался: сайт открыт
+            в демо-режиме.
           </p>
           <button
             className="button button-secondary"
@@ -92,95 +189,103 @@ export function PaymentsPage() {
               <h2>Продлить подписку</h2>
             </div>
           </div>
-          <div className="tariff-grid" role="group" aria-label="Тарифные периоды">
-            {tariffs.map((tariff) => (
-              <button
-                className={`tariff ${tariff.popular ? "is-popular" : ""} ${
-                  selectedTariff === tariff.period ? "is-selected" : ""
-                }`}
-                type="button"
-                key={tariff.period}
-                aria-pressed={selectedTariff === tariff.period}
-                onClick={() => setSelectedTariff(tariff.period)}
-              >
-                {tariff.popular && <span className="popular-label">выгодно</span>}
-                <span>{tariff.period}</span>
-                <strong>{tariff.price}</strong>
-                {tariff.saving && <small>{tariff.saving}</small>}
-              </button>
-            ))}
-          </div>
-          <div className="payment-checkout">
-            <div>
-              <small>Вы выбрали</small>
-              <strong>{selectedTariff}</strong>
-              <span>3 устройства · без лимита трафика</span>
-            </div>
-            <button
-              className="button button-primary button-large"
-              type="button"
-              onClick={startPayment}
-            >
-              {isDemoMode ? "Показать демо-оплату" : "Оплатить через СБП"}
-            </button>
-          </div>
-          {isDemoMode && (
-            <p className="muted payment-demo-note">
-              В демо-режиме оплата не выполняется — кнопка показывает, как выглядит экран после
-              успешного платежа.
-            </p>
+
+          {config.loading && !config.data ? (
+            <LoadingState label="Анфиса уточняет цены…" />
+          ) : options.length === 0 ? (
+            <ErrorState
+              message={config.error ?? "Тарифы сейчас недоступны"}
+              onRetry={config.reload}
+            />
+          ) : (
+            <>
+              <div className="tariff-grid" role="group" aria-label="Тарифные периоды">
+                {options.map((option) => (
+                  <button
+                    className={`tariff ${selected?.key === option.key ? "is-selected" : ""}`}
+                    type="button"
+                    key={option.key}
+                    aria-pressed={selected?.key === option.key}
+                    onClick={() => setSelectedKey(option.key)}
+                  >
+                    <span>{option.name}</span>
+                    <strong>{option.priceLabel}</strong>
+                  </button>
+                ))}
+              </div>
+
+              {paymentMethods.length > 1 && (
+                <div
+                  className="tariff-grid payment-method-grid"
+                  role="group"
+                  aria-label="Способ оплаты"
+                >
+                  {paymentMethods.map((method) => (
+                    <button
+                      className={`tariff ${selectedMethod === method.code ? "is-selected" : ""}`}
+                      type="button"
+                      key={method.code}
+                      aria-pressed={selectedMethod === method.code}
+                      onClick={() => setSelectedMethod(method.code)}
+                    >
+                      <span>{method.name}</span>
+                      <small>{method.description}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="payment-checkout">
+                <div>
+                  <small>Вы выбрали</small>
+                  <strong>
+                    {selected?.name}
+                    {selected ? ` · ${selected.priceLabel}` : ""}
+                  </strong>
+                  <span>{selected ? describeOption(selected) : ""}</span>
+                </div>
+                <button
+                  className="button button-primary button-large"
+                  type="button"
+                  onClick={startPayment}
+                  disabled={busy || !selected}
+                >
+                  {isDemoMode
+                    ? "Показать демо-оплату"
+                    : busy
+                      ? "Создаём платёж…"
+                      : "Перейти к оплате"}
+                </button>
+              </div>
+
+              {error && (
+                <div className="auth-error" role="alert">
+                  {error}
+                </div>
+              )}
+
+              {isDemoMode && (
+                <p className="muted payment-demo-note">
+                  В демо-режиме оплата не выполняется — кнопка показывает, как выглядит экран после
+                  успешного платежа.
+                </p>
+              )}
+            </>
           )}
         </section>
       )}
 
       <section className="cabinet-grid cabinet-grid-bottom">
-        <article className="cabinet-card renewal-settings">
-          <header>
-            <h3>Автопродление</h3>
-          </header>
-          <p className="muted">
-            Если на балансе достаточно средств, новый месяц включится автоматически.
-          </p>
-          <label className="toggle-row">
-            <span>
-              <strong>Автопродление</strong>
-              <small>{autoRenew ? "Включено" : "Выключено"}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={autoRenew}
-              onChange={(event) => setAutoRenew(event.target.checked)}
-            />
-          </label>
-          <div className="balance-row">
-            <span>Баланс</span>
-            <strong>{formatRubles(0)}</strong>
-          </div>
-          <button
-            className="button button-secondary full-button"
-            type="button"
-            onClick={() => explain("Пополнение баланса откроется вместе с платёжным провайдером.")}
-          >
-            Пополнить баланс
-          </button>
-        </article>
-
         <article className="cabinet-card payment-device-addon">
           <header>
             <h3>Дополнительное устройство</h3>
           </header>
           <Mascot variant="subscription-active" className="card-mascot-small" decorative />
           <strong className="big-stat">{formatRubles(EXTRA_DEVICE_PRICE_RUB)}</strong>
-          <p className="muted">Одно дополнительное место на весь срок действующей подписки.</p>
-          <button
-            className="button button-secondary full-button"
-            type="button"
-            onClick={() =>
-              explain("Покупка дополнительного места появится вместе с платёжным провайдером.")
-            }
-          >
-            Добавить устройство
-          </button>
+          <p className="muted">
+            Одно дополнительное место за каждый месяц оплаченного периода. Пока это оформляется
+            через поддержку — напишите нам, и место добавят к Вашей подписке.
+          </p>
         </article>
       </section>
 
