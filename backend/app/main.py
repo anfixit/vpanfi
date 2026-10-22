@@ -12,6 +12,11 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
+from app.services.payment_sweep import (
+    dobor_period,
+    obojti_svezhie,
+    zakryt_ostyvshie,
+)
 from app.services.referral_wiring import (
     bot_sync_next_run,
     bot_sync_period,
@@ -55,6 +60,74 @@ async def _napominaniya() -> None:
         except Exception:
             logger.exception("Обход напоминаний сорвался")
         await asyncio.sleep(chasy * 3600)
+
+
+# Первое закрытие остывших платежей сдвинуто на час от старта: за
+# сутки их набирается единицы, и деплой не повод спрашивать кассу о
+# брошенных корзинах заново.
+_PERVOE_ZAKRYTIE_OSTYVSHIH = timedelta(hours=1)
+_ZAKRYTIE_OSTYVSHIH_KAZHDYE = timedelta(hours=24)
+
+
+async def _dobor_oplat() -> None:
+    """Переспрашивать кассу о платежах, уведомление о которых не дошло.
+
+    Вебхук ЮKassa — единственный способ узнать об оплате, и её окно
+    повторов конечно: сайт, пролежавший дольше, терял оплату навсегда
+    (см. ``services/payment_sweep``). Задача живёт внутри приложения,
+    а не в кроне снаружи, по той же причине, что и напоминания:
+    расписание едет вместе с кодом. Процесс uvicorn один, поэтому
+    обход не задвоится.
+
+    Закрытие остывших платежей (``zakryt_ostyvshie``) живёт в этом же
+    цикле, а не в своей задаче: отдельная задача ради обхода раз в
+    сутки не стоила бы своего кода, когда рядом уже крутится цикл.
+    """
+    settings = get_settings()
+    if settings.yookassa_recheck_minutes <= 0:
+        return
+    if not settings.is_yookassa_configured:
+        logger.info("Касса не настроена: добор оплат не запускается")
+        return
+
+    period = dobor_period(settings)
+    # Задержка на старте короче, чем у остальных задач: потерянная
+    # оплата это человек, который уже заплатил и ждёт письма.
+    await asyncio.sleep(30)
+    sleduyushchee_zakrytie = (
+        datetime.now(UTC) + _PERVOE_ZAKRYTIE_OSTYVSHIH
+    )
+    while True:
+        try:
+            vydano = await obojti_svezhie()
+            if vydano:
+                logger.info(
+                    "Добор оплат: подписок выдано без уведомления: %s",
+                    vydano,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Добор оплат: обход сорвался")
+
+        if datetime.now(UTC) >= sleduyushchee_zakrytie:
+            try:
+                dovydano = await zakryt_ostyvshie()
+                if dovydano:
+                    logger.info(
+                        "Добор оплат: подписок выдано по остывшим "
+                        "платежам: %s",
+                        dovydano,
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Добор оплат: закрытие остывших сорвалось")
+            sleduyushchee_zakrytie = (
+                datetime.now(UTC) + _ZAKRYTIE_OSTYVSHIH_KAZHDYE
+            )
+
+        await asyncio.sleep(period.total_seconds())
 
 
 _PERVAYA_SVERKA_USTROJSTV = timedelta(minutes=10)
@@ -159,11 +232,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # persistence layer is connected.
     zadacha = asyncio.create_task(_napominaniya())
     nagrady_zadacha = asyncio.create_task(_nagrady())
+    oplaty_zadacha = asyncio.create_task(_dobor_oplat())
     try:
         yield
     finally:
         zadacha.cancel()
         nagrady_zadacha.cancel()
+        oplaty_zadacha.cancel()
 
 
 def create_app() -> FastAPI:

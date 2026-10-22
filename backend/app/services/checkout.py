@@ -15,9 +15,11 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -285,8 +287,43 @@ class CheckoutService:
         if payment.status is not PaymentStatus.PENDING:
             return False
 
-        payment.status = PaymentStatus.SUCCEEDED
+        return await self._zanyat_oplachennym(payment)
+
+    async def _zanyat_oplachennym(self, payment: Payment) -> bool:
+        """Перевести платёж в succeeded, если это ещё никто не сделал.
+
+        Условным UPDATE, а не присваиванием в объекте: с 22.10.2026 об
+        оплате узнают двое — вебхук и фоновый добор
+        (``services/payment_sweep.py``). Оба читают платёж своей
+        сессией, и оба могли увидеть pending до того, как первый из них
+        успел записать succeeded. Присваивание в объекте такую пару
+        пропустило бы, оба вернули бы True, и подписка продлилась бы
+        дважды за одни деньги. Здесь же переход отдаёт база: WHERE
+        status = pending матчит ровно одну строку, и ровно один вызов
+        получит rowcount == 1.
+        """
+        # cast: число задетых строк живёт на CursorResult, а
+        # AsyncSession.execute объявлен отдающим общий Result.
+        result = cast(
+            CursorResult[Any],
+            await self._session.execute(
+                update(Payment)
+                .where(
+                    Payment.id == payment.id,
+                    Payment.status == PaymentStatus.PENDING,
+                )
+                .values(status=PaymentStatus.SUCCEEDED)
+                .execution_options(synchronize_session=False)
+            ),
+        )
         await self._session.commit()
+        if result.rowcount != 1:
+            # Платёж успел занять кто-то другой: выдавать нечего.
+            return False
+        # Сессия создана с expire_on_commit=False, и объект сам о
+        # записанном статусе не узнает, а ``deliver`` ниже работает уже
+        # с ним.
+        payment.status = PaymentStatus.SUCCEEDED
         return True
 
     async def needs_delivery(self, *, provider_payment_id: str) -> bool:

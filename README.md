@@ -122,16 +122,29 @@ the body except the payment id: the status and the amount are fetched from
 `GET /v3/payments/{id}` and the amount is compared with the one stored when
 the payment was created.
 
+The webhook is not the only way the site learns about a payment. YooKassa
+retries a notification until it sees a 200, but that window is finite: a
+site that was down for longer used to keep the payment PENDING forever —
+the money taken, the subscription not delivered, and only the buyer to
+notice. So `api` also sweeps its own PENDING payments every couple of
+minutes (`VPANFI_YOOKASSA_RECHECK_MINUTES`, see
+`backend/app/services/payment_sweep.py`) and asks the cash desk about each
+of them through the same `confirm` the webhook uses. Payments that stay
+PENDING for longer than a day are asked about once a day instead, up to a
+month old: a payment is only ever marked failed when the cash desk itself
+answers `canceled`, never on a timer of ours.
+
 Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected
+- `VPANFI_YOOKASSA_RECHECK_MINUTES` — how often the site asks YooKassa about its own unpaid payments, as a backstop for a notification that never arrived; `2` by default, `0` turns the sweep off and leaves the webhook as the only way to learn about a payment
 - `VPANFI_YOOKASSA_PAYMENT_METHODS` — payment methods offered to the buyer, as `payment_method_data.type` values empty by default, which lets YooKassa show every method the shop has enabled; set it only to narrow that list down
 - `VPANFI_REFERRAL_ENABLED`: set to `true` to turn on the referral program; defaults to `false`, which keeps the site behaving exactly as before
 - `VPANFI_REFERRAL_BOT_ENABLED`: set to `true` to also reward invites that turn into a purchase in the sales bot instead of on the site; defaults to `false` and requires `VPANFI_REFERRAL_ENABLED=true` and a working `VPANFI_BEDOLAGA_API_TOKEN` as well
 
 They travel inside the SSH channel rather than on the remote command line, so they never appear in the server's process list or in a workflow log.
 
-The referral program's guarantee that a reward is never granted twice rests on a lock kept in the `api` process's own memory (`_LOCKS` in `backend/app/services/referral.py`), not in the database. That holds only while `api` runs as a single uvicorn process in a single container, which is how `docker-compose.yml` runs it today; do not add `--workers` or a second replica of that service without moving the lock into the database first (for example a `SELECT ... FOR UPDATE` on the reward row).
+The referral program's guarantee that a reward is never granted twice rests on a lock kept in the `api` process's own memory (`_LOCKS` in `backend/app/services/referral.py`, and `_ZAMKI` in `backend/app/services/payment_sweep.py`, which keeps the webhook and the payment sweep off the same payment), not in the database. That holds only while `api` runs as a single uvicorn process in a single container, which is how `docker-compose.yml` runs it today; do not add `--workers` or a second replica of that service without moving the lock into the database first (for example a `SELECT ... FOR UPDATE` on the reward row).
 
 A related, smaller limitation: extending a panel subscription is read-then-set (read the current expiry, add days, write it back), both for an ordinary purchase and for a referral reward. If a purchase and a reward land on the same panel account within the same second, one of the two reads can miss the other's write, and one increment is lost. This undercounts the account's days; it never grants extra days that were not earned.
 

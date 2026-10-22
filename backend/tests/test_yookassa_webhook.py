@@ -20,6 +20,11 @@ from app.services.notify import TelegramNotifier
 WEBHOOK = "/api/v1/payments/yookassa/webhook"
 
 
+class FakeResult:
+    def __init__(self, rowcount: int) -> None:
+        self.rowcount = rowcount
+
+
 class FakeSession:
     """Сессия без базы: проверяем правило, а не SQL."""
 
@@ -29,6 +34,20 @@ class FakeSession:
 
     async def scalar(self, statement: object) -> Payment | None:
         return self._payment
+
+    async def execute(self, statement: object) -> FakeResult:
+        """Условный UPDATE из ``confirm``: занять платёж можно раз.
+
+        Настоящий запрос матчит строку только в статусе pending, и
+        rowcount здесь считается по тому же правилу.
+        """
+        if (
+            self._payment is not None
+            and self._payment.status is PaymentStatus.PENDING
+        ):
+            self._payment.status = PaymentStatus.SUCCEEDED
+            return FakeResult(1)
+        return FakeResult(0)
 
     async def commit(self) -> None:
         self.commits += 1

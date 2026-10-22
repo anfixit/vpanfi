@@ -25,6 +25,7 @@ from app.services.checkout import (
     UnknownPaymentMethodError,
 )
 from app.services.payment_methods import known_methods
+from app.services.payment_sweep import zamok_platezha
 from app.services.shop import UnknownTariffError
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -170,18 +171,28 @@ async def yookassa_webhook(
         # Повторять такое уведомление бессмысленно: разбирать нечего.
         return Response(status_code=status.HTTP_200_OK)
 
-    try:
-        paid = await checkout.confirm(provider_payment_id=identifier)
-    except CheckoutUnavailableError:
-        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
-    except CheckoutNotConfiguredError:
-        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    # Под тем же замком, что и фоновый добор оплат: с 22.10.2026 об
+    # оплате узнают двое, и проснуться на одном платеже они могут
+    # одновременно. Переход pending → succeeded защищён и в базе, но
+    # довыдача по needs_delivery проверяет отсутствие ссылки, которую
+    # второй вызов как раз в этот момент и записывает, — без замка оба
+    # пошли бы в панель и продлили бы подписку дважды.
+    async with zamok_platezha(identifier):
+        try:
+            paid = await checkout.confirm(provider_payment_id=identifier)
+        except CheckoutUnavailableError:
+            return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except CheckoutNotConfiguredError:
+            return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-    # Подписку выдаём тому вызову, который сам перевёл платёж в succeeded:
-    # ЮKassa присылает уведомление несколько раз, и повтор не должен
-    # продлевать. Исключение одно: если в прошлый раз панель не ответила,
-    # платёж оплачен, а ссылки нет, и повтор вебхука довыдаёт подписку.
-    if paid or await checkout.needs_delivery(provider_payment_id=identifier):
-        await checkout.deliver(provider_payment_id=identifier)
+        # Подписку выдаём тому вызову, который сам перевёл платёж в
+        # succeeded: ЮKassa присылает уведомление несколько раз, и повтор
+        # не должен продлевать. Исключение одно: если в прошлый раз панель
+        # не ответила, платёж оплачен, а ссылки нет, и повтор вебхука
+        # довыдаёт подписку.
+        if paid or await checkout.needs_delivery(
+            provider_payment_id=identifier
+        ):
+            await checkout.deliver(provider_payment_id=identifier)
 
     return Response(status_code=status.HTTP_200_OK)
