@@ -27,7 +27,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -115,24 +115,48 @@ async def ozhidayushchie_id(
     ne_mladshe: timedelta | None = None,
     limit: int = _ZA_ODIN_OBHOD,
 ) -> list[str]:
-    """Идентификаторы наших неоплаченных платежей, старые первыми.
+    """Идентификаторы платежей, с которыми обходу есть что делать.
+
+    Это две разные беды, и обеих не видно без нас:
+
+    * платёж ждёт оплаты (PENDING) — уведомление могло не дойти, и
+      тогда он так и останется неоплаченным при принятых деньгах;
+    * платёж оплачен, а подписка не выдана (``delivered_at`` пуст) —
+      в прошлый раз не ответила панель. Такой платёж уже не PENDING, и
+      без этой половины условия он не попал бы ни в один следующий
+      обход: человек остался бы с деньгами на нашей стороне и без
+      доступа, причём именно там, где уведомления кассы нет совсем.
 
     Отдаёт идентификаторы кассы, а не сами записи: каждый платёж
     обрабатывается в своей сессии, и объект из чужой сессии здесь был
     бы бесполезен. Платежи без идентификатора кассы пропускаем: о них
     она ничего не знает (``start`` не дождался ответа и уже пометил их
-    несостоявшимися).
+    несостоявшимися). Платежи без почты тоже: выдавать подписку
+    некому.
+
+    Новые первыми, а не старые: за оплатой стоит человек, который
+    ждёт письма прямо сейчас, а старое в этом окне — почти всегда
+    брошенная корзина. При упёртом в ``limit`` хвосте порядок «старые
+    первыми» означал бы, что до свежей потерянной оплаты обход не
+    доходит вовсе, пока хвост не рассосётся.
     """
     seichas = datetime.now(UTC)
     stmt = select(Payment.provider_payment_id).where(
         Payment.provider == PROVIDER,
-        Payment.status == PaymentStatus.PENDING,
         Payment.provider_payment_id.is_not(None),
+        Payment.contact_email.is_not(None),
+        or_(
+            Payment.status == PaymentStatus.PENDING,
+            and_(
+                Payment.status == PaymentStatus.SUCCEEDED,
+                Payment.delivered_at.is_(None),
+            ),
+        ),
         Payment.created_at >= seichas - ne_starshe,
     )
     if ne_mladshe is not None:
         stmt = stmt.where(Payment.created_at < seichas - ne_mladshe)
-    stmt = stmt.order_by(Payment.created_at).limit(limit)
+    stmt = stmt.order_by(Payment.created_at.desc()).limit(limit)
     najdeno = await session.scalars(stmt)
     return [identifier for identifier in najdeno if identifier]
 

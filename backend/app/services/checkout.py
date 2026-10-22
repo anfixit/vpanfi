@@ -327,20 +327,24 @@ class CheckoutService:
         return True
 
     async def needs_delivery(self, *, provider_payment_id: str) -> bool:
-        """Оплачен, а ссылки нет: выдача в прошлый раз сорвалась.
+        """Оплачен, а подписка не выдана: выдача в прошлый раз сорвалась.
 
-        Ссылка на подписку появляется у платежа только после ответа
-        панели. Если панель молчала, платёж остался оплаченным без ссылки,
-        и человек с деньгами на нашей стороне сидит без доступа. Повторный
-        вебхук от ЮKassa это второй шанс довыдать, а не повод ждать письма
-        в поддержку.
+        Отметка о выдаче появляется у платежа только после ответа панели.
+        Если панель молчала, платёж остался оплаченным без выдачи, и
+        человек с деньгами на нашей стороне сидит без доступа. Повторный
+        вебхук от ЮKassa и фоновый добор оплат — это второй шанс
+        довыдать, а не повод ждать письма в поддержку.
+
+        По отметке, а не по пустой ``subscription_url``: панель могла
+        ответить и не дать ссылки, и тогда добор, спрашивающий каждые
+        пару минут, продлевал бы подписку без конца.
         """
         payment = await self._by_provider_id(provider_payment_id)
         if payment is None or payment.contact_email is None:
             return False
         return (
             payment.status is PaymentStatus.SUCCEEDED
-            and payment.subscription_url is None
+            and payment.delivered_at is None
         )
 
     async def deliver(self, *, provider_payment_id: str) -> None:
@@ -393,6 +397,7 @@ class CheckoutService:
                     payment.subscription_url = (
                         str(created.get("subscriptionUrl") or "") or None
                     )
+                    payment.delivered_at = datetime.now(UTC)
                     await self._session.commit()
                     kabinet = await self._kabinet_bezopasno(
                         payment, created.get("id"), username
@@ -445,6 +450,7 @@ class CheckoutService:
                     tag="PAID",
                 )
                 payment.subscription_url = panel_user.subscription_url
+                payment.delivered_at = datetime.now(UTC)
                 await self._session.commit()
                 kabinet = await self._kabinet_bezopasno(
                     payment, panel_user.id, panel_user.username or username

@@ -126,10 +126,16 @@ The webhook is not the only way the site learns about a payment. YooKassa
 retries a notification until it sees a 200, but that window is finite: a
 site that was down for longer used to keep the payment PENDING forever —
 the money taken, the subscription not delivered, and only the buyer to
-notice. So `api` also sweeps its own PENDING payments every couple of
+notice. So `api` also sweeps its own unfinished payments every couple of
 minutes (`VPANFI_YOOKASSA_RECHECK_MINUTES`, see
 `backend/app/services/payment_sweep.py`) and asks the cash desk about each
-of them through the same `confirm` the webhook uses. Payments that stay
+of them through the same `confirm` the webhook uses. Unfinished means two
+things: still PENDING, or already paid but never delivered, because a
+delivery that died on an unavailable panel leaves the buyer charged without
+access and no notification is coming for it either. Delivery is marked by
+`payments.delivered_at` rather than by a filled `subscription_url`: the
+panel can answer without giving a link, and a sweep running every couple of
+minutes would then extend that subscription forever. Payments that stay
 PENDING for longer than a day are asked about once a day instead, up to a
 month old: a payment is only ever marked failed when the cash desk itself
 answers `canceled`, never on a timer of ours.

@@ -6,6 +6,7 @@
 сумму с тем, что записано у нас.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -323,6 +324,27 @@ async def test_delivered_payment_is_not_delivered_again(
 ) -> None:
     payment = _payment(PaymentStatus.SUCCEEDED)
     payment.subscription_url = "https://panel.example/sub/abc"
+    payment.delivered_at = datetime(2026, 10, 22, tzinfo=UTC)
+    service = _service(
+        FakeSession(payment), _FakeKassa(_succeeded()), monkeypatch
+    )
+
+    assert await service.needs_delivery(provider_payment_id="pay-1") is False
+
+
+async def test_a_delivery_without_a_link_is_not_repeated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Панель ответила, а ссылки не дала: выдавать второй раз нельзя.
+
+    Признаком выдачи была заполненная ``subscription_url``, и для
+    вебхука этого хватало: он приходит считанное число раз. Фоновый
+    добор оплат спрашивает каждые пару минут и по пустой ссылке
+    продлевал бы подписку без конца.
+    """
+    payment = _payment(PaymentStatus.SUCCEEDED)
+    payment.subscription_url = None
+    payment.delivered_at = datetime(2026, 10, 22, tzinfo=UTC)
     service = _service(
         FakeSession(payment), _FakeKassa(_succeeded()), monkeypatch
     )

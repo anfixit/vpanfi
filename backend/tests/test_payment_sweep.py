@@ -9,7 +9,7 @@
 """
 
 import asyncio
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -199,10 +199,10 @@ async def test_one_broken_payment_does_not_stop_the_rest(
     assert "deliver:pay-2" in zhurnal
 
 
-async def test_the_sweep_asks_only_about_our_pending_payments(
+async def test_the_sweep_asks_only_about_our_own_payments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Платёж чужого провайдера и уже закрытый обход не берёт."""
+    """Платёж чужого провайдера и платёж без почты обход не берёт."""
     sessii = _podmenit_sessii(monkeypatch, [])
     _podmenit_checkout(monkeypatch, {})
 
@@ -215,6 +215,49 @@ async def test_the_sweep_asks_only_about_our_pending_payments(
     )
     assert checkout_module.PROVIDER in znacheniya
     assert PaymentStatus.PENDING in znacheniya
+    assert "contact_email IS NOT NULL" in str(statement)
+
+
+async def test_paid_but_undelivered_payments_stay_in_the_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Оплачен, а подписка не выдана: обход должен брать и такие.
+
+    Если выдача сорвалась на молчащей панели, платёж уже не PENDING, и
+    по одному только PENDING он не попал бы ни в один следующий обход.
+    А уведомления кассы в этом случае нет совсем — именно поэтому
+    обход и понадобился.
+    """
+    sessii = _podmenit_sessii(monkeypatch, [])
+    _podmenit_checkout(monkeypatch, {})
+
+    await payment_sweep.obojti_svezhie()
+
+    statement = sessii[0].zapros
+    assert isinstance(statement, Select)
+    znacheniya = set(
+        statement.compile().params.values()  # type: ignore[union-attr]
+    )
+    assert PaymentStatus.SUCCEEDED in znacheniya
+    assert "payments.delivered_at IS NULL" in str(statement)
+
+
+async def test_the_newest_payment_is_asked_about_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Порядок выборки: сперва свежие.
+
+    За свежей оплатой стоит человек, который ждёт письма прямо сейчас,
+    а старое в суточном окне — почти всегда брошенная корзина. При
+    упёртом в предел хвосте порядок «старые первыми» означал бы, что до
+    свежей потерянной оплаты обход не доходит вовсе.
+    """
+    sessii = _podmenit_sessii(monkeypatch, [])
+    _podmenit_checkout(monkeypatch, {})
+
+    await payment_sweep.obojti_svezhie()
+
+    assert "ORDER BY payments.created_at DESC" in str(sessii[0].zapros)
 
 
 async def test_an_unknown_payment_is_not_asked_about(
@@ -244,7 +287,7 @@ class _Baza:
 
     def __init__(self) -> None:
         self.status = PaymentStatus.PENDING
-        self.subscription_url: str | None = None
+        self.delivered_at: datetime | None = None
 
 
 class _Rezultat:
@@ -268,7 +311,7 @@ class _OdnaStroka:
             return None
         # Перечитывание, как у настоящей сессии в новой транзакции.
         self._payment.status = self._baza.status
-        self._payment.subscription_url = self._baza.subscription_url
+        self._payment.delivered_at = self._baza.delivered_at
         return self._payment
 
     async def execute(self, statement: object) -> _Rezultat:
@@ -343,7 +386,7 @@ class _ServiceSVydachej(CheckoutService):
         # обработчик и успел бы выдать подписку второй раз.
         await asyncio.sleep(0)
         self._vydachi.append(provider_payment_id)
-        self._baza.subscription_url = "https://panel.example/sub/abc"
+        self._baza.delivered_at = datetime.now(UTC)
 
 
 async def test_webhook_and_sweep_deliver_only_once(
@@ -383,6 +426,39 @@ async def test_webhook_and_sweep_deliver_only_once(
     assert baza.status is PaymentStatus.SUCCEEDED
     # Замок за собой убран: словарь не должен расти вечно.
     assert payment_sweep._ZAMKI == {}
+
+
+async def test_an_undelivered_payment_is_delivered_on_the_next_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Панель молчала, потом ответила: обход доводит выдачу до конца.
+
+    Настоящие ``confirm`` и ``needs_delivery``: платёж уже succeeded,
+    поэтому ``confirm`` отдаёт False (повтор не продлевает), а выдачу
+    запускает именно ``needs_delivery``.
+    """
+    monkeypatch.setattr(
+        checkout_module,
+        "YookassaGateway",
+        lambda _settings: _FakeKassa(_succeeded()),
+    )
+    baza = _Baza()
+    baza.status = PaymentStatus.SUCCEEDED
+    vydachi: list[str] = []
+    service = _ServiceSVydachej(
+        _OdnaStroka(_payment(), baza), _settings(), vydachi, baza
+    )
+
+    oplatil = await service.confirm(provider_payment_id="pay-1")
+    assert oplatil is False
+    assert await service.needs_delivery(provider_payment_id="pay-1") is True
+
+    await service.deliver(provider_payment_id="pay-1")
+
+    assert vydachi == ["pay-1"]
+    # Отметка о выдаче закрывает платёж для следующих обходов, и
+    # подписка не будет продлеваться каждые две минуты.
+    assert await service.needs_delivery(provider_payment_id="pay-1") is False
 
 
 async def test_only_one_claims_the_payment_without_the_lock() -> None:
