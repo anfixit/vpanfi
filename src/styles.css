@@ -1512,7 +1512,7 @@ h3,
 }
 
 .cabinet-grid-bottom {
-  grid-template-columns: 1.1fr 1fr 0.9fr;
+  grid-template-columns: 1.3fr 0.9fr;
   margin-top: 15px;
 }
 
@@ -1542,21 +1542,6 @@ h3,
 }
 
 .payment-list b {
-  color: var(--green);
-}
-
-.renewal-status,
-.balance-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 11px;
-}
-
-.renewal-status strong {
   color: var(--green);
 }
 
@@ -1599,10 +1584,6 @@ h3,
 
   .cabinet-grid-bottom {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .cabinet-grid-bottom > :last-child {
-    grid-column: span 2;
   }
 }
 
@@ -1831,8 +1812,7 @@ h3,
     grid-template-columns: 1fr;
   }
 
-  .cabinet-grid-top > :last-child,
-  .cabinet-grid-bottom > :last-child {
+  .cabinet-grid-top > :last-child {
     grid-column: auto;
   }
 

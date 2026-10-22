@@ -144,7 +144,6 @@ function ReferralCard() {
 export function DashboardPage() {
   const dashboard = useAsyncResource(api.getDashboard);
   const subscriptionLink = useAsyncResource(api.getSubscription);
-  const { explain } = useDemoNotice();
 
   const reloadEverything = () => {
     subscriptionLink.reload();
@@ -341,24 +340,14 @@ export function DashboardPage() {
           </button>
         </CabinetCard>
 
-        <CabinetCard title="Автопродление и баланс" icon="refresh">
-          <div className="renewal-status">
-            <span>Автопродление</span>
-            <strong>{subscription.autoRenewEnabled ? "Включено" : "Выключено"}</strong>
-          </div>
-          <p className="muted">При наличии средств следующий период оплатится автоматически.</p>
-          <div className="balance-row">
-            <span>Баланс</span>
-            <strong>{formatRubles(subscription.balanceRub)}</strong>
-          </div>
-          <button
-            className="small-action"
-            type="button"
-            onClick={() => explain("Пополнение баланса откроется вместе с платёжным провайдером.")}
-          >
-            Пополнить баланс
-          </button>
-        </CabinetCard>
+        {/* 22.10.2026: карточка «Автопродление и баланс» снята до готовности
+            функции. Оба значения были константами: to_subscription() в
+            backend/app/services/panel.py подставляет balance_rub=0 и
+            auto_renew_enabled=False, а продакшен-вызов их не передаёт — то
+            есть любой покупатель видел «Выключено» и 0 ₽ всегда. Кнопка
+            «Пополнить баланс» никуда не вела, автопродления на сайте нет.
+            Баланс будет общий с ботом продаж; вернуть карточку вместе с
+            настоящим пополнением, списанием и автопродлением. */}
 
         <CabinetCard
           title="Состояние"
