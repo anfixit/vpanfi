@@ -69,7 +69,7 @@ async def test_create_payment_sends_the_documented_body() -> None:
     }
     assert body["payment_method_data"] == {"type": "sbp"}
     assert body["metadata"] == {"payment_id": "payment-uuid"}
-    # Чеки по 54-ФЗ сайт не передаёт — так же, как не передавал в Platega.
+    # Чеки по 54-ФЗ сайт не передаёт: фискализации у магазина нет.
     assert "receipt" not in body
     assert payment.id == "2d8f1b00-000f-5000-9000-1b68e7f15d3c"
     assert payment.confirmation_url == "https://yoomoney.ru/checkout/1"

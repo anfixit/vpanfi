@@ -53,22 +53,13 @@ class Settings(BaseSettings):
     trial_device_limit: int = 3
 
     # Касса сайта: ЮKassa. С 22.08.2026 деньги принимала Platega, с
-    # 22.10.2026 — ЮKassa. Магазин общий с ботом продаж, но реквизиты
-    # всё равно свои: сайт ходит в кассу сам, со своим ключом.
+    # 22.10.2026 — ЮKassa; 22.10.2026 через неё прошёл первый боевой
+    # платёж, и код прежней кассы удалён. Магазин общий с ботом продаж,
+    # но ключ свой: сайт ходит в кассу сам.
     yookassa_shop_id: str | None = None
     yookassa_secret_key: SecretStr | None = None
     yookassa_base_url: AnyHttpUrl = AnyHttpUrl("https://api.yookassa.ru/v3")
     yookassa_timeout_seconds: float = 15.0
-
-    # Прежняя касса. Код оставлен до первого удачного боевого платежа
-    # через ЮKassa: откат должен быть возможен, пока новая касса не
-    # доказала, что принимает деньги.
-    platega_merchant_id: str | None = None
-    platega_secret: SecretStr | None = None
-    platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
-    platega_timeout_seconds: float = 15.0
-    # Коды способов у Platega: 2 СБП, 11 карты РФ, 13 криптовалюта.
-    platega_payment_method: int = 2
     # За сколько дней предупреждать об окончании подписки. Бот шлёт
     # такие письма только тем, кто в нём есть, а покупателя сайта там
     # нет: он платит почтой, без телеграма. Пустой список выключает
@@ -84,8 +75,7 @@ class Settings(BaseSettings):
     password_reset_ttl_minutes: int = 60
 
     # Способы оплаты ЮKassa — это значения payment_method_data.type:
-    # bank_card, sbp, yoo_money, sberbank, tinkoff_bank. Прежние коды
-    # Platega (2, 11, 13) здесь не значат ничего.
+    # bank_card, sbp, yoo_money, sberbank, tinkoff_bank.
     #
     # Что показываем на выбор. Пусто по умолчанию, и это сознательно:
     # ЮKassa сама покажет на своей странице ровно те способы, которые
@@ -226,8 +216,6 @@ class Settings(BaseSettings):
         "remnawave_squad_uuid",
         "yookassa_shop_id",
         "yookassa_secret_key",
-        "platega_merchant_id",
-        "platega_secret",
         "smtp_host",
         "smtp_user",
         "smtp_password",
@@ -322,15 +310,6 @@ class Settings(BaseSettings):
         в отказ авторизации уже после того, как человек нажал «оплатить».
         """
         return bool(self.yookassa_shop_id and self.yookassa_secret_key)
-
-    @property
-    def is_platega_configured(self) -> bool:
-        """Касса готова, только когда есть и мерчант, и секрет.
-
-        Половина реквизитов хуже, чем ничего: платёж создастся и упрётся
-        в отказ авторизации уже после того, как человек нажал «оплатить».
-        """
-        return bool(self.platega_merchant_id and self.platega_secret)
 
     @property
     def is_bedolaga_configured(self) -> bool:
