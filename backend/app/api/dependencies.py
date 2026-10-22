@@ -27,6 +27,7 @@ from app.services.referral_wiring import (
 )
 from app.services.subscription import SubscriptionService
 from app.services.support import SupportService
+from app.services.wallet import WalletService
 
 __all__ = [
     "CurrentAdmin",
@@ -45,6 +46,7 @@ __all__ = [
     "get_reward_store",
     "get_subscription_service",
     "get_support_service",
+    "get_wallet_service",
     "require_admin",
 ]
 
@@ -168,6 +170,11 @@ def get_subscription_service(
     settings: SettingsDep,
 ) -> SubscriptionService:
     return SubscriptionService(session, settings)
+
+
+def get_wallet_service(settings: SettingsDep) -> WalletService:
+    """Кошелёк человека живёт в боте продаж, базы сайта ему не нужно."""
+    return WalletService(settings)
 
 
 def get_admin_service(

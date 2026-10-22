@@ -108,7 +108,7 @@ Optional secrets, applied to `/opt/vpanfi/.env` on every deploy. Leave them unse
 - `VPANFI_YOOKASSA_SECRET_KEY` — its secret key
 - `VPANFI_PLATEGA_MERCHANT_ID` — the previous cash desk, kept until the first live YooKassa payment
 - `VPANFI_PLATEGA_SECRET` — its API key
-- `VPANFI_BEDOLAGA_API_TOKEN`: key for the sales bot's API, used to extend an inviter's subscription there; may be left empty, which the app treats as not configured
+- `VPANFI_BEDOLAGA_API_TOKEN`: key for the sales bot's API, used to extend an inviter's subscription there and to read a person's wallet balance for the cabinet; may be left empty, which the app treats as not configured
 
 The site takes money through YooKassa and delivers subscriptions itself;
 purchases made here never reach the sales bot's database, and that is a

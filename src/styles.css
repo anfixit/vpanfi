@@ -1516,6 +1516,15 @@ h3,
   margin-top: 15px;
 }
 
+/*
+ * Карточки баланса нет у тех, чей кошелёк в боте продаж не нашёлся:
+ * оставшиеся две карточки делят ряд между собой, а не сидят в трёх
+ * колонках с дырой справа.
+ */
+.cabinet-grid-bottom.without-balance {
+  grid-template-columns: 1.2fr 0.8fr;
+}
+
 .payment-list {
   display: grid;
   gap: 8px;
@@ -1545,7 +1554,6 @@ h3,
   color: var(--green);
 }
 
-.renewal-status,
 .balance-row {
   display: flex;
   align-items: center;
@@ -1556,7 +1564,7 @@ h3,
   font-size: 11px;
 }
 
-.renewal-status strong {
+.balance-row strong {
   color: var(--green);
 }
 
@@ -1603,6 +1611,14 @@ h3,
 
   .cabinet-grid-bottom > :last-child {
     grid-column: span 2;
+  }
+
+  .cabinet-grid-bottom.without-balance {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cabinet-grid-bottom.without-balance > :last-child {
+    grid-column: auto;
   }
 }
 

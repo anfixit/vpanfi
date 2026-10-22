@@ -20,8 +20,6 @@ class SubscriptionResponse(BaseModel):
     traffic_label: str = Field(serialization_alias="trafficLabel")
     devices_used: int = Field(ge=0, serialization_alias="devicesUsed")
     devices_limit: int = Field(ge=1, serialization_alias="devicesLimit")
-    auto_renew_enabled: bool = Field(serialization_alias="autoRenewEnabled")
-    balance_rub: int = Field(ge=0, serialization_alias="balanceRub")
 
 
 class CountryResponse(BaseModel):
@@ -58,9 +56,20 @@ class UserProfileResponse(BaseModel):
 
 
 class DashboardResponse(BaseModel):
+    """Сводка кабинета.
+
+    ``balance_kopeks`` пуст, когда суммы кошелька нет: человека не нашли
+    в боте продаж или бот не ответил. Это не ноль — ноль кабинет показал
+    бы как настоящую сумму, а пустому значению карточки баланса вовсе не
+    рисует.
+    """
+
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
 
     subscription: SubscriptionResponse | None = None
+    balance_kopeks: int | None = Field(
+        default=None, serialization_alias="balanceKopeks"
+    )
     countries: list[CountryResponse]
     recent_payments: list[PaymentResponse] = Field(
         serialization_alias="recentPayments"

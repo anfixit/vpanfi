@@ -155,9 +155,8 @@ export const demoDashboard: DashboardPayload = {
     trafficLabel: "Без лимита",
     devicesUsed: demoDevices.length,
     devicesLimit: 3,
-    autoRenewEnabled: true,
-    balanceRub: 0,
   },
+  balanceKopeks: 40_000,
   countries: demoCountries,
   recentPayments: demoPayments,
   profile: {

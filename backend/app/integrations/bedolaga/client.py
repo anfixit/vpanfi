@@ -6,6 +6,9 @@
 пришёл из бота, а не с сайта: у него есть телеграм-идентификатор, но
 может не быть учётки в панели вовсе.
 
+Кабинету сайта бот нужен по другой причине: кошелёк у человека один и
+живёт он здесь, своего баланса сайт не ведёт.
+
 Метод продления не идемпотентен: повторный вызов продлит подписку ещё
 раз. Поэтому шлюз не повторяет запрос сам при сбое, а решает это
 обработчик наград, который умеет отличить неизвестный исход от
@@ -22,6 +25,11 @@ from typing import Any, Self
 import httpx
 
 from app.core.config import Settings
+
+# Ссылка подписки в ответе бота — это ссылка панели: бот отдаёт её как
+# есть. Поэтому разбирает её тот же разборщик, что и у панели, а не
+# второй такой же здесь.
+from app.integrations.remnawave.client import extract_short_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +60,22 @@ MAX_PAGE_LIMIT = 200
 # Обход покупок одного клиента не должен зависнуть навечно из-за
 # бага на стороне бота, отдающего total больше реального числа строк.
 MAX_PURCHASE_PAGES = 20
+# Поиск клиента по его подписке идёт обходом списка: искать по ссылке
+# бот не умеет. Потолок тот же и по той же причине, что у покупок.
+MAX_USER_PAGES = 20
 
 
 @dataclass(frozen=True)
 class BotUser:
-    """Клиент бота продаж в объёме, нужном рефералке.
+    """Клиент бота продаж в объёме, нужном сайту.
 
-    Полей у бота больше (email, статус, теги и так далее), но мосту
-    нужны только эти пять: остальное разбирать незачем.
+    Полей у бота больше (статус, теги, промогруппа и так далее), но
+    разбирать их незачем: нужны ключи сопоставления, награды рефералки
+    и сумма кошелька для кабинета.
+
+    ``balance_kopeks`` пуст, когда бот суммы не прислал. Это не то же
+    самое, что нулевой баланс: нулю на экране верят, а пустому значению
+    кабинет просто не показывает строку.
     """
 
     id: int
@@ -67,6 +83,10 @@ class BotUser:
     referral_code: str | None
     referred_by_id: int | None
     has_had_paid_subscription: bool
+    balance_kopeks: int | None = None
+    # Короткие идентификаторы подписок этого клиента: по ним сайт
+    # узнаёт своего человека, когда телеграм-id у него не привязан.
+    subscription_short_uuids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -198,6 +218,43 @@ class BedolagaGateway:
                 continue
             users.append(user)
         return users, total
+
+    async def user_by_subscription_short_uuid(
+        self, short_uuid: str
+    ) -> BotUser:
+        """Найти клиента бота по короткому идентификатору его подписки.
+
+        Нужно тем людям, у кого на сайте не привязан телеграм: ссылка
+        подписки — единственный общий ключ, который бот отдаёт наружу.
+        Искать по ней бот не умеет, поэтому идём обходом списка. Это
+        дёшево, пока клиентов меньше тысячи, и защищено потолком
+        страниц.
+
+        Raises:
+            BedolagaUserNotFoundError: Ни у одного клиента бота нет
+                подписки с таким идентификатором.
+            BedolagaUnavailableError: Бот недоступен или ответил
+                ошибкой.
+        """
+        offset = 0
+        for _ in range(MAX_USER_PAGES):
+            users, total = await self.list_users(
+                limit=MAX_PAGE_LIMIT, offset=offset
+            )
+            for user in users:
+                if short_uuid in user.subscription_short_uuids:
+                    return user
+
+            # Шаг делаем по запрошенной странице, а не по числу
+            # разобранных записей: пропущенный обломок не должен
+            # заставить обход топтаться на одном месте.
+            offset += MAX_PAGE_LIMIT
+            if offset >= total:
+                break
+
+        raise BedolagaUserNotFoundError(
+            f"{USERS_LIST_PATH}?subscription={short_uuid}"
+        )
 
     async def purchases(self, user_id: int) -> list[BotPurchase]:
         """Все завершённые оплаты подписки клиента, по возрастанию времени.
@@ -408,6 +465,14 @@ def _parse_bot_user(payload: Any) -> BotUser | None:
     if not isinstance(referred_by_id, int):
         referred_by_id = None
 
+    balance_kopeks = payload.get("balance_kopeks")
+    # bool в Python тоже int, а True в сумме денег означает, что бот
+    # прислал не сумму: такому значению верить нельзя.
+    if not isinstance(balance_kopeks, int) or isinstance(
+        balance_kopeks, bool
+    ):
+        balance_kopeks = None
+
     return BotUser(
         id=user_id,
         telegram_id=telegram_id,
@@ -416,7 +481,36 @@ def _parse_bot_user(payload: Any) -> BotUser | None:
         has_had_paid_subscription=bool(
             payload.get("has_had_paid_subscription")
         ),
+        balance_kopeks=balance_kopeks,
+        subscription_short_uuids=_subscription_short_uuids(payload),
     )
+
+
+def _subscription_short_uuids(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Короткие идентификаторы всех подписок клиента, без повторов.
+
+    Бот отдаёт основную подписку в ``subscription`` и список в
+    ``subscriptions``, и одна и та же подписка бывает в обоих местах.
+    Пробные здесь не отбрасываются: сопоставить человека нужно по любой
+    его подписке, платная она или нет.
+    """
+    found: list[str] = []
+    candidates = [payload.get("subscription")]
+    listed = payload.get("subscriptions")
+    if isinstance(listed, list):
+        candidates.extend(listed)
+
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        link = candidate.get("subscription_url")
+        if not isinstance(link, str):
+            continue
+        short_uuid = extract_short_uuid(link)
+        if short_uuid is not None and short_uuid not in found:
+            found.append(short_uuid)
+
+    return tuple(found)
 
 
 def _parse_bot_purchase(item: Any) -> BotPurchase | None:

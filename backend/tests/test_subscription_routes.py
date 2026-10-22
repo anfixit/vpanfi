@@ -7,7 +7,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import get_subscription_service
+from app.api.dependencies import (
+    get_subscription_service,
+    get_wallet_service,
+)
 from app.models.user import User
 from app.schemas.cabinet import (
     DeviceResponse,
@@ -23,6 +26,9 @@ from app.services.subscription import (
 )
 
 LINK_PATH = "/api/v1/cabinet/subscription/link"
+LINKED_SUBSCRIPTION_URL = (
+    "https://panel.example.test/api/sub/9Pt-SNvQp-pMNRbZ"
+)
 
 
 class StubSubscriptionService:
@@ -154,6 +160,7 @@ class LinkedSubscriptionService:
         return SubscriptionLinkResponse(
             linked=True,
             panel_username="anfisa",
+            subscription_url=LINKED_SUBSCRIPTION_URL,
             subscription=self._subscription,
         )
 
@@ -181,8 +188,6 @@ def test_dashboard_shows_the_panel_subscription(
         traffic_label="50 ГБ",
         devices_used=1,
         devices_limit=5,
-        auto_renew_enabled=False,
-        balance_rub=0,
     )
     app.dependency_overrides[get_subscription_service] = (
         lambda: LinkedSubscriptionService(subscription)
@@ -198,4 +203,74 @@ def test_dashboard_shows_the_panel_subscription(
     assert payload["subscription"]["devicesLimit"] == 5
     assert payload["profile"]["email"] == "anfisa@vpanfi.ru"
 
+    app.dependency_overrides.pop(get_subscription_service, None)
+
+
+class StubWallet:
+    """Кошелёк из бота продаж: сумма либо её отсутствие."""
+
+    def __init__(self, balance_kopeks: int | None) -> None:
+        self._balance_kopeks = balance_kopeks
+        self.subscription_url: str | None = None
+
+    async def balance_kopeks(
+        self,
+        user: User,
+        *,
+        subscription_url: str | None = None,
+    ) -> int | None:
+        self.subscription_url = subscription_url
+        return self._balance_kopeks
+
+
+def test_dashboard_shows_the_wallet_from_the_bot(
+    app: FastAPI,
+    client: TestClient,
+) -> None:
+    wallet = StubWallet(40_000)
+    app.dependency_overrides[get_wallet_service] = lambda: wallet
+
+    payload = client.get("/api/v1/cabinet/dashboard").json()
+
+    assert payload["balanceKopeks"] == 40_000
+    app.dependency_overrides.pop(get_wallet_service, None)
+
+
+def test_dashboard_without_a_wallet_says_nothing_about_money(
+    app: FastAPI,
+    client: TestClient,
+) -> None:
+    """Человека в боте нет либо бот молчит: ноль рублей был бы ложью."""
+    app.dependency_overrides[get_wallet_service] = lambda: StubWallet(None)
+
+    payload = client.get("/api/v1/cabinet/dashboard").json()
+
+    assert payload["balanceKopeks"] is None
+    app.dependency_overrides.pop(get_wallet_service, None)
+
+
+def test_dashboard_hands_the_subscription_link_to_the_wallet(
+    app: FastAPI,
+    client: TestClient,
+) -> None:
+    """Ссылка подписки — ключ для тех, у кого Telegram не привязан."""
+    wallet = StubWallet(None)
+    app.dependency_overrides[get_wallet_service] = lambda: wallet
+    subscription = SubscriptionResponse(
+        status=SubscriptionStatus.ACTIVE,
+        plan_name="Подписка",
+        days_left=12,
+        expires_at=date.today() + timedelta(days=12),
+        traffic_label="50 ГБ",
+        devices_used=1,
+        devices_limit=5,
+    )
+    app.dependency_overrides[get_subscription_service] = (
+        lambda: LinkedSubscriptionService(subscription)
+    )
+
+    client.get("/api/v1/cabinet/dashboard")
+
+    assert wallet.subscription_url == LINKED_SUBSCRIPTION_URL
+    app.dependency_overrides.pop(get_wallet_service, None)
     app.dependency_overrides.pop(get_subscription_service, None)
