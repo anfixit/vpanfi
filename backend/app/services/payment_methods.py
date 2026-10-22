@@ -10,8 +10,7 @@
 его внутренним именем: человек не должен гадать, куда его ведут
 с деньгами.
 
-Значения — это ``payment_method_data.type`` из API ЮKassa. Прежние
-числовые коды Platega (2, 11, 12, 13) ей не подходят вовсе.
+Значения — это ``payment_method_data.type`` из API ЮKassa.
 """
 
 from dataclasses import dataclass

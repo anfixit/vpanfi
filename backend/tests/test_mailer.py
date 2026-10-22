@@ -71,7 +71,7 @@ class FakeSession:
 async def test_letter_is_sent_once_even_if_delivery_repeats(
     monkeypatch,
 ) -> None:
-    """Platega уведомляет повторно — письмо дублироваться не должно."""
+    """ЮKassa уведомляет повторно — письмо дублироваться не должно."""
 
     from app.models.billing import Payment, PaymentPurpose, PaymentStatus
     from app.services import checkout as checkout_module
@@ -94,7 +94,7 @@ async def test_letter_is_sent_once_even_if_delivery_repeats(
         amount_kopecks=30000,
         status=PaymentStatus.SUCCEEDED,
         purpose=PaymentPurpose.SUBSCRIPTION,
-        provider="platega",
+        provider="yookassa",
         description="30 дней",
         period_days=30,
         subscription_url="https://panel.example/sub/abc",
@@ -122,7 +122,7 @@ async def test_no_letter_without_a_configured_relay(monkeypatch) -> None:
         amount_kopecks=30000,
         status=PaymentStatus.SUCCEEDED,
         purpose=PaymentPurpose.SUBSCRIPTION,
-        provider="platega",
+        provider="yookassa",
         description="30 дней",
         period_days=30,
         subscription_url="https://panel.example/sub/abc",
