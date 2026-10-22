@@ -122,6 +122,21 @@ the body except the payment id: the status and the amount are fetched from
 `GET /v3/payments/{id}` and the amount is compared with the one stored when
 the payment was created.
 
+The notification is not the only channel: the site also asks YooKassa about
+its own payments. The result page does it for a payment still pending here,
+and a background pass (`backend/app/services/checkout_poll.py`) walks the
+pending payments on its own schedule, so a buyer who closed the page is not
+left waiting either. Both go through the same `confirm`/`deliver` pair as the
+webhook, and `confirm` returns true only to the call that moved the payment
+from pending to succeeded, so a subscription is never delivered twice. This
+matters because the shop (`shopId` 1290805) is shared with the sales bot and
+`@hopbyhop_bot`, and a shop has a single notification address: today it
+belongs to the site, and polling is what keeps a purchase from hanging
+undelivered if that ever changes or YooKassa cannot reach us.
+
+- `VPANFI_PAYMENT_POLL_MINUTES` — how often the background pass runs; defaults to `5`
+- `VPANFI_PAYMENT_POLL_HOURS` — how long after creation a pending payment is still asked about; defaults to `24`
+
 Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected

@@ -747,11 +747,85 @@ class CheckoutService:
             payment.notified_at = datetime.now(UTC)
             await self._session.commit()
 
+    async def poll(self, *, provider_payment_id: str) -> bool:
+        """Спросить кассу об оплате самим и выдать, если она была.
+
+        Уведомление ЮKassa — единственный канал, из которого сайт
+        узнаёт об оплате, и адрес уведомлений у магазина один, а магазин
+        общий с ботом продаж. Если уведомление не придёт, оплаченная
+        покупка останется невыданной и заметить это будет нечем. Опрос
+        идёт теми же ``confirm`` и ``deliver``, что и вебхук: выдачу
+        получает только тот вызов, который сам перевёл платёж в
+        succeeded, поэтому пришедшие оба — и опрос, и уведомление —
+        выдают подписку один раз.
+
+        Недоступную кассу наверх не поднимаем: опрос это запас
+        прочности, и чужая поломка не должна ломать ни страницу
+        результата, ни фоновый обход. Возвращает True, если выдача в
+        этом вызове состоялась.
+        """
+        try:
+            paid = await self.confirm(provider_payment_id=provider_payment_id)
+        except (CheckoutNotConfiguredError, CheckoutUnavailableError):
+            logger.warning(
+                "Опрос кассы не удался, платёж оставлен как есть: %s",
+                provider_payment_id,
+            )
+            return False
+
+        # Та же пара условий, что у вебхука: либо платёж оплатили
+        # только что, либо он оплачен давно, а выдача в прошлый раз
+        # сорвалась и ссылки у него нет.
+        if paid or await self.needs_delivery(
+            provider_payment_id=provider_payment_id
+        ):
+            await self.deliver(provider_payment_id=provider_payment_id)
+            return True
+        return False
+
+    async def pending_provider_ids(self, *, limit: int) -> list[str]:
+        """Платежи, которые у нас всё ещё ждут оплаты, для опроса кассы.
+
+        Старше ``payment_poll_hours`` не берём: ссылка на оплату у
+        ЮKassa столько не живёт, а обход незакрытых платежей иначе
+        рос бы без конца. Старые читаем первыми: у них меньше всего
+        шансов дождаться уведомления.
+        """
+        chasy = max(1, self._settings.payment_poll_hours)
+        porog = datetime.now(UTC) - timedelta(hours=chasy)
+        statement = (
+            select(Payment.provider_payment_id)
+            .where(
+                Payment.provider == PROVIDER,
+                Payment.status == PaymentStatus.PENDING,
+                Payment.provider_payment_id.is_not(None),
+                Payment.created_at >= porog,
+            )
+            .order_by(Payment.created_at)
+            .limit(limit)
+        )
+        found = await self._session.scalars(statement)
+        return [identifier for identifier in found if identifier]
+
     async def state(self, payment_id: UUID) -> PaymentStatusResponse | None:
-        """Состояние платежа для страницы результата."""
+        """Состояние платежа для страницы результата.
+
+        Пока платёж у нас pending, спрашиваем о нём саму кассу: человек
+        вернулся на страницу после оплаты, а уведомления может не быть
+        вовсе. Касса не ответила — отдаём прежнее состояние из базы:
+        страница с «ещё не оплачено» лучше ошибки у того, кто только
+        что заплатил.
+        """
         payment = await self._session.get(Payment, payment_id)
         if payment is None:
             return None
+        if (
+            payment.status is PaymentStatus.PENDING
+            and payment.provider_payment_id
+        ):
+            await self.poll(
+                provider_payment_id=payment.provider_payment_id
+            )
         return PaymentStatusResponse(
             status=payment.status.value,
             paid=payment.status is PaymentStatus.SUCCEEDED,

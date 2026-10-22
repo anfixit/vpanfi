@@ -12,6 +12,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.middleware import SecurityHeadersMiddleware
 from app.db.session import async_session_factory
+from app.services.checkout_poll import obojti_ozhidayushchie_platezhi
 from app.services.referral_wiring import (
     bot_sync_next_run,
     bot_sync_period,
@@ -55,6 +56,36 @@ async def _napominaniya() -> None:
         except Exception:
             logger.exception("Обход напоминаний сорвался")
         await asyncio.sleep(chasy * 3600)
+
+
+async def _opros_kassy() -> None:
+    """Спрашивать кассу о платежах, которые у нас всё ещё ждут оплаты.
+
+    Отдельная задача, а не проход внутри цикла напоминаний: у того шаг
+    шесть часов, и оплата, о которой не пришло уведомление, ждала бы
+    выдачи полдня. Здесь шаг минутный (``payment_poll_minutes``), и
+    обход идёт только по своим незакрытым платежам, которых единицы.
+
+    Уведомление остаётся основным каналом: оно быстрее опроса, и
+    подписки сегодня выдаёт именно оно. Двойной выдачи от двух каналов
+    не бывает, ``confirm`` отдаёт True только первому.
+    """
+    settings = get_settings()
+    minuty = max(1, settings.payment_poll_minutes)
+    # Задержка на старте больше, чем у напоминаний: пусть приложение
+    # поднимется и успеет принять уведомления, которые ЮKassa повторяет
+    # после перезапуска.
+    await asyncio.sleep(120)
+    while True:
+        try:
+            vydano = await obojti_ozhidayushchie_platezhi()
+            if vydano:
+                logger.info("Опрос кассы: подписок выдано: %s", vydano)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Опрос кассы сорвался")
+        await asyncio.sleep(minuty * 60)
 
 
 _PERVAYA_SVERKA_USTROJSTV = timedelta(minutes=10)
@@ -159,11 +190,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # persistence layer is connected.
     zadacha = asyncio.create_task(_napominaniya())
     nagrady_zadacha = asyncio.create_task(_nagrady())
+    opros_zadacha = asyncio.create_task(_opros_kassy())
     try:
         yield
     finally:
         zadacha.cancel()
         nagrady_zadacha.cancel()
+        opros_zadacha.cancel()
 
 
 def create_app() -> FastAPI:
