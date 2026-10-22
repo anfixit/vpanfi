@@ -16,7 +16,7 @@ def test_payment_can_belong_to_a_guest() -> None:
         amount_kopecks=30000,
         status=PaymentStatus.PENDING,
         purpose=PaymentPurpose.SUBSCRIPTION,
-        provider="platega",
+        provider="yookassa",
         description="Подписка на 30 дней",
         tariff_id=2,
         period_days=30,

@@ -75,8 +75,6 @@ jobs:
           VPANFI_YOOKASSA_SECRET_KEY: ${{ secrets.VPANFI_YOOKASSA_SECRET_KEY }}
           VPANFI_YOOKASSA_PAYMENT_METHODS: ${{ vars.VPANFI_YOOKASSA_PAYMENT_METHODS }}
           VPANFI_YOOKASSA_RECHECK_MINUTES: ${{ vars.VPANFI_YOOKASSA_RECHECK_MINUTES }}
-          VPANFI_PLATEGA_MERCHANT_ID: ${{ secrets.VPANFI_PLATEGA_MERCHANT_ID }}
-          VPANFI_PLATEGA_SECRET: ${{ secrets.VPANFI_PLATEGA_SECRET }}
           VPANFI_REFERRAL_ENABLED: ${{ vars.VPANFI_REFERRAL_ENABLED }}
           VPANFI_REFERRAL_BOT_ENABLED: ${{ vars.VPANFI_REFERRAL_BOT_ENABLED }}
           VPANFI_BEDOLAGA_API_TOKEN: ${{ secrets.VPANFI_BEDOLAGA_API_TOKEN }}
@@ -121,10 +119,6 @@ jobs:
               "${VPANFI_YOOKASSA_PAYMENT_METHODS:-}"
             printf 'export VPANFI_YOOKASSA_RECHECK_MINUTES=%q\n' \
               "${VPANFI_YOOKASSA_RECHECK_MINUTES:-}"
-            printf 'export VPANFI_PLATEGA_MERCHANT_ID=%q\n' \
-              "${VPANFI_PLATEGA_MERCHANT_ID:-}"
-            printf 'export VPANFI_PLATEGA_SECRET=%q\n' \
-              "${VPANFI_PLATEGA_SECRET:-}"
             printf 'export VPANFI_REFERRAL_ENABLED=%q\n' \
               "${VPANFI_REFERRAL_ENABLED:-}"
             printf 'export VPANFI_REFERRAL_BOT_ENABLED=%q\n' \
