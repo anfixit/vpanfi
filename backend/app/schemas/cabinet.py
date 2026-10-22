@@ -143,10 +143,11 @@ class CheckoutRequest(BaseModel):
     email: EmailStr
     tariff_id: int = Field(gt=0, alias="tariffId")
     period_days: int = Field(gt=0, le=730, alias="periodDays")
-    # Необязателен: старый фронтенд его не шлёт, и такой запрос должен
-    # по-прежнему работать. Сервер подставит запасной способ.
-    payment_method: int | None = Field(
-        default=None, gt=0, alias="paymentMethod"
+    # Необязателен: без него ЮKassa сама покажет на своей странице все
+    # способы, включённые у магазина. Это значение
+    # ``payment_method_data.type``: bank_card, sbp и подобные.
+    payment_method: str | None = Field(
+        default=None, max_length=32, alias="paymentMethod"
     )
     # Код приглашения из ссылки ?ref=. Ограничение здесь мягче, чем у
     # колонки в базе (64 символа): мусорный или слишком длинный код
@@ -158,7 +159,7 @@ class CheckoutRequest(BaseModel):
 class PaymentMethodResponse(BaseModel):
     """Способ оплаты для витрины."""
 
-    code: int
+    code: str
     name: str
     description: str
 

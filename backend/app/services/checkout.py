@@ -1,8 +1,12 @@
 """Покупка: создать платёж, дождаться оплаты, выдать подписку.
 
-Платёж записывается в базу до похода в Platega. Если Platega не ответит, у
+Платёж записывается в базу до похода в кассу. Если касса не ответит, у
 нас всё равно останется след с суммой и почтой — иначе деньги могли бы уйти
 по ссылке, о существовании которой сайт ничего не знает.
+
+Касса — ЮKassa. Она не подписывает свои уведомления, поэтому из тела
+вебхука берётся только идентификатор платежа, а состояние и сумму
+``confirm`` спрашивает у кассы сам и сверяет с нашей записью.
 """
 
 import hashlib
@@ -17,15 +21,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.integrations.platega.client import (
-    PlategaGateway,
-    PlategaNotConfiguredError,
-    PlategaUnavailableError,
-)
 from app.integrations.remnawave.client import (
     RemnawaveGateway,
     RemnawaveUnavailableError,
     RemnawaveUserNotFoundError,
+)
+from app.integrations.yookassa.client import (
+    CANCELED_STATUS,
+    SUCCESS_STATUS,
+    YookassaGateway,
+    YookassaNotConfiguredError,
+    YookassaUnavailableError,
 )
 from app.models.billing import (
     Payment,
@@ -42,6 +48,7 @@ from app.services.notify import (
     nagrada_soobshchenie,
     otmena_oplaty_soobshchenie,
     pokupka_soobshchenie,
+    rashozhdenie_summy_soobshchenie,
     sboj_vydachi_soobshchenie,
 )
 from app.services.panel import read_panel_user
@@ -55,9 +62,7 @@ from app.services.shop import (
 logger = logging.getLogger(__name__)
 
 KOPECKS_IN_RUBLE = 100
-PROVIDER = "platega"
-# Успех в терминах Platega. Остальные состояния оплатой не считаются.
-SUCCESS_STATUS = "CONFIRMED"
+PROVIDER = "yookassa"
 USERNAME_LIMIT = 64
 
 
@@ -132,22 +137,22 @@ class CheckoutService:
         email: str,
         tariff_id: int,
         period_days: int,
-        payment_method: int | None = None,
+        payment_method: str | None = None,
         referral_code: str | None = None,
     ) -> StartedCheckout:
         """Создать платёж и вернуть ссылку на оплату.
 
         Способ оплаты сверяем со списком включённых. Присланный кем
-        угодно код ушёл бы в Platega как есть, и покупатель уехал бы
-        платить способом, которого у мерчанта нет: отказ он увидел бы
+        угодно способ ушёл бы в ЮKassa как есть, и покупатель уехал бы
+        платить способом, которого у магазина нет: отказ он увидел бы
         уже на чужой странице и решил бы, что сломались мы.
         """
-        if not self._settings.is_platega_configured:
-            raise CheckoutNotConfiguredError("Platega is not configured")
+        if not self._settings.is_yookassa_configured:
+            raise CheckoutNotConfiguredError("YooKassa is not configured")
 
-        allowed = self._settings.payment_method_codes
+        allowed = self._settings.payment_method_types
         if payment_method is not None and payment_method not in allowed:
-            raise UnknownPaymentMethodError(str(payment_method))
+            raise UnknownPaymentMethodError(payment_method)
 
         async with ShopCatalogue(self._settings) as shop:
             try:
@@ -187,24 +192,26 @@ class CheckoutService:
         ).rstrip("/")
 
         try:
-            async with PlategaGateway(self._settings) as platega:
-                created = await platega.create_payment(
+            async with YookassaGateway(self._settings) as kassa:
+                created = await kassa.create_payment(
                     amount_rubles=amount_kopecks / KOPECKS_IN_RUBLE,
                     description=payment.description,
                     payload=str(payment.id),
                     # Возврат ведёт на страницу покупки с токеном: она
                     # умеет показывать состояние оплаты. Отдельной
                     # страницы /pay на сайте нет, и человек упирался бы
-                    # в 404 сразу после того, как заплатил.
+                    # в 404 сразу после того, как заплатил. Отдельного
+                    # адреса для неудачи у ЮKassa нет вовсе: она
+                    # возвращает человека сюда же, а заплатил он или
+                    # нет, страница спросит у сервера.
                     return_url=f"{origin}/buy?token={payment.id}",
-                    failed_url=f"{origin}/buy?token={payment.id}&failed=1",
                     payment_method=payment_method,
                 )
-        except PlategaNotConfiguredError as error:
+        except YookassaNotConfiguredError as error:
             raise CheckoutNotConfiguredError(str(error)) from error
-        except PlategaUnavailableError as error:
+        except YookassaUnavailableError as error:
             # Платёж помечаем несостоявшимся: висящий pending без
-            # идентификатора у Platega никогда не подтвердится.
+            # идентификатора у ЮKassa никогда не подтвердится.
             payment.status = PaymentStatus.FAILED
             await self._session.commit()
             raise CheckoutUnavailableError(str(error)) from error
@@ -214,38 +221,65 @@ class CheckoutService:
 
         return StartedCheckout(
             payment_id=payment.id,
-            redirect_url=created.redirect_url,
+            redirect_url=created.confirmation_url,
         )
 
-    async def confirm(
-        self,
-        *,
-        provider_payment_id: str,
-        status_name: str,
-    ) -> bool:
+    async def confirm(self, *, provider_payment_id: str) -> bool:
         """Отметить платёж оплаченным. True — только первому, кто это сделал.
 
-        Platega повторяет вебхук, пока не получит 200, поэтому один и тот же
-        платёж приходит несколько раз. Подписку продлевает только переход
-        pending → succeeded, иначе человек получил бы лишние дни за одни и
-        те же деньги.
+        Состояние спрашиваем у самой ЮKassa, а не берём из уведомления:
+        уведомления она не подписывает, адрес вебхука открыт, и поверить
+        телу значило бы выдавать подписки по чужому запросу.
+
+        ЮKassa повторяет уведомление, пока не получит 200, поэтому один и
+        тот же платёж приходит несколько раз. Подписку продлевает только
+        переход pending → succeeded, иначе человек получил бы лишние дни
+        за одни и те же деньги.
+
+        Raises:
+            CheckoutUnavailableError: Если касса не ответила. Вебхуку в
+                этом случае надо вернуть не 200, чтобы ЮKassa повторила
+                уведомление: иначе оплата потеряется молча.
         """
         payment = await self._by_provider_id(provider_payment_id)
         if payment is None:
-            logger.warning("Вебхук про неизвестный платёж")
+            # Чужой платёж: в кассу за ним даже не ходим.
+            logger.warning("Уведомление про неизвестный платёж")
             return False
 
-        if status_name.upper() != SUCCESS_STATUS:
-            if payment.status is PaymentStatus.PENDING:
-                payment.status = PaymentStatus.FAILED
-                await self._session.commit()
-            elif payment.status is PaymentStatus.SUCCEEDED:
-                # Провайдер развернул или отменил то, что мы уже
-                # выдали. Ничего не меняем автоматически: доверять
-                # такому статусу и откатывать выдачу самим было бы
-                # рискованнее, чем оставить деньги как есть и
-                # позвать человека проверить платёж глазами.
-                self._soobshchit_ob_otmene(payment, status_name)
+        try:
+            async with YookassaGateway(self._settings) as kassa:
+                state = await kassa.get_payment(provider_payment_id)
+        except YookassaNotConfiguredError as error:
+            raise CheckoutNotConfiguredError(str(error)) from error
+        except YookassaUnavailableError as error:
+            raise CheckoutUnavailableError(str(error)) from error
+
+        if state.status != SUCCESS_STATUS or not state.paid:
+            if state.status == CANCELED_STATUS:
+                if payment.status is PaymentStatus.PENDING:
+                    payment.status = PaymentStatus.FAILED
+                    await self._session.commit()
+                elif payment.status is PaymentStatus.SUCCEEDED:
+                    # Касса развернула или отменила то, что мы уже
+                    # выдали. Ничего не меняем автоматически: доверять
+                    # такому статусу и откатывать выдачу самим было бы
+                    # рискованнее, чем оставить деньги как есть и
+                    # позвать человека проверить платёж глазами.
+                    self._soobshchit_ob_otmene(payment, state.status)
+            # Остальные состояния (pending, waiting_for_capture) — это
+            # ещё не отказ: человек мог закрыть страницу банка и
+            # вернуться к ней через минуту. Платёж оставляем как есть.
+            return False
+
+        if state.amount_kopecks != payment.amount_kopecks:
+            # Заплачено не столько, сколько мы записали при создании
+            # платежа. Выдавать по такому уведомлению нельзя: это либо
+            # чужая подделка, либо деньги, которые надо вернуть.
+            logger.warning(
+                "Сумма платежа %s разошлась с нашей записью", payment.id
+            )
+            self._soobshchit_o_rashozhdenii(payment, state.amount_kopecks)
             return False
 
         if payment.status is not PaymentStatus.PENDING:
@@ -261,7 +295,7 @@ class CheckoutService:
         Ссылка на подписку появляется у платежа только после ответа
         панели. Если панель молчала, платёж остался оплаченным без ссылки,
         и человек с деньгами на нашей стороне сидит без доступа. Повторный
-        вебхук от Platega это второй шанс довыдать, а не повод ждать письма
+        вебхук от ЮKassa это второй шанс довыдать, а не повод ждать письма
         в поддержку.
         """
         payment = await self._by_provider_id(provider_payment_id)
@@ -277,7 +311,7 @@ class CheckoutService:
 
         Вызывается только после успешного перехода платежа в succeeded.
         Ошибку панели наверх не поднимаем: деньги уже получены, и вебхуку
-        надо ответить 200, иначе Platega будет слать его снова. Невыданная
+        надо ответить 200, иначе ЮKassa будет слать его снова. Невыданная
         подписка видна в логе и в статусе платежа.
         """
         payment = await self._by_provider_id(provider_payment_id)
@@ -572,6 +606,23 @@ class CheckoutService:
             )
         )
 
+    def _soobshchit_o_rashozhdenii(
+        self, payment: Payment, amount_kopecks: int | None
+    ) -> None:
+        """Рассказать о платеже, сумма которого не сошлась с нашей.
+
+        Уходит независимо от alert_events: это либо чужая подделка, либо
+        настоящие деньги, которые человек заплатил не в том размере, и
+        в обоих случаях разбираться надо руками.
+        """
+        TelegramNotifier(self._settings).send_later(
+            rashozhdenie_summy_soobshchenie(
+                email=payment.contact_email or "",
+                nash_kopecks=payment.amount_kopecks,
+                kassa_kopecks=amount_kopecks,
+            )
+        )
+
     def _soobshchit_o_sboe(self, payment: Payment, prichina: str) -> None:
         """Рассказать о том, что деньги взяли, а доступ не выдали.
 
@@ -603,7 +654,7 @@ class CheckoutService:
 
         ``process`` здесь не вызывается вовсе: до шести сетевых
         походов по 10-15 секунд каждый внутри одного webhook-запроса
-        превращали ответ Platega в минуту, и провайдер начинал слать
+        превращали ответ кассе в минуту, и провайдер начинал слать
         повтор. Выдачу запускает ``schedule_reward`` в отдельной
         задаче со своей сессией, а если его не передали, награда
         просто ждёт периодического обхода зависших наград.
@@ -666,7 +717,7 @@ class CheckoutService:
 
         Письмо здесь не роскошь, а основной канал: оплата по СБП
         заканчивается в приложении банка, и вкладку с результатом человек
-        чаще всего теряет. Уведомление от Platega приходит несколько раз,
+        чаще всего теряет. Уведомление от ЮKassa приходит несколько раз,
         поэтому отметка о письме ставится сразу и повторов не будет.
         """
         if payment.notified_at is not None:

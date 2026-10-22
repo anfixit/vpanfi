@@ -52,12 +52,23 @@ class Settings(BaseSettings):
     trial_days: int = 7
     trial_device_limit: int = 3
 
-    # Касса сайта. Мерчант отдельный от кассы бота: у бота свой, и
-    # перепутать их значит увести деньги на чужой счёт.
+    # Касса сайта: ЮKassa. С 22.08.2026 деньги принимала Platega, с
+    # 22.10.2026 — ЮKassa. Магазин общий с ботом продаж, но реквизиты
+    # всё равно свои: сайт ходит в кассу сам, со своим ключом.
+    yookassa_shop_id: str | None = None
+    yookassa_secret_key: SecretStr | None = None
+    yookassa_base_url: AnyHttpUrl = AnyHttpUrl("https://api.yookassa.ru/v3")
+    yookassa_timeout_seconds: float = 15.0
+
+    # Прежняя касса. Код оставлен до первого удачного боевого платежа
+    # через ЮKassa: откат должен быть возможен, пока новая касса не
+    # доказала, что принимает деньги.
     platega_merchant_id: str | None = None
     platega_secret: SecretStr | None = None
     platega_base_url: AnyHttpUrl = AnyHttpUrl("https://app.platega.io")
     platega_timeout_seconds: float = 15.0
+    # Коды способов у Platega: 2 СБП, 11 карты РФ, 13 криптовалюта.
+    platega_payment_method: int = 2
     # За сколько дней предупреждать об окончании подписки. Бот шлёт
     # такие письма только тем, кто в нём есть, а покупателя сайта там
     # нет: он платит почтой, без телеграма. Пустой список выключает
@@ -72,15 +83,16 @@ class Settings(BaseSettings):
     # письмо перестаёт быть ключом от аккаунта к концу дня.
     password_reset_ttl_minutes: int = 60
 
-    # Коды способов у Platega: 2 СБП, 11 карты РФ, 12 зарубежные карты,
-    # 13 криптовалюта. Запасной способ на случай, если покупатель ничего
-    # не выбрал: раньше он был единственным, и человек без СБП не мог
-    # заплатить вообще ничем, хотя у мерчанта включены и карты, и крипта.
-    platega_payment_method: int = 2
-    # Что показываем на выбор. Список сверяют с включённым у мерчанта:
+    # Способы оплаты ЮKassa — это значения payment_method_data.type:
+    # bank_card, sbp, yoo_money, sberbank, tinkoff_bank. Прежние коды
+    # Platega (2, 11, 13) здесь не значат ничего.
+    #
+    # Что показываем на выбор. Список сверяют с включённым у магазина:
     # показать выключенный способ значит завести человека в тупик уже
-    # после того, как он решился платить.
-    platega_payment_methods: str = "2,11,13"
+    # после того, как он решился платить. Пустая строка означает «не
+    # выбирать за человека»: ЮKassa сама покажет на своей странице все
+    # включённые способы.
+    yookassa_payment_methods: str = "bank_card,sbp"
 
     # Почта. Единственный канал, который переживает оплату по СБП:
     # она заканчивается в приложении банка, и вкладку с результатом
@@ -211,6 +223,8 @@ class Settings(BaseSettings):
         "remnawave_base_url",
         "remnawave_api_token",
         "remnawave_squad_uuid",
+        "yookassa_shop_id",
+        "yookassa_secret_key",
         "platega_merchant_id",
         "platega_secret",
         "smtp_host",
@@ -300,6 +314,15 @@ class Settings(BaseSettings):
         return bool(self.smtp_host and self.smtp_from_email)
 
     @property
+    def is_yookassa_configured(self) -> bool:
+        """Касса готова, только когда есть и магазин, и ключ.
+
+        Половина реквизитов хуже, чем ничего: платёж создастся и упрётся
+        в отказ авторизации уже после того, как человек нажал «оплатить».
+        """
+        return bool(self.yookassa_shop_id and self.yookassa_secret_key)
+
+    @property
     def is_platega_configured(self) -> bool:
         """Касса готова, только когда есть и мерчант, и секрет.
 
@@ -337,23 +360,20 @@ class Settings(BaseSettings):
         }
 
     @property
-    def payment_method_codes(self) -> list[int]:
+    def payment_method_types(self) -> list[str]:
         """Способы оплаты для витрины, в порядке показа.
 
-        Мусор в списке молча отбрасываем, а не роняем приложение:
-        опечатка в настройке не должна оставлять сайт без кассы.
-        Пустой список означал бы «платить нечем», поэтому в крайнем
-        случае возвращаем запасной способ.
+        Пустой список здесь законен и означает «не выбирать за
+        человека»: витрина не покажет переключатель, платёж уйдёт без
+        ``payment_method_data``, и ЮKassa предложит на своей странице
+        всё, что включено у магазина.
         """
-        codes: list[int] = []
-        for chunk in str(self.platega_payment_methods or "").split(","):
-            chunk = chunk.strip()
-            if not chunk.isdigit():
-                continue
-            code = int(chunk)
-            if code not in codes:
-                codes.append(code)
-        return codes or [self.platega_payment_method]
+        types: list[str] = []
+        for chunk in str(self.yookassa_payment_methods or "").split(","):
+            name = chunk.strip().lower()
+            if name and name not in types:
+                types.append(name)
+        return types
 
     @property
     def allowed_origins(self) -> list[str]:

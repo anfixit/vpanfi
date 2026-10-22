@@ -68,7 +68,7 @@ export function PaymentsPage() {
   const { isDemoMode } = useDemoNotice();
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [selectedMethod, setSelectedMethod] = useState<number | null>(null);
+  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoReceiptShown, setDemoReceiptShown] = useState(false);

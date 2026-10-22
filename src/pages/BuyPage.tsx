@@ -194,7 +194,7 @@ export function BuyPage({
   const [tariffId, setTariffId] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   /* Код способа у Platega: 2 СБП, 11 карта, 13 криптовалюта. */
-  const [option, setOption] = useState<number | null>(null);
+  const [option, setOption] = useState<string | null>(null);
   /* Отметка напротив каждого документа отдельно — как при регистрации. */
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
