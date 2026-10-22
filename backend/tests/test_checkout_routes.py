@@ -8,7 +8,7 @@ KNOWN_PAYMENT = UUID("22222222-3333-4444-5555-666666666666")
 
 
 class StubCheckout:
-    """Касса без базы и без Platega: маршруты проверяем отдельно от них."""
+    """Касса без базы и без ЮKassa: маршруты проверяем отдельно от них."""
 
     async def state(self, payment_id: UUID) -> PaymentStatusResponse | None:
         if payment_id != KNOWN_PAYMENT:
