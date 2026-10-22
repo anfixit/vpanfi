@@ -1,4 +1,3 @@
-import hmac
 import json as jsonlib
 from typing import Annotated
 from uuid import UUID
@@ -110,7 +109,7 @@ async def payment_methods(
             name=method.name,
             description=method.description,
         )
-        for method in known_methods(settings.payment_method_codes)
+        for method in known_methods(settings.payment_method_types)
     ]
 
 
@@ -136,57 +135,50 @@ async def payment_status(
 
 
 @router.post(
-    "/platega/webhook",
-    summary="Уведомление Platega об оплате",
+    "/yookassa/webhook",
+    summary="Уведомление ЮKassa об оплате",
     include_in_schema=False,
 )
-async def platega_webhook(
+async def yookassa_webhook(
     request: Request,
-    settings: SettingsDep,
     checkout: CheckoutServiceDep,
 ) -> Response:
     """Принять уведомление об оплате.
 
-    Platega не подписывает уведомления: она присылает мерчанта и секрет,
-    и сверять надо именно их. Ответ почти всегда 200 — на любой другой
-    код Platega будет слать уведомление снова.
+    ЮKassa уведомления не подписывает, и адрес вебхука знает кто угодно.
+    Поэтому из тела берётся ровно одно поле — идентификатор платежа, а
+    состояние и сумму ``confirm`` спрашивает у самой кассы.
+
+    Ответ почти всегда 200: на любой другой код ЮKassa будет слать
+    уведомление снова. Исключение одно — касса не ответила: тогда повтор
+    как раз и нужен, иначе оплата потеряется молча.
     """
-    merchant = request.headers.get("X-MerchantId", "")
-    secret = request.headers.get("X-Secret", "")
     body = await request.body()
 
-    # Platega проверяет адрес пустым запросом без заголовков.
-    if not merchant and not secret and not body.strip():
+    # Пустой запрос по адресу вебхука ошибкой не считаем.
+    if not body.strip():
         return Response(status_code=status.HTTP_200_OK)
-
-    expected_secret = (
-        settings.platega_secret.get_secret_value()
-        if settings.platega_secret
-        else ""
-    )
-    # Сравнение с постоянным временем: обычное сравнение строк
-    # подсказывает подбирающему, сколько символов он уже угадал.
-    authorised = hmac.compare_digest(
-        merchant, settings.platega_merchant_id or ""
-    ) and hmac.compare_digest(secret, expected_secret)
-    if not authorised:
-        return Response(status_code=status.HTTP_401_UNAUTHORIZED)
 
     try:
         payload = jsonlib.loads(body)
     except ValueError:
         return Response(status_code=status.HTTP_400_BAD_REQUEST)
 
-    identifier = str(payload.get("id") or payload.get("Id") or "")
-    state = str(payload.get("status") or payload.get("Status") or "")
+    obj = payload.get("object") if isinstance(payload, dict) else None
+    identifier = str(obj.get("id") or "") if isinstance(obj, dict) else ""
     if not identifier:
+        # Повторять такое уведомление бессмысленно: разбирать нечего.
         return Response(status_code=status.HTTP_200_OK)
 
-    paid = await checkout.confirm(
-        provider_payment_id=identifier, status_name=state
-    )
+    try:
+        paid = await checkout.confirm(provider_payment_id=identifier)
+    except CheckoutUnavailableError:
+        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except CheckoutNotConfiguredError:
+        return Response(status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     # Подписку выдаём тому вызову, который сам перевёл платёж в succeeded:
-    # Platega присылает уведомление несколько раз, и повтор не должен
+    # ЮKassa присылает уведомление несколько раз, и повтор не должен
     # продлевать. Исключение одно: если в прошлый раз панель не ответила,
     # платёж оплачен, а ссылки нет, и повтор вебхука довыдаёт подписку.
     if paid or await checkout.needs_delivery(provider_payment_id=identifier):

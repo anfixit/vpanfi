@@ -154,7 +154,7 @@ export type ShopTariff = {
   periods: ShopPeriod[];
 };
 
-/** Способ оплаты и его варианты: у Platega это СБП и криптовалюта. */
+/** Способ оплаты и его варианты в витрине бота. */
 export type ShopPaymentOption = {
   id: string;
   name: string;
@@ -175,11 +175,13 @@ export type ShopConfig = {
 
 /*
  * Способ оплаты нашей кассы. Витрина бота отдаёт свой список, но он
- * описывает мерчант бота: там включены не те способы, что у нас, и
- * карты в нём нет вовсе.
+ * описывает кассу бота: там включены не те способы, что у нас.
+ *
+ * code — это payment_method_data.type из API ЮKassa: bank_card, sbp
+ * и подобные. Раньше здесь были числовые коды Platega.
  */
 export type CheckoutPaymentMethod = {
-  code: number;
+  code: string;
   name: string;
   description: string;
 };
@@ -188,7 +190,7 @@ export type GuestPurchasePayload = {
   tariffId: number;
   periodDays: number;
   email: string;
-  paymentMethod: number | null;
+  paymentMethod: string | null;
 };
 
 export type GuestPurchase = {

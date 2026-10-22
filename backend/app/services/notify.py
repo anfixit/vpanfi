@@ -26,6 +26,7 @@ __all__ = [
     "nagrada_soobshchenie",
     "otmena_oplaty_soobshchenie",
     "pokupka_soobshchenie",
+    "rashozhdenie_summy_soobshchenie",
     "registraciya_soobshchenie",
     "sboj_vydachi_soobshchenie",
     "sovpadenie_ustrojstv_soobshchenie",
@@ -121,6 +122,32 @@ def sboj_vydachi_soobshchenie(
         "",
         "Человек заплатил и ничего не получил. "
         "Выдать доступ вручную в панели и написать ему.",
+    ])
+
+
+def rashozhdenie_summy_soobshchenie(
+    *, email: str, nash_kopecks: int, kassa_kopecks: int | None
+) -> str:
+    """Сообщение о платеже, сумма которого не сошлась с нашей записью.
+
+    ЮKassa не подписывает уведомления, поэтому сумму мы всегда
+    спрашиваем у неё самой и сверяем с тем, что записали при создании
+    платежа. Разошлась — подписку не выдаём и зовём разобраться: это
+    либо чужая подделка, либо деньги не в том размере.
+    """
+    u_kassy = (
+        f"{_rub(kassa_kopecks)} ₽" if kassa_kopecks is not None
+        else "прочитать не удалось"
+    )
+    return "\n".join([
+        "⚠️ <b>СУММА ПЛАТЕЖА НЕ СОШЛАСЬ</b>",
+        "",
+        f"👤 {html.escape(email)}",
+        f"🧾 У нас записано: {_rub(nash_kopecks)} ₽",
+        f"🏦 У кассы: {html.escape(u_kassy)}",
+        "",
+        "Подписка по этому платежу не выдана. Проверить платёж "
+        "в кабинете ЮKassa вручную.",
     ])
 
 
