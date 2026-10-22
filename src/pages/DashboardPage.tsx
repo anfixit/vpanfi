@@ -9,7 +9,7 @@ import { Mascot, type MascotVariant } from "../components/Mascot";
 import { ErrorState, LoadingState } from "../components/ResourceState";
 import { SubscriptionOnboarding } from "../components/SubscriptionOnboarding";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { formatRubles, pluralizeRu } from "../utils/format";
+import { formatKopeks, formatRubles, pluralizeRu } from "../utils/format";
 
 const VISIBLE_COUNTRIES = 5;
 const COPIED_HINT_MS = 2400;
@@ -173,7 +173,16 @@ export function DashboardPage() {
     );
   }
 
-  const { subscription, countries, recentPayments } = dashboard.data;
+  const { subscription, countries, recentPayments, balanceKopeks } =
+    dashboard.data;
+
+  /*
+   * Кошелёк общий с ботом продаж, и сумму мы знаем не про каждого: у
+   * человека может не быть учётки в боте, а бот может не ответить.
+   * Тогда карточки баланса нет вовсе. Ноль на её месте читался бы как
+   * «денег нет», то есть врал бы.
+   */
+  const hasBalance = balanceKopeks !== null;
 
   // Сюда попадают только связанные аккаунты, но подписка может исчезнуть
   // из панели между двумя запросами — тогда честнее предложить её
@@ -319,7 +328,11 @@ export function DashboardPage() {
         </aside>
       </div>
 
-      <div className="cabinet-grid cabinet-grid-bottom">
+      <div
+        className={`cabinet-grid cabinet-grid-bottom ${
+          hasBalance ? "" : "without-balance"
+        }`.trim()}
+      >
         <CabinetCard title="Последние платежи" icon="payments">
           {recentPayments.length > 0 ? (
             <div className="payment-list">
@@ -341,24 +354,17 @@ export function DashboardPage() {
           </button>
         </CabinetCard>
 
-        <CabinetCard title="Автопродление и баланс" icon="refresh">
-          <div className="renewal-status">
-            <span>Автопродление</span>
-            <strong>{subscription.autoRenewEnabled ? "Включено" : "Выключено"}</strong>
-          </div>
-          <p className="muted">При наличии средств следующий период оплатится автоматически.</p>
-          <div className="balance-row">
-            <span>Баланс</span>
-            <strong>{formatRubles(subscription.balanceRub)}</strong>
-          </div>
-          <button
-            className="small-action"
-            type="button"
-            onClick={() => explain("Пополнение баланса откроется вместе с платёжным провайдером.")}
-          >
-            Пополнить баланс
-          </button>
-        </CabinetCard>
+        {hasBalance && (
+          <CabinetCard title="Баланс" icon="payments">
+            <div className="balance-row">
+              <span>На счёте</span>
+              <strong>{formatKopeks(balanceKopeks)}</strong>
+            </div>
+            <p className="muted">
+              Счёт общий с ботом продаж: деньги на нём одни и те же.
+            </p>
+          </CabinetCard>
+        )}
 
         <CabinetCard
           title="Состояние"

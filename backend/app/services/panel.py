@@ -70,8 +70,6 @@ def to_subscription(
     user: PanelUser,
     *,
     devices_used: int,
-    balance_rub: int = 0,
-    auto_renew_enabled: bool = False,
 ) -> SubscriptionResponse:
     """Собрать карточку подписки из данных панели."""
     today = date.today()
@@ -95,8 +93,6 @@ def to_subscription(
         # почему на новом телефоне ничего не работает.
         devices_used=devices_used,
         devices_limit=user.devices_limit,
-        auto_renew_enabled=auto_renew_enabled,
-        balance_rub=balance_rub,
     )
 
 

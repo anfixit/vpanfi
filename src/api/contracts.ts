@@ -8,8 +8,6 @@ export type Subscription = {
   trafficLabel: string;
   devicesUsed: number;
   devicesLimit: number;
-  autoRenewEnabled: boolean;
-  balanceRub: number;
 };
 
 export type Country = {
@@ -61,6 +59,12 @@ export type UserProfile = {
 
 export type DashboardPayload = {
   subscription: Subscription | null;
+  /*
+   * Кошелёк у человека один и живёт он в боте продаж. null означает
+   * «суммы нет»: человека не нашли в боте или бот не ответил. Это не
+   * ноль рублей, и кабинет в этом случае не показывает баланс вовсе.
+   */
+  balanceKopeks: number | null;
   countries: Country[];
   recentPayments: Payment[];
   profile: UserProfile;

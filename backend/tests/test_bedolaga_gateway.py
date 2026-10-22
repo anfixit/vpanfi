@@ -654,3 +654,123 @@ async def test_purchases_never_leaks_the_token_on_failure() -> None:
             await gateway.purchases(2)
 
     assert TOKEN not in str(exc_info.value)
+
+
+@respx.mock
+async def test_user_carries_the_wallet_and_subscription_keys() -> None:
+    respx.get(f"{BASE_URL}/users/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "telegram_id": TELEGRAM_ID,
+                "balance_kopeks": 15_050,
+                "subscription": {
+                    "id": 777,
+                    "subscription_url": (
+                        "https://panel.example.test/api/sub/9Pt-SNvQp-pMNRbZ"
+                    ),
+                },
+                "subscriptions": [
+                    {
+                        "id": 777,
+                        "subscription_url": (
+                            "https://panel.example.test/api/sub/"
+                            "9Pt-SNvQp-pMNRbZ"
+                        ),
+                    },
+                    {
+                        "id": 778,
+                        "subscription_url": (
+                            "https://panel.example.test/api/sub/"
+                            "uPS1Fzvk_LoZEhok"
+                        ),
+                    },
+                ],
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.user_by_telegram_id(TELEGRAM_ID)
+
+    assert user.balance_kopeks == 15_050
+    # Одна и та же подписка приходит и основной, и в списке: повтора в
+    # ключах быть не должно.
+    assert user.subscription_short_uuids == (
+        "9Pt-SNvQp-pMNRbZ",
+        "uPS1Fzvk_LoZEhok",
+    )
+
+
+@respx.mock
+async def test_wallet_is_empty_when_the_bot_sent_no_amount() -> None:
+    respx.get(f"{BASE_URL}/users/by-telegram-id/{TELEGRAM_ID}").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "telegram_id": TELEGRAM_ID,
+                "balance_kopeks": True,
+            },
+        )
+    )
+
+    async with _gateway() as gateway:
+        user = await gateway.user_by_telegram_id(TELEGRAM_ID)
+
+    assert user.balance_kopeks is None
+
+
+@respx.mock
+async def test_search_by_subscription_walks_the_pages() -> None:
+    def _page(request: httpx.Request) -> httpx.Response:
+        offset = int(request.url.params.get("offset", 0))
+        if offset == 0:
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"id": 1, "telegram_id": 111}],
+                    "total": 201,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": 2,
+                        "balance_kopeks": 700,
+                        "subscription": {
+                            "id": 9,
+                            "subscription_url": (
+                                "https://panel.example.test/api/sub/"
+                                "9Pt-SNvQp-pMNRbZ"
+                            ),
+                        },
+                    }
+                ],
+                "total": 201,
+            },
+        )
+
+    respx.get(f"{BASE_URL}/users").mock(side_effect=_page)
+
+    async with _gateway() as gateway:
+        user = await gateway.user_by_subscription_short_uuid(
+            "9Pt-SNvQp-pMNRbZ"
+        )
+
+    assert user.id == 2
+    assert user.balance_kopeks == 700
+
+
+@respx.mock
+async def test_search_by_unknown_subscription_raises() -> None:
+    respx.get(f"{BASE_URL}/users").mock(
+        return_value=httpx.Response(200, json={"items": [], "total": 0})
+    )
+
+    async with _gateway() as gateway:
+        with pytest.raises(BedolagaUserNotFoundError):
+            await gateway.user_by_subscription_short_uuid("9Pt-SNvQp-pMNRbZ")

@@ -8,6 +8,23 @@ export function formatRubles(amount: number): string {
   return rubFormatter.format(amount);
 }
 
+const kopeksFormatter = new Intl.NumberFormat("ru-RU", {
+  style: "currency",
+  currency: "RUB",
+  minimumFractionDigits: 2,
+});
+
+/*
+ * Баланс бот отдаёт в копейках. Целые рубли показываем без копеек, а
+ * дробную сумму целиком: округлить 150,50 до «151 ₽» значит обещать
+ * человеку больше денег, чем у него есть.
+ */
+export function formatKopeks(amount: number): string {
+  const rubles = amount / 100;
+  if (Number.isInteger(rubles)) return rubFormatter.format(rubles);
+  return kopeksFormatter.format(rubles);
+}
+
 const dateFormatter = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
   month: "long",

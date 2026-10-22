@@ -34,9 +34,10 @@ class CabinetService:
                 traffic_label="Без лимита",
                 devices_used=3,
                 devices_limit=3,
-                auto_renew_enabled=True,
-                balance_rub=0,
             ),
+            # Непустая сумма, чтобы карточка баланса была видна при
+            # разработке: в кабинете она появляется только с деньгами.
+            balance_kopeks=40_000,
             countries=self.get_countries(),
             recent_payments=self.get_demo_payments(),
             profile=UserProfileResponse(

@@ -13,6 +13,7 @@ from app.api.dependencies import (
     get_reward_store,
     get_subscription_service,
     get_support_service,
+    get_wallet_service,
 )
 from app.core.config import Settings
 from app.integrations.remnawave.client import (
@@ -44,6 +45,7 @@ from app.services.subscription import (
     SubscriptionService,
 )
 from app.services.support import SupportService
+from app.services.wallet import WalletService
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,8 @@ SubscriptionServiceDep = Annotated[
 SupportServiceDep = Annotated[SupportService, Depends(get_support_service)]
 
 RewardStoreDep = Annotated[RewardStore, Depends(get_reward_store)]
+
+WalletServiceDep = Annotated[WalletService, Depends(get_wallet_service)]
 
 PanelGatewayFactoryDep = Annotated[
     PanelGatewayFactory, Depends(get_panel_gateway_factory)
@@ -96,11 +100,18 @@ async def get_dashboard(
     user: CurrentUser,
     service: CabinetServiceDep,
     subscriptions: SubscriptionServiceDep,
+    wallet: WalletServiceDep,
 ) -> DashboardResponse:
     subscription = None
+    subscription_url = None
 
     try:
-        subscription = (await subscriptions.describe(user)).subscription
+        linked = await subscriptions.describe(user)
+        subscription = linked.subscription
+        # Ссылка нужна кошельку: её короткий идентификатор — второй
+        # ключ, которым человек находится в боте продаж, когда Telegram
+        # у него не привязан.
+        subscription_url = linked.subscription_url
     except PanelUnavailableError:
         # Панель недоступна — срок показать нечем. Всё остальное про
         # аккаунт мы знаем и без неё.
@@ -110,6 +121,9 @@ async def get_dashboard(
     # «Алексея» значит показывать человеку чужие данные под его именем.
     return DashboardResponse(
         subscription=subscription,
+        balance_kopeks=await wallet.balance_kopeks(
+            user, subscription_url=subscription_url
+        ),
         countries=service.get_countries(),
         recent_payments=[],
         profile=service.build_profile(user),
