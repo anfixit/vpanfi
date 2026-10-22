@@ -27,9 +27,14 @@ def _settings(**overrides: Any) -> Settings:
     return Settings(**values)  # type: ignore[arg-type]
 
 
-def test_card_is_offered_out_of_the_box() -> None:
-    """Ради карты всё и затевалось."""
-    assert "bank_card" in _settings().payment_method_types
+def test_the_choice_is_left_to_the_cash_desk_out_of_the_box() -> None:
+    """Список по умолчанию пуст, и это сознательно.
+
+    Свой список пришлось бы сверять с кабинетом магазина вручную.
+    22.10.2026 у магазина нет СБП, и зашитый в дефолт «bank_card,sbp»
+    завёл бы половину покупателей в тупик уже на странице кассы.
+    """
+    assert _settings().payment_method_types == []
 
 
 def test_methods_keep_the_configured_order() -> None:

@@ -125,7 +125,7 @@ the payment was created.
 Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected
-- `VPANFI_YOOKASSA_PAYMENT_METHODS` — payment methods offered to the buyer, as `payment_method_data.type` values (`bank_card,sbp` by default); an empty value lets YooKassa show every method the shop has enabled
+- `VPANFI_YOOKASSA_PAYMENT_METHODS` — payment methods offered to the buyer, as `payment_method_data.type` values empty by default, which lets YooKassa show every method the shop has enabled; set it only to narrow that list down
 - `VPANFI_REFERRAL_ENABLED`: set to `true` to turn on the referral program; defaults to `false`, which keeps the site behaving exactly as before
 - `VPANFI_REFERRAL_BOT_ENABLED`: set to `true` to also reward invites that turn into a purchase in the sales bot instead of on the site; defaults to `false` and requires `VPANFI_REFERRAL_ENABLED=true` and a working `VPANFI_BEDOLAGA_API_TOKEN` as well
 
