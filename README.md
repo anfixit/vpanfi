@@ -104,18 +104,28 @@ Optional secrets, applied to `/opt/vpanfi/.env` on every deploy. Leave them unse
 
 - `VPANFI_REMNAWAVE_BASE_URL` — panel base URL, no trailing slash
 - `VPANFI_REMNAWAVE_API_TOKEN` — panel API token
-- `VPANFI_PLATEGA_MERCHANT_ID` — the site's own Platega merchant, separate from the bot's
+- `VPANFI_YOOKASSA_SHOP_ID` — the YooKassa shop id
+- `VPANFI_YOOKASSA_SECRET_KEY` — its secret key
+- `VPANFI_PLATEGA_MERCHANT_ID` — the previous cash desk, kept until the first live YooKassa payment
 - `VPANFI_PLATEGA_SECRET` — its API key
 - `VPANFI_BEDOLAGA_API_TOKEN`: key for the sales bot's API, used to extend an inviter's subscription there; may be left empty, which the app treats as not configured
 
-The site sells through its own cash desk: the bot has a different merchant,
-and mixing them would send the money to the wrong account. Platega delivers
-its notifications to `https://<domain>/api/v1/payments/platega/webhook`, and
-the address is registered in the Platega dashboard, not in this repository.
+The site takes money through YooKassa and delivers subscriptions itself;
+purchases made here never reach the sales bot's database, and that is a
+deliberate choice. YooKassa delivers its notifications to
+`https://<domain>/api/v1/payments/yookassa/webhook`, and the address is
+registered in the YooKassa dashboard, not in this repository. The `/v1`
+is not optional: without it the notification lands on a 404.
+
+YooKassa does not sign its notifications, so the webhook trusts nothing in
+the body except the payment id: the status and the amount are fetched from
+`GET /v3/payments/{id}` and the amount is compared with the one stored when
+the payment was created.
 
 Optional repository **variables**:
 
 - `VITE_DEMO_MODE` — set to `false` once the panel is connected
+- `VPANFI_YOOKASSA_PAYMENT_METHODS` — payment methods offered to the buyer, as `payment_method_data.type` values empty by default, which lets YooKassa show every method the shop has enabled; set it only to narrow that list down
 - `VPANFI_REFERRAL_ENABLED`: set to `true` to turn on the referral program; defaults to `false`, which keeps the site behaving exactly as before
 - `VPANFI_REFERRAL_BOT_ENABLED`: set to `true` to also reward invites that turn into a purchase in the sales bot instead of on the site; defaults to `false` and requires `VPANFI_REFERRAL_ENABLED=true` and a working `VPANFI_BEDOLAGA_API_TOKEN` as well
 

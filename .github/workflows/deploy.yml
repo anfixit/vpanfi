@@ -71,6 +71,9 @@ jobs:
           VPANFI_REMNAWAVE_SQUAD_UUID: ${{ secrets.VPANFI_REMNAWAVE_SQUAD_UUID }}
           VPANFI_TELEGRAM_ALERT_BOT_TOKEN: ${{ secrets.VPANFI_TELEGRAM_ALERT_BOT_TOKEN }}
           VPANFI_TELEGRAM_ALERT_CHAT_ID: ${{ secrets.VPANFI_TELEGRAM_ALERT_CHAT_ID }}
+          VPANFI_YOOKASSA_SHOP_ID: ${{ secrets.VPANFI_YOOKASSA_SHOP_ID }}
+          VPANFI_YOOKASSA_SECRET_KEY: ${{ secrets.VPANFI_YOOKASSA_SECRET_KEY }}
+          VPANFI_YOOKASSA_PAYMENT_METHODS: ${{ vars.VPANFI_YOOKASSA_PAYMENT_METHODS }}
           VPANFI_PLATEGA_MERCHANT_ID: ${{ secrets.VPANFI_PLATEGA_MERCHANT_ID }}
           VPANFI_PLATEGA_SECRET: ${{ secrets.VPANFI_PLATEGA_SECRET }}
           VPANFI_REFERRAL_ENABLED: ${{ vars.VPANFI_REFERRAL_ENABLED }}
@@ -109,6 +112,12 @@ jobs:
               "${VPANFI_TELEGRAM_ALERT_BOT_TOKEN:-}"
             printf 'export VPANFI_TELEGRAM_ALERT_CHAT_ID=%q\n' \
               "${VPANFI_TELEGRAM_ALERT_CHAT_ID:-}"
+            printf 'export VPANFI_YOOKASSA_SHOP_ID=%q\n' \
+              "${VPANFI_YOOKASSA_SHOP_ID:-}"
+            printf 'export VPANFI_YOOKASSA_SECRET_KEY=%q\n' \
+              "${VPANFI_YOOKASSA_SECRET_KEY:-}"
+            printf 'export VPANFI_YOOKASSA_PAYMENT_METHODS=%q\n' \
+              "${VPANFI_YOOKASSA_PAYMENT_METHODS:-}"
             printf 'export VPANFI_PLATEGA_MERCHANT_ID=%q\n' \
               "${VPANFI_PLATEGA_MERCHANT_ID:-}"
             printf 'export VPANFI_PLATEGA_SECRET=%q\n' \

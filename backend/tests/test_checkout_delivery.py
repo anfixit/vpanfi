@@ -265,7 +265,7 @@ def _payment_with_code(referral_code: str | None) -> Payment:
         amount_kopecks=30000,
         status=PaymentStatus.SUCCEEDED,
         purpose=PaymentPurpose.SUBSCRIPTION,
-        provider="platega",
+        provider="yookassa",
         description="30 дней",
         tariff_id=2,
         period_days=30,
@@ -277,7 +277,7 @@ async def test_referral_failure_does_not_escape_delivery() -> None:
     """Сбой рефералки не должен ронять ответ вебхуку."""
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=True),
+        _kassa_settings(referral_enabled=True),
         _BrokenReferral(),
     )
 
@@ -291,7 +291,7 @@ async def test_referral_failure_does_not_escape_delivery() -> None:
 async def test_referral_step_is_skipped_without_a_service() -> None:
     """Без сервиса рефералки шаг должен просто ничего не делать."""
     service = CheckoutService(
-        object(), _platega_settings()  # type: ignore[arg-type]
+        object(), _kassa_settings()  # type: ignore[arg-type]
     )
 
     await service._nachislit_za_priglashenie(
@@ -310,7 +310,7 @@ async def test_referral_step_is_skipped_when_the_program_is_off() -> None:
     referral = _CountingReferral()
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=False),
+        _kassa_settings(referral_enabled=False),
         referral,
     )
 
@@ -335,7 +335,7 @@ async def test_referral_step_runs_without_a_code_when_the_program_is_on() -> (
     referral = _CountingReferral()
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=True),
+        _kassa_settings(referral_enabled=True),
         referral,
     )
 
@@ -354,7 +354,7 @@ async def test_referral_reward_schedules_background_processing() -> None:
     scheduled: list[UUID] = []
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=True),
+        _kassa_settings(referral_enabled=True),
         _RewardReferral(reward),
         schedule_reward=scheduled.append,
     )
@@ -373,7 +373,7 @@ async def test_no_reward_means_nothing_is_scheduled() -> None:
     scheduled: list[UUID] = []
     service = CheckoutService(
         object(),  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=True),
+        _kassa_settings(referral_enabled=True),
         _CountingReferral(),
         schedule_reward=scheduled.append,
     )
@@ -392,7 +392,7 @@ async def test_referral_failure_triggers_a_guarded_rollback() -> None:
     session = _RollbackTrackingSession()
     service = CheckoutService(
         session,  # type: ignore[arg-type]
-        _platega_settings(referral_enabled=True),
+        _kassa_settings(referral_enabled=True),
         _BrokenReferral(),
     )
 
@@ -422,14 +422,14 @@ class _FakeShop:
 
 
 class _FakeCreatedPayment:
-    id = "tx-1"
-    redirect_url = "https://platega.example/pay/tx-1"
+    id = "pay-1"
+    confirmation_url = "https://yoomoney.example/checkout/pay-1"
 
 
-class _FakePlatega:
-    """Platega без сети: create_payment всегда отвечает одинаково."""
+class _FakeKassa:
+    """ЮKassa без сети: create_payment всегда отвечает одинаково."""
 
-    async def __aenter__(self) -> "_FakePlatega":
+    async def __aenter__(self) -> "_FakeKassa":
         return self
 
     async def __aexit__(self, *_exc: object) -> None:
@@ -455,11 +455,11 @@ class _StartSession:
         return None
 
 
-def _platega_settings(**overrides: Any) -> Settings:
+def _kassa_settings(**overrides: Any) -> Settings:
     values: dict[str, Any] = {
         "_env_file": None,
-        "platega_merchant_id": "m-1",
-        "platega_secret": "s-1",
+        "yookassa_shop_id": "54401",
+        "yookassa_secret_key": "test_secret",
     }
     values.update(overrides)
     return Settings(**values)  # type: ignore[arg-type]
@@ -472,11 +472,11 @@ async def _start_with_code(
         checkout_module, "ShopCatalogue", lambda _settings: _FakeShop()
     )
     monkeypatch.setattr(
-        checkout_module, "PlategaGateway", lambda _settings: _FakePlatega()
+        checkout_module, "YookassaGateway", lambda _settings: _FakeKassa()
     )
     session = _StartSession()
     service = CheckoutService(
-        session, _platega_settings(referral_enabled=referral_enabled)
+        session, _kassa_settings(referral_enabled=referral_enabled)
     )
 
     await service.start(
