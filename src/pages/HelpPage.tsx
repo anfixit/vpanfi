@@ -13,7 +13,17 @@ const PLATFORMS: { id: Platform; label: string }[] = [
   { id: "android", label: "Android" },
   { id: "windows", label: "Windows" },
 ];
-const APP_INCY = "https://apps.apple.com/ru/app/incy/id6756943388";
+/*
+ * 05.11.2026: incy сняли с публикации в App Store, для айфона остался
+ * Happ. Из зарубежного магазина он ставится напрямую, из российского
+ * через TestFlight; если TestFlight не пустил, есть запасные.
+ */
+const APP_HAPP_IOS =
+  "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215";
+const APP_HAPP_TESTFLIGHT = "https://testflight.apple.com/join/ystvnbsP";
+const APP_V2RAGE = "https://apps.apple.com/us/app/v2rage/id6761075402";
+const APP_RABBITHOLE =
+  "https://apps.apple.com/ru/app/rabbithole-vpn-client/id6683309629";
 const APP_HAPP_ANDROID =
   "https://play.google.com/store/apps/details?id=com.happproxy";
 const APP_HAPP_APK =
@@ -135,8 +145,7 @@ function CleanIos() {
         сохраните актуальную ссылку VPaNfi из письма, бота или кабинета.
       </p>
       <Notice>
-        <strong>Что оставить:</strong> текущую конфигурацию incy или Happ для
-        VPaNfi.{" "}
+        <strong>Что оставить:</strong> текущую конфигурацию Happ для VPaNfi.{" "}
         <strong>Уже установленный Happ не удаляйте и не сгружайте:</strong>{" "}
         сейчас его нет в российском App Store, повторная установка может быть
         недоступна. Рабочие, учебные профили и «Управление устройством» не
@@ -200,8 +209,8 @@ function CleanIos() {
           оставьте его отключённым.
         </li>
         <li>
-          <strong>Перезагрузите iPhone.</strong> Откройте выбранный incy или
-          Happ и включите VPaNfi. Если появится запрос на добавление
+          <strong>Перезагрузите iPhone.</strong> Откройте Happ и включите
+          VPaNfi. Если появится запрос на добавление
           конфигурации именно этого приложения — нажмите «Разрешить».
         </li>
       </ol>
@@ -387,7 +396,7 @@ function RefreshGuide() {
   return (
     <>
       <p>
-        Откройте incy или Happ. Найдите <strong>профиль VPaNfi</strong> — группу
+        Откройте Happ. Найдите <strong>профиль VPaNfi</strong> — группу
         с Вашими серверами. Нажмите круглую стрелку обновления рядом с группой
         либо откройте её меню → «Обновить подписку». Дождитесь окончания
         обновления, выберите сервер и подключитесь снова.
@@ -505,8 +514,9 @@ function Troubleshooting({ platform }: { platform: Platform }) {
       <details className="help-detail">
         <summary>«Приложение не поддерживается» или серверов нет</summary>
         <p>
-          Убедитесь, что используете актуальный incy или Happ по ссылкам на этой
-          странице. Скопируйте ссылку целиком, без пробелов и обрезанного конца,
+          Убедитесь, что используете актуальный Happ по ссылкам на этой
+          странице. На айфоне из российского App Store это бывает подделка:
+          настоящего Happ в нём нет. Скопируйте ссылку целиком, без пробелов и обрезанного конца,
           и обновите подписку. Если сообщение осталось — пришлите название и
           версию приложения и текст ошибки. Это может быть проблема формата
           выдачи, её нужно проверить с нашей стороны.
@@ -550,7 +560,7 @@ function Troubleshooting({ platform }: { platform: Platform }) {
 
 function Setup({ platform }: { platform: Platform }) {
   const ios = platform === "ios";
-  const app = ios ? "incy" : "Happ";
+  const app = "Happ";
   return (
     <section
       id="setup"
@@ -572,26 +582,59 @@ function Setup({ platform }: { platform: Platform }) {
           {ios ? (
             <>
               <p>
-                Установите <strong>incy</strong>, разработчик{" "}
-                <strong>LLC ITDEV</strong>. Оно доступно в российском App Store.
-                Откройте магазин по кнопке — искать приложение по похожему
-                названию не нужно.
+                Приложение называется <strong>Happ</strong>. Путь зависит от
+                того, какой у Вас App Store. Проверить можно так: «Настройки» →
+                Ваше имя сверху → «Медиаматериалы и покупки» → «Просмотреть» →
+                «Страна и регион».
+              </p>
+              <p>
+                <strong>App Store не российский:</strong> ставится прямо из
+                магазина.
               </p>
               <a
                 className="button button-primary"
-                href={APP_INCY}
+                href={APP_HAPP_IOS}
                 target="_blank"
                 rel="noreferrer"
               >
-                incy в App Store ↗
+                Happ в App Store ↗
+              </a>
+              <p>
+                <strong>App Store российский:</strong> Happ выдаётся через
+                TestFlight, официальное приложение Apple. Сначала поставьте
+                TestFlight из App Store, затем откройте ссылку приглашения и
+                нажмите «Принять» и «Установить».
+              </p>
+              <a
+                className="button button-ghost"
+                href={APP_HAPP_TESTFLIGHT}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Happ через TestFlight ↗
               </a>
               <Notice>
-                <strong>Happ нет в российском App Store.</strong> Проверено 5
-                сентября 2026. Если Happ уже установлен, оставьте его: удалять
-                или сгружать приложение для переустановки не нужно. Для нового
-                подключения используйте incy по кнопке выше. Если магазин пишет
-                «Недоступно», пришлите этот экран в поддержку.
+                <strong>Настоящего Happ в российском App Store нет.</strong> По
+                этому запросу магазин показывает подделки: «Happ VPN ++», «Happ
+                VPN Official», «Happ plus 2026» и похожие. С нашей подпиской
+                они не работают. Если Happ у Вас уже установлен, оставьте его:
+                удалять или сгружать приложение не нужно.
               </Notice>
+              <details className="help-detail">
+                <summary>TestFlight не пустил: запасные приложения</summary>
+                <p>
+                  Набор участников бывает закрыт. Тогда подойдёт любое из этих,
+                  они делают то же самое:{" "}
+                  <a href={APP_V2RAGE} target="_blank" rel="noreferrer">
+                    V2RAGE ↗
+                  </a>{" "}
+                  или{" "}
+                  <a href={APP_RABBITHOLE} target="_blank" rel="noreferrer">
+                    RabbitHole ↗
+                  </a>
+                  . Дальше всё так же, меняются только названия кнопок.
+                </p>
+              </details>
             </>
           ) : platform === "android" ? (
             <>
@@ -662,9 +705,12 @@ function Setup({ platform }: { platform: Platform }) {
         </Step>
         <Step n={4} title="Выберите сервер и включите VPN">
           <p>
-            Начните с Германии или Нидерландов. Для мобильной сети попробуйте
-            🌐, для Wi-Fi — 🛜. Нажмите кнопку подключения. Если вариант не
-            работает, попробуйте второй значок или другую страну.
+            Проще всего взять верхнюю строку списка, «Автовыбор»: приложение
+            само найдёт самый быстрый сервер и само перейдёт на другой, если
+            этот пропадёт. Для мобильной сети берите 🌐, для Wi-Fi и
+            компьютера 🛜. Нажмите кнопку подключения. Если вариант не
+            работает, попробуйте второй значок или строку с конкретной
+            страной.
           </p>
           {ios ? (
             <>
@@ -675,7 +721,7 @@ function Setup({ platform }: { platform: Platform }) {
               </p>
               <Shot
                 src="ios-permission.jpg"
-                caption="Пример системного запроса iPhone: Allow — «Разрешить». В Вашем запросе должно быть имя incy или Happ."
+                caption="Пример системного запроса iPhone: Allow — «Разрешить». В Вашем запросе должно быть имя Вашего приложения, обычно Happ."
                 source={IOS_SOURCE}
               />
             </>
@@ -838,6 +884,9 @@ export function HelpPage({
             Связаться с Анфисой
           </a>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <a className="button button-ghost" href={routes.start}>
+            Подключаюсь впервые
+          </a>
           <a className="button button-ghost" href={routes.landing}>
             На главную
           </a>
@@ -962,7 +1011,7 @@ export function HelpPage({
             приложения. Скриншоты можно увеличить; под каждым указан источник.
           </p>
           <p>
-            Ссылки на приложения проверены 5 сентября 2026 года. Нужна помощь с
+            Ссылки на приложения проверены 5 ноября 2026 года. Нужна помощь с
             другим устройством?{" "}
             <a href={maxSupportUrl} target="_blank" rel="noreferrer">
               Напишите Анфисе

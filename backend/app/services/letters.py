@@ -22,8 +22,12 @@ __all__ = [
     "trial_ready_letter",
 ]
 
-APP_IPHONE = "https://apps.apple.com/ru/app/incy/id6756943388"
+# 05.11.2026: incy сняли с публикации в App Store, в письмах остался
+# только Happ. В российском магазине его нет, поэтому рядом со ссылкой
+# на магазин идёт адрес инструкции: там разобран путь через TestFlight.
+APP_IPHONE = "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215"
 APP_ANDROID = "https://play.google.com/store/apps/details?id=com.happproxy"
+GUIDE_URL = "https://vpanfi.su/start"
 
 
 @dataclass(frozen=True)
@@ -82,8 +86,11 @@ def subscription_ready_letter(
 Что с ней делать: установите приложение и вставьте эту ссылку в него.
 Сама по себе ссылка ничего не включает.
 
-  iPhone и iPad — INCY: {APP_IPHONE}
+  iPhone и iPad — HAPP: {APP_IPHONE}
   Android — HAPP: {APP_ANDROID}
+
+Если App Store у вас российский, Happ ставится через TestFlight.
+Как это сделать, по шагам: {GUIDE_URL}
 
 Подписка действует до {until}.
 {pro_kabinet}
@@ -123,9 +130,13 @@ def subscription_ready_letter(
 
     <p style="margin:0 0 20px;">
       <a href="{APP_IPHONE}"
-         style="color:#5b53d6;">iPhone и iPad — INCY</a><br>
+         style="color:#5b53d6;">iPhone и iPad — HAPP</a><br>
       <a href="{APP_ANDROID}" style="color:#5b53d6;">Android — HAPP</a>
     </p>
+
+    <p style="margin:0 0 20px;">Если App Store у вас российский, Happ
+      ставится через TestFlight. Как это сделать, по шагам:
+      <a href="{GUIDE_URL}" style="color:#5b53d6;">{GUIDE_URL}</a></p>
 
     <p style="margin:0 0 16px;">Подписка действует до
       <strong>{until}</strong>.</p>
@@ -189,8 +200,11 @@ def trial_ready_letter(
 через «Вставить из буфера обмена». Сама по себе ссылка ничего
 не включает.
 
-  iPhone и iPad, incy: {APP_IPHONE}
+  iPhone и iPad, Happ: {APP_IPHONE}
   Android, Happ: {APP_ANDROID}
+
+Если App Store у вас российский, Happ ставится через TestFlight.
+Вся установка по шагам: {GUIDE_URL}
 
 Сохраните это письмо: та же ссылка понадобится, чтобы подключить
 другое устройство.
@@ -234,9 +248,13 @@ def trial_ready_letter(
 
     <p style="margin:0 0 20px;">
       <a href="{APP_IPHONE}"
-         style="color:#5b53d6;">iPhone и iPad, incy</a><br>
+         style="color:#5b53d6;">iPhone и iPad, Happ</a><br>
       <a href="{APP_ANDROID}" style="color:#5b53d6;">Android, Happ</a>
     </p>
+
+    <p style="margin:0 0 20px;">Если App Store у вас российский, Happ
+      ставится через TestFlight. Вся установка по шагам:
+      <a href="{GUIDE_URL}" style="color:#5b53d6;">{GUIDE_URL}</a></p>
 
     <p style="margin:0 0 16px;color:#6b6b6b;font-size:14px;">Сохраните это
       письмо: та же ссылка понадобится, чтобы подключить другое

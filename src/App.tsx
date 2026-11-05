@@ -16,6 +16,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { ContactPage } from "./pages/ContactPage";
 import { HelpPage } from "./pages/HelpPage";
+import { InvitePage } from "./pages/InvitePage";
 import { LandingPage } from "./pages/LandingPage";
 import { LegalDocumentPage } from "./pages/LegalDocumentPage";
 import { LegalPage } from "./pages/LegalPage";
@@ -24,6 +25,7 @@ import { PasswordResetPage } from "./pages/PasswordResetPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { SignInRequiredPage } from "./pages/SignInRequiredPage";
+import { StartPage } from "./pages/StartPage";
 import { SupportPage } from "./pages/SupportPage";
 
 const DEMO_DISPLAY_NAME = "Алексей";
@@ -172,6 +174,13 @@ export function App() {
     );
   } else if (pathname === routes.help) {
     page = <HelpPage theme={theme} onToggleTheme={toggleTheme} />;
+  } else if (pathname === routes.start) {
+    // Открыта без входа: сюда приходят по ссылке друга, ещё без подписки.
+    page = (
+      <StartPage theme={theme} onToggleTheme={toggleTheme} onOpenAuth={openAuth} />
+    );
+  } else if (pathname === routes.invite) {
+    page = <InvitePage theme={theme} onToggleTheme={toggleTheme} />;
   } else if (pathname === routes.contact) {
     page = <ContactPage theme={theme} onToggleTheme={toggleTheme} />;
   } else if (pathname === routes.legal) {
