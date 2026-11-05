@@ -35,26 +35,52 @@ jobs:
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+          # Жалобы keyscan держим отдельно от его выдачи, а не в /dev/null:
+          # 02.11 и 05.11.2026 шаг падал здесь, и по логу нельзя было
+          # отличить недоступный сервер от сменившегося ключа.
+          keyscan_status=0
           ssh-keyscan -T 15 -p "$DEPLOY_PORT" "$DEPLOY_HOST" \
-            > "$RUNNER_TEMP/host_keys" 2>/dev/null
+            > "$RUNNER_TEMP/host_keys" 2> "$RUNNER_TEMP/host_keys_err" \
+            || keyscan_status=$?
 
-          # The server offers several host key types and the secret records
-          # only one of them, so the key we pin is the one whose fingerprint
-          # matches. Nothing is trusted when nothing matches.
+          offered="$(grep -cvE '^[[:space:]]*(#|$)' "$RUNNER_TEMP/host_keys" || true)"
+          echo "ssh-keyscan вернул код $keyscan_status, строк с ключами: $offered"
+
+          if [ "$offered" -eq 0 ]; then
+            sed 's/^/  keyscan: /' "$RUNNER_TEMP/host_keys_err" || true
+            echo "::error::Сервер не отдал ни одного ключа. Проверьте, что SSH на DEPLOY_HOST:DEPLOY_PORT доступен снаружи."
+            exit 1
+          fi
+
+          # Сервер предлагает несколько типов ключей, а в секрете записан
+          # один: закрепляем тот, чей отпечаток совпал. Не совпало ничего —
+          # не доверяем никому.
           expected="${DEPLOY_HOST_FINGERPRINT#SHA256:}"
           matched=""
+          seen=""
 
           while IFS= read -r host_key; do
-            [ -n "$host_key" ] || continue
+            case "$host_key" in "" | "#"*) continue ;; esac
+
             printf '%s\n' "$host_key" > "$RUNNER_TEMP/candidate_key"
-            actual="$(ssh-keygen -lf "$RUNNER_TEMP/candidate_key" | awk '{print $2}')"
+
+            # Строку, которую ssh-keygen не разбирает, пропускаем. Раньше
+            # первая такая роняла весь шаг через set -e, и до подходящего
+            # ключа перебор не доходил: ровно это и сломало деплой.
+            if ! fingerprint="$(ssh-keygen -lf "$RUNNER_TEMP/candidate_key" 2>/dev/null)"; then
+              echo "  строку не разобрать как ключ, пропускаю"
+              continue
+            fi
+
+            actual="$(printf '%s\n' "$fingerprint" | awk '{print $2}')"
+            seen="$seen $(printf '%s\n' "$fingerprint" | awk '{print $NF}')"
             if [ "${actual#SHA256:}" = "$expected" ]; then
               matched="$host_key"
             fi
           done < "$RUNNER_TEMP/host_keys"
 
           if [ -z "$matched" ]; then
-            echo "::error::DEPLOY_HOST_FINGERPRINT matches none of the host keys offered by the server. Regenerate it with: ssh-keyscan -p PORT HOST | ssh-keygen -lf -"
+            echo "::error::DEPLOY_HOST_FINGERPRINT не совпал ни с одним ключом сервера. Разобраны:$seen. Пересоздайте отпечаток: ssh-keyscan -p PORT HOST | ssh-keygen -lf -"
             exit 1
           fi
 
