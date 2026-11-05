@@ -135,27 +135,48 @@ class CabinetService:
                 ),
                 install_url="https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk",
             ),
-            ConnectionClientResponse(
-                id="incy-ios",
-                name="INCY",
-                platform="iPhone / iPad",
-                recommended=True,
-                description=(
-                    "Есть в российском App Store — страну учётной записи "
-                    "менять не нужно."
-                ),
-                install_url="https://apps.apple.com/ru/app/incy/id6756943388",
-            ),
+            # 05.11.2026: incy сняли с публикации, остался только Happ.
+            # Для айфона путь зависит от магазина, поэтому вариантов два.
             ConnectionClientResponse(
                 id="happ-ios",
                 name="HAPP",
                 platform="iPhone / iPad",
-                recommended=False,
+                recommended=True,
                 description=(
-                    "Подойдёт, если App Store у вас не российский: из "
-                    "российского приложение убрали."
+                    "Если App Store у вас не российский: ставится прямо "
+                    "из магазина."
                 ),
                 install_url="https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
+            ),
+            ConnectionClientResponse(
+                id="happ-ios-testflight",
+                name="HAPP (через TestFlight)",
+                platform="iPhone / iPad",
+                recommended=False,
+                description=(
+                    "Для российского App Store: там Happ нет, его выдают "
+                    "через TestFlight. Сначала поставьте TestFlight."
+                ),
+                install_url="https://testflight.apple.com/join/ystvnbsP",
+            ),
+            ConnectionClientResponse(
+                id="v2rage-ios",
+                name="V2RAGE",
+                platform="iPhone / iPad",
+                recommended=False,
+                description=(
+                    "Запасной вариант, если TestFlight не пустил: набор "
+                    "участников бывает закрыт."
+                ),
+                install_url="https://apps.apple.com/us/app/v2rage/id6761075402",
+            ),
+            ConnectionClientResponse(
+                id="rabbithole-ios",
+                name="RabbitHole",
+                platform="iPhone / iPad",
+                recommended=False,
+                description="Ещё один запасной вариант для айфона.",
+                install_url="https://apps.apple.com/ru/app/rabbithole-vpn-client/id6683309629",
             ),
             ConnectionClientResponse(
                 id="happ-windows",

@@ -39,8 +39,12 @@ def test_letter_tells_what_to_do_with_the_link() -> None:
     letter = _letter()
 
     assert "вставьте" in letter.text.lower()
-    assert "INCY" in letter.text
     assert "HAPP" in letter.text
+    assert "iPhone" in letter.text
+    assert "Android" in letter.text
+    # Happ нет в российском App Store: без адреса инструкции человек
+    # с таким магазином упирается в пустой поиск и ставит подделку.
+    assert "TestFlight" in letter.text
 
 
 def test_letter_names_the_date_the_subscription_runs_until() -> None:

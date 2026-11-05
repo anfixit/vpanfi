@@ -114,11 +114,12 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#countries">Страны</a>
           <a className="nav-help-alert" href="/help#trouble">VPN не работает?</a>
-          <a
-            href="/help#setup"
-          >
-            Как подключиться
-          </a>
+          {/*
+            Новичку нужна одна дорожка от начала до конца, поэтому ссылка
+            ведёт на /start, а разбор по устройствам остаётся в /help.
+          */}
+          <a href="/start">Как подключиться</a>
+          <a href="/invite">Привести друга</a>
           <a href="#documents">Документы</a>
         </nav>
         <div className="header-actions">
@@ -458,11 +459,8 @@ export function LandingPage({
           <a href="#tariffs">Тарифы</a>
           <a href="#devices">Устройства</a>
           <a href="#support">Поддержка</a>
-          <a
-            href="/help#setup"
-          >
-            Как подключиться
-          </a>
+          <a href="/start">Как подключиться</a>
+          <a href="/invite">Привести друга</a>
         </div>
         {/*
           Документы отдельной группой, а не вперемешку с разделами

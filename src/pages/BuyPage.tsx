@@ -107,13 +107,14 @@ function PurchaseResult({
         <div className="buy-apps">
           <span className="muted">Приложение для вашего устройства:</span>
           <div className="buy-app-links">
-            <a
-              className="button button-ghost"
-              href="https://apps.apple.com/ru/app/incy/id6756943388"
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              iPhone — INCY
+            {/*
+              Для айфона кнопка ведёт на инструкцию, а не в магазин:
+              путь зависит от того, российский App Store или нет, а
+              одна ссылка на магазин половину покупателей заводит в
+              тупик.
+            */}
+            <a className="button button-ghost" href={routes.start}>
+              iPhone — как установить
             </a>
             <a
               className="button button-ghost"

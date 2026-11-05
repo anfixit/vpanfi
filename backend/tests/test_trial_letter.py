@@ -45,8 +45,10 @@ def test_letter_names_the_apps() -> None:
     """Ссылка без приложения бесполезна, а искать его человек не станет."""
     letter = _letter()
 
-    assert "incy" in letter.text
     assert "Happ" in letter.text
+    assert "iPhone" in letter.text
+    assert "Android" in letter.text
+    assert "TestFlight" in letter.text
 
 
 def test_letter_says_nothing_will_be_charged() -> None:

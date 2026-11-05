@@ -28,14 +28,16 @@ export function detectPlatform(): string | null {
 }
 
 /*
- * Оба приложения принимают адрес подписки как есть, без кодирования:
- * happ://add/<адрес> и incy://add/<адрес>. Для остальных приложений
- * общей схемы нет, там остаётся ключ и QR-код.
+ * Happ принимает адрес подписки как есть, без кодирования:
+ * happ://add/<адрес>. Для остальных приложений общей схемы нет, там
+ * остаётся ключ и QR-код.
+ *
+ * 05.11.2026: ветка incy:// убрана вместе с самим приложением, его
+ * сняли с публикации в App Store.
  */
 export function appDeepLink(clientId: string, subscriptionUrl: string | null): string | null {
   if (!subscriptionUrl) return null;
   if (clientId.startsWith("happ")) return `happ://add/${subscriptionUrl}`;
-  if (clientId.startsWith("incy")) return `incy://add/${subscriptionUrl}`;
   return null;
 }
 
