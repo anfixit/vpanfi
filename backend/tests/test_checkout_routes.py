@@ -2,8 +2,10 @@ from uuid import UUID
 
 from app.api.dependencies import get_checkout_service
 from app.schemas.cabinet import PaymentStatusResponse
+from app.services.checkout import Smeta
 
 CHECKOUT = "/api/v1/payments/checkout"
+QUOTE = "/api/v1/payments/quote"
 KNOWN_PAYMENT = UUID("22222222-3333-4444-5555-666666666666")
 
 
@@ -17,6 +19,18 @@ class StubCheckout:
             status="succeeded",
             paid=True,
             subscription_url="https://panel.example/sub/abc",
+        )
+
+    async def smeta(
+        self, *, email: str, tariff_id: int, period_days: int
+    ) -> Smeta:
+        return Smeta(
+            amount_kopecks=50_000,
+            base_kopecks=30_000,
+            extra_devices=2,
+            devices_limit=5,
+            tariff_devices=3,
+            description="30 дней, 30 дн., мест: 5",
         )
 
 
@@ -100,6 +114,46 @@ def test_checkout_works_without_a_referral_code(anonymous_client) -> None:
     )
 
     assert answer.status_code != 422
+
+
+def test_quote_is_only_for_the_one_who_logged_in(anonymous_client) -> None:
+    """В смете видно, сколько у человека мест: чужим её не отдаём."""
+    answer = anonymous_client.post(
+        QUOTE, json={"tariffId": 2, "periodDays": 30}
+    )
+
+    assert answer.status_code == 401
+
+
+def test_quote_rejects_an_email_from_the_browser(client) -> None:
+    """Почту смета не принимает — иначе по ней спросят чужие места."""
+    answer = client.post(
+        QUOTE,
+        json={
+            "tariffId": 2,
+            "periodDays": 30,
+            "email": "someone-else@example.com",
+        },
+    )
+
+    assert answer.status_code == 422
+
+
+def test_quote_shows_the_surcharge_before_the_payment(app, client) -> None:
+    """Сумму человек должен видеть до кассы, а не на её странице."""
+    app.dependency_overrides[get_checkout_service] = StubCheckout
+
+    answer = client.post(QUOTE, json={"tariffId": 2, "periodDays": 30})
+
+    app.dependency_overrides.pop(get_checkout_service)
+    assert answer.status_code == 200
+    assert answer.json() == {
+        "amountKopecks": 50000,
+        "baseKopecks": 30000,
+        "extraDevices": 2,
+        "devicesLimit": 5,
+        "tariffDevices": 3,
+    }
 
 
 def test_checkout_swallows_a_garbage_referral_code(anonymous_client) -> None:

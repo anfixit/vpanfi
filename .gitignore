@@ -31,3 +31,6 @@ backups/
 # Рабочие копии и служебные файлы исполнения планов
 .worktrees/
 .superpowers/
+
+# Локальные разрешения Claude Code: это настройка машины, не проекта.
+.claude/settings.local.json

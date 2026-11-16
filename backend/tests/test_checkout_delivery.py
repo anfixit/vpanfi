@@ -420,6 +420,10 @@ class _FakeShop:
     async def tariff_name(self, _tariff_id: int) -> str:
         return "Тест"
 
+    async def device_limit(self, _tariff_id: int) -> int | None:
+        """Смета спрашивает и лимит: по нему считается доплата за места."""
+        return 3
+
 
 class _FakeCreatedPayment:
     id = "pay-1"
@@ -447,6 +451,15 @@ class _StartSession:
 
     def add(self, obj: Payment) -> None:
         self.added.append(obj)
+
+    async def scalar(self, _query: Any) -> None:
+        """Кабинета с такой почтой нет — смета берёт базовую цену.
+
+        Смета ищет привязанную учётку панели, чтобы доплатить за места
+        сверх тарифа. Здесь проверяется код рефералки, и доплата только
+        мешала бы: без кабинета в панель никто не пойдёт.
+        """
+        return None
 
     async def flush(self) -> None:
         return None

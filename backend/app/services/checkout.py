@@ -66,6 +66,43 @@ logger = logging.getLogger(__name__)
 KOPECKS_IN_RUBLE = 100
 PROVIDER = "yookassa"
 USERNAME_LIMIT = 64
+MESYAC_DNEY = 30
+# Дополнительное место — 100 ₽ за каждый месяц периода, а не разово: так
+# считает бот продаж, и расходиться с ним нельзя, человек видит одну и ту
+# же подписку в двух местах.
+DOPLATA_ZA_MESTO_KOPECKS = 100 * KOPECKS_IN_RUBLE
+
+
+def mesyacev_v_periode(period_days: int) -> int:
+    """Сколько месяцев в оплаченном периоде: 30 дней — один, 90 — три."""
+    return max(1, (period_days + MESYAC_DNEY // 2) // MESYAC_DNEY)
+
+
+def mest_sverh_tarifa(
+    mest_v_podpiske: int | None, mest_v_tarife: int | None
+) -> int:
+    """Сколько в подписке мест сверх тарифных.
+
+    Неизвестный лимит даёт ноль: подписка может быть не привязана, а
+    панель — не ответить. Взять базовую цену честнее, чем выдумать сумму.
+    Лимит меньше тарифного скидки тоже не даёт: отрицательных доплат нет.
+    """
+    if mest_v_podpiske is None or mest_v_tarife is None:
+        return 0
+    return max(0, mest_v_podpiske - mest_v_tarife)
+
+
+def doplata_za_mesta(mest_sverh: int, period_days: int) -> int:
+    """Доплата в копейках за места сверх тарифа.
+
+    Витрина продаёт один базовый тариф на три устройства, а продление в
+    панели лимита не касается — ``set_expiry`` двигает только срок и тег.
+    Без этой доплаты человек с пятью местами, купивший их в боте, платил
+    бы на сайте как за три.
+    """
+    return mest_sverh * DOPLATA_ZA_MESTO_KOPECKS * mesyacev_v_periode(
+        period_days
+    )
 
 
 def panel_username(email: str) -> str:
@@ -115,6 +152,23 @@ class StartedCheckout:
     redirect_url: str
 
 
+@dataclass(frozen=True)
+class Smeta:
+    """Во что обойдётся продление этому человеку.
+
+    Одна и та же смета идёт и в платёж, и на страницу оплаты: цену
+    считает только сервер, а страница её показывает. Считать доплату
+    второй раз на сайте — верный способ разойтись с кассой на рубль.
+    """
+
+    amount_kopecks: int
+    base_kopecks: int
+    extra_devices: int
+    devices_limit: int | None
+    tariff_devices: int | None
+    description: str
+
+
 class CheckoutService:
     def __init__(
         self,
@@ -156,23 +210,21 @@ class CheckoutService:
         if payment_method is not None and payment_method not in allowed:
             raise UnknownPaymentMethodError(payment_method)
 
-        async with ShopCatalogue(self._settings) as shop:
-            try:
-                amount_kopecks = await shop.price_kopecks(
-                    tariff_id, period_days
-                )
-                name = await shop.tariff_name(tariff_id)
-            except ShopUnavailableError as error:
-                raise CheckoutUnavailableError(str(error)) from error
+        smeta = await self.smeta(
+            email=email, tariff_id=tariff_id, period_days=period_days
+        )
 
         payment = Payment(
             user_id=None,
             contact_email=email,
-            amount_kopecks=amount_kopecks,
+            amount_kopecks=smeta.amount_kopecks,
             status=PaymentStatus.PENDING,
             purpose=PaymentPurpose.SUBSCRIPTION,
             provider=PROVIDER,
-            description=f"{name}, {period_days} дн.",
+            description=smeta.description,
+            # Пустое поле вместо нуля: ноль здесь читался бы как «доплату
+            # считали и она нулевая», а чаще всего её просто не было.
+            extra_devices=smeta.extra_devices or None,
             tariff_id=tariff_id,
             period_days=period_days,
             # Код пишем только при включённой рефералке: выключенная не
@@ -196,7 +248,7 @@ class CheckoutService:
         try:
             async with YookassaGateway(self._settings) as kassa:
                 created = await kassa.create_payment(
-                    amount_rubles=amount_kopecks / KOPECKS_IN_RUBLE,
+                    amount_rubles=payment.amount_kopecks / KOPECKS_IN_RUBLE,
                     description=payment.description,
                     payload=str(payment.id),
                     # Возврат ведёт на страницу покупки с токеном: она
@@ -225,6 +277,75 @@ class CheckoutService:
             payment_id=payment.id,
             redirect_url=created.confirmation_url,
         )
+
+    async def smeta(
+        self, *, email: str, tariff_id: int, period_days: int
+    ) -> Smeta:
+        """Посчитать, во что обойдётся период этому человеку.
+
+        Цена складывается из тарифа витрины и доплаты за места сверх
+        тарифных. Считается в одном месте: этой сметой живёт и платёж, и
+        страница оплаты, которая показывает человеку сумму заранее.
+
+        Raises:
+            CheckoutUnavailableError: Витрина не ответила — цены нет, и
+                выдумывать её нельзя.
+            UnknownTariffError: Такого тарифа или периода в витрине нет.
+        """
+        async with ShopCatalogue(self._settings) as shop:
+            try:
+                base_kopecks = await shop.price_kopecks(tariff_id, period_days)
+                name = await shop.tariff_name(tariff_id)
+                tariff_devices = await shop.device_limit(tariff_id)
+            except ShopUnavailableError as error:
+                raise CheckoutUnavailableError(str(error)) from error
+
+        devices_limit = await self._mest_v_podpiske(email)
+        extra_devices = mest_sverh_tarifa(devices_limit, tariff_devices)
+        doplata = doplata_za_mesta(extra_devices, period_days)
+
+        description = f"{name}, {period_days} дн."
+        if extra_devices:
+            # Число мест в описании видно и в чеке, и в выгрузке кассы:
+            # иначе 500 ₽ там выглядят как ошибка против тарифных 300.
+            description = f"{description}, мест: {devices_limit}"
+
+        return Smeta(
+            amount_kopecks=base_kopecks + doplata,
+            base_kopecks=base_kopecks,
+            extra_devices=extra_devices,
+            devices_limit=devices_limit,
+            tariff_devices=tariff_devices,
+            description=description,
+        )
+
+    async def _mest_v_podpiske(self, email: str) -> int | None:
+        """Сколько мест в подписке, привязанной к кабинету этой почты.
+
+        ``None`` означает «выяснить не удалось»: кабинета нет, подписка не
+        привязана или панель не ответила. Покупку это не останавливает —
+        человек заплатит базовую цену, а недобор денег лечится поддержкой.
+        Ронять оплату из-за молчащей панели было бы хуже.
+        """
+        user = await self._session.scalar(
+            select(User).where(
+                func.lower(User.email) == email.strip().lower()
+            )
+        )
+        if user is None or user.remnawave_user_id is None:
+            return None
+
+        try:
+            async with RemnawaveGateway(self._settings) as panel:
+                existing = await panel.get_user_by_id(user.remnawave_user_id)
+        except (RemnawaveUserNotFoundError, RemnawaveUnavailableError):
+            logger.warning(
+                "Лимит устройств до оплаты не выяснен: учётка панели %s",
+                user.remnawave_user_id,
+            )
+            return None
+
+        return read_panel_user(existing).devices_limit
 
     async def confirm(self, *, provider_payment_id: str) -> bool:
         """Отметить платёж оплаченным. True — только первому, кто это сделал.
@@ -817,6 +938,10 @@ __all__ = [
     "panel_username",
     "CheckoutService",
     "CheckoutUnavailableError",
+    "Smeta",
     "StartedCheckout",
     "UnknownTariffError",
+    "doplata_za_mesta",
+    "mesyacev_v_periode",
+    "mest_sverh_tarifa",
 ]

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { shop, ShopRequestError } from "../api/shop";
-import type { ShopTariff } from "../api/contracts";
+import type { CheckoutQuote, ShopTariff } from "../api/contracts";
 import { useAuth } from "../auth/AuthContext";
 import { useDemoNotice } from "../components/DemoNotice";
 import { Mascot } from "../components/Mascot";
 import { EmptyState, ErrorState, LoadingState } from "../components/ResourceState";
 import { EXTRA_DEVICE_PRICE_RUB } from "../data";
 import { useAsyncResource } from "../hooks/useAsyncResource";
-import { formatRubles } from "../utils/format";
+import { formatRubles, pluralizeRu } from "../utils/format";
 
 const paymentStatusLabels: Record<string, string> = {
   succeeded: "Оплачено",
@@ -19,6 +19,12 @@ const paymentStatusLabels: Record<string, string> = {
 };
 
 const CHECKOUT_ERROR = "Не получилось создать платёж. Попробуйте ещё раз.";
+
+const KOPECKS_IN_RUBLE = 100;
+
+function devices(count: number): string {
+  return `${count} ${pluralizeRu(count, "устройство", "устройства", "устройств")}`;
+}
 
 /*
  * Один выбор человека: тариф и срок вместе. В витрине «30 дней»,
@@ -50,14 +56,11 @@ function toOptions(tariffs: ShopTariff[]): PeriodOption[] {
 }
 
 function describeOption(option: PeriodOption): string {
-  const devices = `${option.deviceLimit} ${
-    option.deviceLimit === 1 ? "устройство" : "устройства"
-  }`;
   const traffic =
     option.trafficLimitGb === 0
       ? "без лимита трафика"
       : `${option.trafficLimitGb} ГБ трафика`;
-  return `${devices} · ${traffic}`;
+  return `${devices(option.deviceLimit)} · ${traffic}`;
 }
 
 export function PaymentsPage() {
@@ -72,6 +75,13 @@ export function PaymentsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [demoReceiptShown, setDemoReceiptShown] = useState(false);
+  /*
+   * Смету считает сервер: витрина продаёт базовый тариф на три места, а
+   * у человека, купившего места в боте, их может быть пять — и доплата
+   * за них входит в сумму. Считать её второй раз здесь значило бы
+   * показать на странице одно, а списать другое.
+   */
+  const [quote, setQuote] = useState<CheckoutQuote | null>(null);
 
   const options = useMemo(
     () => toOptions(config.data?.tariffs ?? []),
@@ -80,6 +90,10 @@ export function PaymentsPage() {
   const selected =
     options.find((option) => option.key === selectedKey) ?? options[0] ?? null;
   const paymentMethods = methods.data ?? [];
+  /* Цена витрины — пока сметы нет: своей суммы страница не выдумывает. */
+  const priceLabel = quote
+    ? formatRubles(quote.amountKopecks / KOPECKS_IN_RUBLE)
+    : (selected?.priceLabel ?? "");
 
   /* Первый вариант выбран заранее: продление в один шаг, без лишних решений. */
   useEffect(() => {
@@ -93,6 +107,37 @@ export function PaymentsPage() {
       setSelectedMethod(paymentMethods[0].code);
     }
   }, [selectedMethod, paymentMethods]);
+
+  /*
+   * В демо-режиме сметы не спрашиваем: показывать там выдуманную сумму к
+   * оплате хуже, чем оставить цену витрины. Ответ опоздавшего запроса
+   * отбрасываем — иначе быстрый перебор тарифов оставил бы на экране
+   * сумму от предыдущего.
+   */
+  useEffect(() => {
+    if (isDemoMode || !selected) {
+      setQuote(null);
+      return;
+    }
+
+    let actual = true;
+    setQuote(null);
+    api
+      .getCheckoutQuote({
+        tariffId: selected.tariffId,
+        periodDays: selected.periodDays,
+      })
+      .then((answer) => {
+        if (actual) setQuote(answer);
+      })
+      .catch(() => {
+        if (actual) setQuote(null);
+      });
+
+    return () => {
+      actual = false;
+    };
+  }, [isDemoMode, selected]);
 
   /*
    * Продление идёт той же кассой и той же ручкой, что и покупка с витрины.
@@ -214,6 +259,18 @@ export function PaymentsPage() {
                 ))}
               </div>
 
+              {quote && quote.extraDevices > 0 && quote.devicesLimit !== null && (
+                <p className="payment-device-limit-note" role="status">
+                  В Вашей подписке {devices(quote.devicesLimit)}, а в базовый тариф входит{" "}
+                  {devices(quote.tariffDevices ?? 0)}. Доплата за остальные —{" "}
+                  {formatRubles(
+                    (quote.amountKopecks - quote.baseKopecks) / KOPECKS_IN_RUBLE,
+                  )}{" "}
+                  за выбранный период, она уже включена в сумму к оплате. Места остаются Вашими,
+                  менять ничего не нужно.
+                </p>
+              )}
+
               {paymentMethods.length > 1 && (
                 <div
                   className="tariff-grid payment-method-grid"
@@ -240,7 +297,7 @@ export function PaymentsPage() {
                   <small>Вы выбрали</small>
                   <strong>
                     {selected?.name}
-                    {selected ? ` · ${selected.priceLabel}` : ""}
+                    {selected && priceLabel ? ` · ${priceLabel}` : ""}
                   </strong>
                   <span>{selected ? describeOption(selected) : ""}</span>
                 </div>
