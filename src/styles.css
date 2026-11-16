@@ -2115,6 +2115,21 @@ h3,
   font-size: 12px;
 }
 
+/*
+ * Расхождение «мест в подписке» и «мест в тарифе» — про деньги, поэтому
+ * не серым текстом рядом с ценой: его там не читают.
+ */
+.payment-device-limit-note {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  border-radius: 14px;
+  color: var(--brown);
+  background: color-mix(in srgb, var(--orange) 12%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .status-pill.is-warning {
   color: var(--brown);
   background: color-mix(in srgb, var(--orange) 20%, transparent);

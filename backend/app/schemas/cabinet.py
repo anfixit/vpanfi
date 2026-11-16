@@ -169,6 +169,38 @@ class CheckoutResponse(BaseModel):
     redirect_url: str = Field(serialization_alias="redirectUrl")
 
 
+class CheckoutQuoteRequest(BaseModel):
+    """Запрос сметы: что человек выбрал на странице оплаты.
+
+    Почты здесь нет намеренно: смета говорит, сколько мест в подписке, и
+    по чужой почте её спрашивать нельзя. Берём почту вошедшего.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    tariff_id: int = Field(gt=0, alias="tariffId")
+    period_days: int = Field(gt=0, le=730, alias="periodDays")
+
+
+class CheckoutQuoteResponse(BaseModel):
+    """Во что обойдётся выбранный период.
+
+    Сумму считает сервер и показывает её заранее: на плитках витрины цена
+    базового тарифа, а человек с местами сверх тарифа платит больше, и
+    узнать об этом на странице кассы — худший способ.
+    """
+
+    amount_kopecks: int = Field(serialization_alias="amountKopecks")
+    base_kopecks: int = Field(serialization_alias="baseKopecks")
+    extra_devices: int = Field(serialization_alias="extraDevices")
+    devices_limit: int | None = Field(
+        default=None, serialization_alias="devicesLimit"
+    )
+    tariff_devices: int | None = Field(
+        default=None, serialization_alias="tariffDevices"
+    )
+
+
 class PaymentStatusResponse(BaseModel):
     """Состояние платежа для страницы результата.
 

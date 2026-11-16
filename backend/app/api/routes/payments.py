@@ -11,8 +11,10 @@ from fastapi import (
     status,
 )
 
-from app.api.dependencies import SettingsDep, get_checkout_service
+from app.api.dependencies import CurrentUser, SettingsDep, get_checkout_service
 from app.schemas.cabinet import (
+    CheckoutQuoteRequest,
+    CheckoutQuoteResponse,
     CheckoutRequest,
     CheckoutResponse,
     PaymentMethodResponse,
@@ -87,6 +89,58 @@ async def start_checkout(
     return CheckoutResponse(
         payment_id=started.payment_id,
         redirect_url=started.redirect_url,
+    )
+
+
+@router.post(
+    "/quote",
+    response_model=CheckoutQuoteResponse,
+    summary="Во что обойдётся выбранный период",
+    description=(
+        "Цена тарифа плюс доплата за места сверх тарифных. Отвечает "
+        "только вошедшему и только про его собственную подписку."
+    ),
+    responses={401: {"description": "Требуется вход в кабинет"}},
+)
+async def checkout_quote(
+    payload: CheckoutQuoteRequest,
+    user: CurrentUser,
+    checkout: CheckoutServiceDep,
+) -> CheckoutQuoteResponse:
+    """Смета для страницы оплаты.
+
+    Объявлена выше маршрута с ``payment_id``: FastAPI разбирает пути по
+    порядку, и иначе «quote» уехало бы в разбор UUID и вернуло бы 422.
+    """
+    try:
+        smeta = await checkout.smeta(
+            email=user.email,
+            tariff_id=payload.tariff_id,
+            period_days=payload.period_days,
+        )
+    except UnknownTariffError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "tariff_not_found",
+                "message": "Такого тарифа нет",
+            },
+        ) from error
+    except CheckoutUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "shop_unavailable",
+                "message": "Цены сейчас недоступны, попробуйте ещё раз",
+            },
+        ) from error
+
+    return CheckoutQuoteResponse(
+        amount_kopecks=smeta.amount_kopecks,
+        base_kopecks=smeta.base_kopecks,
+        extra_devices=smeta.extra_devices,
+        devices_limit=smeta.devices_limit,
+        tariff_devices=smeta.tariff_devices,
     )
 
 

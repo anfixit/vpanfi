@@ -144,6 +144,21 @@ export type ShopPeriod = {
   priceLabel: string;
 };
 
+/*
+ * Смета продления: сколько возьмут и почему столько. Считает сервер —
+ * повторять расчёт доплаты на сайте значит разойтись с кассой на рубль.
+ *
+ * Копейки тут пишутся `Kopecks`, а в витрине ниже — `priceKopeks`: это
+ * два разных API, наше и бота, и выравнивать их по себе нельзя.
+ */
+export type CheckoutQuote = {
+  amountKopecks: number;
+  baseKopecks: number;
+  extraDevices: number;
+  devicesLimit: number | null;
+  tariffDevices: number | null;
+};
+
 export type ShopTariff = {
   id: number;
   name: string;

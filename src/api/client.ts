@@ -6,6 +6,7 @@ import {
 import type {
   AccessTokenPayload,
   AuthProvider,
+  CheckoutQuote,
   ConnectionClient,
   DashboardPayload,
   Device,
@@ -304,6 +305,24 @@ export const api = {
   async getPayments(): Promise<Payment[]> {
     if (DEMO_MODE) return demoDelay(demoPayments);
     return request<Payment[]>("/v1/cabinet/payments");
+  },
+
+  /*
+   * Смета считается на сервере и по почте вошедшего: в ней видно, сколько
+   * у человека мест, и спрашивать её по произвольной почте нельзя.
+   *
+   * Демо-ветки здесь нет намеренно: показывать выдуманную сумму к оплате
+   * хуже, чем не показывать никакой, поэтому в демо-режиме страница
+   * оплаты сметы не спрашивает и остаётся с ценой витрины.
+   */
+  async getCheckoutQuote(payload: {
+    tariffId: number;
+    periodDays: number;
+  }): Promise<CheckoutQuote> {
+    return request<CheckoutQuote>("/v1/payments/quote", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   async getCountries(): Promise<Country[]> {
